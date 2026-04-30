@@ -1,0 +1,13 @@
+node_modules/
+npm-debug.log*
+
+# Local customer data and uploaded documents
+data/
+
+# Local verification artifacts
+verification*.png
+test-rate-con.txt
+
+# Environment files
+.env
+.env.*

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TruckerBooks</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <section class="auth-screen" id="authScreen">
+      <div class="auth-card">
+        <img class="auth-logo" src="./assets/truckerbooks-logo.png" alt="TruckerBooks logo" />
+        <p class="eyebrow">Customer access</p>
+        <h1>Sign in to your TruckerBooks dashboard</h1>
+        <p class="auth-copy">Each customer gets a private dashboard with their own trips, expenses, invoices, maintenance, and reports.</p>
+
+        <div class="auth-tabs" role="tablist" aria-label="Account access">
+          <button class="auth-tab active" type="button" data-auth-mode="signin">Sign In</button>
+          <button class="auth-tab" type="button" data-auth-mode="signup">Create Account</button>
+        </div>
+
+        <form class="auth-form" id="authForm">
+          <label class="signup-only">
+            Business name
+            <input name="businessName" type="text" placeholder="Osborne Trucking LLC" />
+          </label>
+          <label>
+            Email
+            <input name="email" type="email" required placeholder="driver@example.com" />
+          </label>
+          <label>
+            Password
+            <input name="password" type="password" required minlength="4" placeholder="At least 4 characters" />
+          </label>
+          <label class="signup-only">
+            Subscription package
+            <select name="subscriptionTier">
+              <option value="silver">Silver Package - 1 to 5 trucks - $49/mo or $499/yr</option>
+              <option value="gold">Gold Package - 6 to 10 trucks - $99/mo or $999/yr</option>
+              <option value="platinum">Platinum Package - 11 to 20 trucks - $179/mo or $1,799/yr</option>
+            </select>
+          </label>
+          <input name="referralCode" type="hidden" id="referralCode" />
+          <p class="auth-error" id="authError" role="alert"></p>
+          <button class="primary-button auth-submit" type="submit" id="authSubmit">Sign In</button>
+        </form>
+      </div>
+    </section>
+
+    <div class="app-shell hidden" id="appShell">
+      <aside class="sidebar" aria-label="Main navigation">
+        <div class="brand">
+          <img class="brand-logo" src="./assets/truckerbooks-logo.png" alt="TruckerBooks logo" />
+          <div>
+            <strong>TruckerBooks</strong>
+            <span id="customerName">Owner-operator books</span>
+          </div>
+        </div>
+        <nav class="nav-list" id="navList"></nav>
+        <div class="sidebar-footer">
+          <span>Current file</span>
+          <strong id="customerFile">2026 Business Year</strong>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="sectionEyebrow">Business snapshot</p>
+            <h1 id="sectionTitle">Dashboard</h1>
+          </div>
+          <div class="topbar-actions">
+            <button class="ghost-button" id="logoutBtn" type="button">
+              <span data-icon="log-out"></span>
+              Sign Out
+            </button>
+            <button class="icon-button" id="exportBtn" type="button" title="Export records" aria-label="Export records">
+              <span data-icon="download"></span>
+            </button>
+            <button class="primary-button" id="quickAddBtn" type="button">
+              <span data-icon="plus"></span>
+              New Entry
+            </button>
+          </div>
+        </header>
+
+        <section class="content" id="content" aria-live="polite"></section>
+      </main>
+    </div>
+
+    <dialog class="entry-dialog" id="entryDialog">
+      <form method="dialog" class="dialog-card" id="entryForm">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Add record</p>
+            <h2 id="dialogTitle">New Entry</h2>
+          </div>
+          <button class="icon-button" value="cancel" type="submit" title="Close" aria-label="Close">
+            <span data-icon="x"></span>
+          </button>
+        </div>
+        <div class="form-grid">
+          <label>
+            Type
+            <select name="type" id="entryType">
+              <option value="trip">Trip</option>
+              <option value="expense">Expense</option>
+              <option value="invoice">Invoice</option>
+              <option value="maintenance">Maintenance</option>
+            </select>
+          </label>
+          <label>
+            Date
+            <input name="date" type="date" required />
+          </label>
+          <label>
+            Description
+            <input name="description" type="text" required placeholder="Load, fuel, repair, invoice..." />
+          </label>
+          <label>
+            Amount
+            <input name="amount" type="number" min="0" step="0.01" required placeholder="0.00" />
+          </label>
+          <label class="trip-only">
+            Origin
+            <input name="origin" type="text" placeholder="Atlanta, GA" />
+          </label>
+          <label class="trip-only">
+            Destination
+            <input name="destination" type="text" placeholder="Dallas, TX" />
+          </label>
+          <label class="trip-only">
+            Miles
+            <input name="miles" type="number" min="0" step="1" placeholder="685" />
+          </label>
+          <label>
+            Status
+            <select name="status">
+              <option value="Paid">Paid</option>
+              <option value="Pending">Pending</option>
+              <option value="Scheduled">Scheduled</option>
+            </select>
+          </label>
+        </div>
+        <div class="dialog-actions">
+          <button type="submit" value="cancel" class="ghost-button">Cancel</button>
+          <button type="button" class="primary-button" id="saveEntryBtn">
+            <span data-icon="save"></span>
+            Save Entry
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
