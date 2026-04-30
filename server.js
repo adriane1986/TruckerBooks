@@ -165,6 +165,20 @@ function sendError(res, status, message) {
   sendJson(res, status, { error: message });
 }
 
+function getOpenAiKey() {
+  return String(process.env.OPENAI_API_KEY || "").trim().replace(/^["']|["']$/g, "");
+}
+
+function openAiKeyStatus() {
+  const key = getOpenAiKey();
+  return {
+    present: Boolean(key),
+    startsWithSk: key.startsWith("sk-"),
+    length: key.length,
+    model: openaiModel
+  };
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -384,7 +398,8 @@ function parseAiJson(text) {
 }
 
 async function runOpenAiDocumentScanner(buffer, mimeType, extractedText) {
-  if (!process.env.OPENAI_API_KEY) return null;
+  const openAiKey = getOpenAiKey();
+  if (!openAiKey || !openAiKey.startsWith("sk-")) return null;
   const fileData = buffer.toString("base64");
   const prompt = [
     "You are the AI document scanner for TruckerBooks.",
@@ -405,7 +420,7 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText) {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Authorization": `Bearer ${openAiKey}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
@@ -693,9 +708,13 @@ async function handleApi(req, res, pathname) {
   if (!user) return sendError(res, 401, "Please sign in first.");
 
   if (req.method === "GET" && pathname === "/api/scanner-status") {
+    const keyStatus = openAiKeyStatus();
     return sendJson(res, 200, {
-      aiConfigured: Boolean(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.startsWith("sk-")),
-      model: openaiModel,
+      aiConfigured: keyStatus.present && keyStatus.startsWithSk,
+      model: keyStatus.model,
+      keyPresent: keyStatus.present,
+      keyStartsWithSk: keyStatus.startsWithSk,
+      keyLength: keyStatus.length,
       fallbackAvailable: true
     });
   }

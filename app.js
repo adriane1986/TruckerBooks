@@ -468,6 +468,11 @@ function renderCompliance() {
   const documents = state.complianceDocuments || [];
   const alerts = state.complianceAlerts || [];
   const scanner = state.scannerStatus;
+  const scannerMessage = scanner?.aiConfigured
+    ? `Using ${scanner.model}.`
+    : scanner?.keyPresent
+      ? `OPENAI_API_KEY is present, but it does not look valid. It should start with sk-. Current detected length: ${scanner.keyLength}.`
+      : "The backend does not see OPENAI_API_KEY. Add it to the Railway app service Variables, then redeploy.";
   content.innerHTML = `
     <div class="metric-grid">
       ${metric("Compliance files", documents.length, "Insurance, DOT, UCR, 2290", "shield")}
@@ -481,7 +486,7 @@ function renderCompliance() {
         <span class="status ${scanner?.aiConfigured ? "Paid" : "Pending"}">${scanner?.aiConfigured ? "AI connected" : "AI not connected"}</span>
       </div>
       <div class="panel-body">
-        <p class="muted">${scanner?.aiConfigured ? `Using ${scanner.model}.` : "The backend does not see a valid OPENAI_API_KEY. Uploads will use local fallback until Railway has the key and has redeployed."}</p>
+        <p class="muted">${scanner ? scannerMessage : "Checking scanner connection..."}</p>
       </div>
     </section>
     <section class="panel">
