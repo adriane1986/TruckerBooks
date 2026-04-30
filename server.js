@@ -356,12 +356,16 @@ async function runAiScanner(buffer, mimeType) {
     scanStatus = "Stored - unsupported scan type";
   }
   const localExtracted = parseGenericDocumentText(text);
-  const aiExtracted = await runOpenAiDocumentScanner(buffer, mimeType, text).catch(() => null);
+  let aiError = "";
+  const aiExtracted = await runOpenAiDocumentScanner(buffer, mimeType, text).catch((error) => {
+    aiError = error.message;
+    return null;
+  });
   const extracted = aiExtracted ? { ...localExtracted, ...aiExtracted, aiUsed: true } : { ...localExtracted, aiUsed: false };
   return {
     scanStatus: aiExtracted ? "AI scanned" : `${scanStatus} - local fallback`,
     text,
-    extracted
+    extracted: { ...extracted, aiError }
   };
 }
 
@@ -381,7 +385,7 @@ function parseAiJson(text) {
 
 async function runOpenAiDocumentScanner(buffer, mimeType, extractedText) {
   if (!process.env.OPENAI_API_KEY) return null;
-  const fileData = `data:${mimeType || "application/octet-stream"};base64,${buffer.toString("base64")}`;
+  const fileData = buffer.toString("base64");
   const prompt = [
     "You are the AI document scanner for TruckerBooks.",
     "Extract structured trucking document data from the uploaded file.",
@@ -406,6 +410,30 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText) {
     },
     body: JSON.stringify({
       model: openaiModel,
+      text: {
+        format: {
+          type: "json_schema",
+          name: "truckerbooks_document_scan",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              documentType: { type: ["string", "null"] },
+              dates: { type: "array", items: { type: "string" } },
+              expirationDate: { type: ["string", "null"] },
+              amount: { type: ["number", "null"] },
+              loadNumber: { type: ["string", "null"] },
+              origin: { type: ["string", "null"] },
+              destination: { type: ["string", "null"] },
+              miles: { type: ["number", "null"] },
+              confidence: { type: "number" },
+              notes: { type: ["string", "null"] }
+            },
+            required: ["documentType", "dates", "expirationDate", "amount", "loadNumber", "origin", "destination", "miles", "confidence", "notes"]
+          }
+        }
+      },
       input: [
         {
           role: "user",
@@ -425,7 +453,10 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText) {
     })
   });
 
-  if (!response.ok) return null;
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI scan failed: ${response.status} ${errorText.slice(0, 300)}`);
+  }
   const payload = await response.json();
   const parsed = parseAiJson(responseText(payload));
   return {

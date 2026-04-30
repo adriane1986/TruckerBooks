@@ -389,12 +389,14 @@ function extractedSummary(item) {
 
 function scanDetail(item) {
   const ai = item.aiScan || item.extracted?.generic || item.extracted || {};
+  const generic = ai.generic || {};
   const details = [
-    ai.aiUsed === true ? "Real AI used" : ai.aiUsed === false ? "Local fallback used" : "",
-    ai.expirationDate ? `Expiration ${formatDate(ai.expirationDate)}` : "",
-    ai.amount ? `Amount ${money(ai.amount)}` : "",
-    ai.loadNumber ? `Load ${ai.loadNumber}` : "",
-    ai.dates?.length ? `Dates ${ai.dates.map(formatDate).join(", ")}` : ""
+    ai.aiUsed === true || generic.aiUsed === true ? "Real AI used" : ai.aiUsed === false || generic.aiUsed === false ? "Local fallback used" : "",
+    ai.aiError || generic.aiError ? `AI issue: ${(ai.aiError || generic.aiError).slice(0, 120)}` : "",
+    ai.expirationDate ? `Expiration ${formatDate(ai.expirationDate)}` : generic.expirationDate ? `Expiration ${formatDate(generic.expirationDate)}` : "",
+    ai.amount ? `Amount ${money(ai.amount)}` : generic.amount ? `Amount ${money(generic.amount)}` : "",
+    ai.loadNumber ? `Load ${ai.loadNumber}` : generic.loadNumber ? `Load ${generic.loadNumber}` : "",
+    ai.dates?.length ? `Dates ${ai.dates.map(formatDate).join(", ")}` : generic.dates?.length ? `Dates ${generic.dates.map(formatDate).join(", ")}` : ""
   ].filter(Boolean);
   return details.length ? details.join(" · ") : "AI scan complete";
 }
