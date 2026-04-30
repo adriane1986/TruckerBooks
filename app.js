@@ -530,6 +530,7 @@ function renderCompliance() {
                 <td><strong>${item.fileName}</strong><br><span class="muted">${fileSize(item.size)}</span></td>
                 <td>
                   <strong>${item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong>
+                  ${!item.expirationDate && (item.aiScan?.generic?.dates?.length || item.aiScan?.dates?.length) ? `<br><span class="muted">Dates found: ${(item.aiScan?.generic?.dates || item.aiScan?.dates || []).map(formatDate).join(", ")}</span>` : ""}
                   ${item.expirationDate ? "" : `
                     <form class="mini-date-form" data-expiration-form="${item.id}">
                       <input type="date" name="expirationDate" required />

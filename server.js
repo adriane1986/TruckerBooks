@@ -455,17 +455,19 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
       input: [
         {
           role: "user",
-          content: [
-            {
-              type: "input_file",
-              filename: "uploaded-document",
-              file_data: fileData
-            },
-            {
-              type: "input_text",
-              text: prompt
-            }
-          ]
+          content: extractedText
+            ? [{ type: "input_text", text: prompt }]
+            : [
+                {
+                  type: "input_file",
+                  filename: "uploaded-document",
+                  file_data: fileData
+                },
+                {
+                  type: "input_text",
+                  text: prompt
+                }
+              ]
         }
       ]
     })
