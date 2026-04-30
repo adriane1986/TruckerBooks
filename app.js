@@ -375,14 +375,27 @@ function planPrice(plan) {
 
 function extractedSummary(item) {
   const data = item.extracted || {};
+  const ai = item.aiScan || data.generic || {};
   const fields = [
     data.loadNumber ? `Load ${data.loadNumber}` : "",
     data.origin && data.destination ? `${data.origin} to ${data.destination}` : "",
-    data.amount ? money(data.amount) : "",
-    data.miles ? `${number(data.miles)} miles` : ""
+    data.amount ? money(data.amount) : ai.amount ? money(ai.amount) : "",
+    data.miles ? `${number(data.miles)} miles` : "",
+    ai.dates?.length ? `${ai.dates.length} date${ai.dates.length === 1 ? "" : "s"} found` : ""
   ].filter(Boolean);
   if (!fields.length) return item.scanStatus || "Stored";
   return fields.join(" · ");
+}
+
+function scanDetail(item) {
+  const ai = item.aiScan || item.extracted?.generic || item.extracted || {};
+  const details = [
+    ai.expirationDate ? `Expiration ${formatDate(ai.expirationDate)}` : "",
+    ai.amount ? `Amount ${money(ai.amount)}` : "",
+    ai.loadNumber ? `Load ${ai.loadNumber}` : "",
+    ai.dates?.length ? `Dates ${ai.dates.map(formatDate).join(", ")}` : ""
+  ].filter(Boolean);
+  return details.length ? details.join(" · ") : "AI scan complete";
 }
 
 function renderDocuments() {
@@ -399,7 +412,7 @@ function renderDocuments() {
     <section class="panel">
       <div class="panel-header">
         <h2>Upload Documents</h2>
-        <span class="muted">PDFs, images, and office files up to 10 MB</span>
+        <span class="muted">AI scans every upload for dates, amounts, and load details</span>
       </div>
       <div class="panel-body">
         <form class="inline-form document-form" id="documentForm">
@@ -460,7 +473,7 @@ function renderCompliance() {
     <section class="panel">
       <div class="panel-header">
         <h2>Upload Compliance Documents</h2>
-        <span class="muted">AI scans for expiration dates</span>
+        <span class="muted">AI scans every upload for expiration dates and renewal clues</span>
       </div>
       <div class="panel-body">
         <form class="inline-form document-form" id="complianceForm">
@@ -496,8 +509,8 @@ function renderCompliance() {
               <tr>
                 <td><span class="status Paid">${complianceLabel(item.type)}</span></td>
                 <td><strong>${item.fileName}</strong><br><span class="muted">${fileSize(item.size)}</span></td>
-                <td><strong>${item.expirationDate ? formatDate(item.expirationDate) : "Needs review"}</strong></td>
-                <td><span class="muted">${item.scanStatus || "Stored"}</span></td>
+                <td><strong>${item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong></td>
+                <td><strong>${item.scanStatus || "Stored"}</strong><br><span class="muted">${scanDetail(item)}</span></td>
                 <td>
                   <div class="table-actions">
                     <a class="ghost-button" href="/api/compliance/${item.id}">Download</a>
@@ -875,15 +888,17 @@ async function uploadDocument(form) {
 
 async function uploadComplianceDocument(form) {
   try {
-    state.accountMessage = "";
     const formData = new FormData(form);
     const file = formData.get("file");
     if (!file || !file.name) throw new Error("Choose a compliance document.");
+    const documentType = formData.get("type");
+    state.accountMessage = "Scanning document for expiration date...";
+    renderContent();
     const data = await readFileAsDataUrl(file);
     const payload = await api("/api/compliance", {
       method: "POST",
       body: JSON.stringify({
-        type: formData.get("type"),
+        type: documentType,
         fileName: file.name,
         mimeType: file.type || "application/octet-stream",
         data
@@ -897,7 +912,7 @@ async function uploadComplianceDocument(form) {
     }
     state.accountMessage = payload.complianceDocument?.expirationDate
       ? `Expiration detected: ${formatDate(payload.complianceDocument.expirationDate)}.`
-      : "Document uploaded. Expiration date needs review.";
+      : "Document uploaded. No expiration date was detected.";
     renderContent();
   } catch (error) {
     state.accountMessage = error.message;

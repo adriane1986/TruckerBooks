@@ -37,6 +37,7 @@ http://localhost:3000
 - Rate Con and BOL document uploads
 - Document library with download and delete actions
 - Automatic document scanning for supported uploads
+- Real AI document extraction when `OPENAI_API_KEY` is configured
 - Auto-populated trip drafts from scanned Rate Cons and BOLs when route, load, rate, or mileage is detected
 - Trips, expenses, invoices, maintenance, and reports per customer
 - Exporting each customer's records as JSON
@@ -56,3 +57,19 @@ data/uploads
 ```
 
 This is a real backend-backed local app. For real public customer use, the next step is deploying it with HTTPS and a managed database.
+
+## AI Scanner Setup
+
+For real AI scanning, set this environment variable in Railway:
+
+```text
+OPENAI_API_KEY=your_openai_api_key
+```
+
+Optional:
+
+```text
+OPENAI_MODEL=gpt-5-mini
+```
+
+Without `OPENAI_API_KEY`, the app falls back to local OCR/text parsing for testing.

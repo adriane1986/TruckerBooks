@@ -8,6 +8,7 @@ const rootDir = __dirname;
 const dataDir = path.join(rootDir, "data");
 const uploadDir = path.join(dataDir, "uploads");
 const dbPath = path.join(dataDir, "truckerbooks-db.json");
+const openaiModel = process.env.OPENAI_MODEL || "gpt-5-mini";
 const bundledNodeModules = path.join(
   process.env.USERPROFILE || "",
   ".cache",
@@ -210,6 +211,16 @@ function normalizeDate(value) {
   return `${year}-${parts[1].padStart(2, "0")}-${parts[2].padStart(2, "0")}`;
 }
 
+function extractDateCandidates(text) {
+  const matches = [
+    ...text.matchAll(/\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+\d{1,2},?\s+\d{4}\b/gi),
+    ...text.matchAll(/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/g),
+    ...text.matchAll(/\b\d{4}-\d{1,2}-\d{1,2}\b/g)
+  ].map((match) => normalizeDate(match[0])).filter(Boolean);
+
+  return [...new Set(matches)].sort();
+}
+
 function parseDocumentText(text, type) {
   const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
   const amount = firstMatch(clean, [
@@ -250,43 +261,77 @@ function parseDocumentText(text, type) {
 function parseComplianceText(text) {
   const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
   const expiration = firstMatch(clean, [
-    /(?:expiration date|expires|expiry date|valid until|medical card expires|policy expires|coverage end date)\s*:?\s*([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
-    /(?:exp\.?|expires)\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i
+    /(?:expiration date|expiration|expires on|expires|expiry date|valid until|medical card expires|policy expires|coverage end date|coverage ends|policy end date|end date|valid through|thru|through)\s*:?\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
+    /(?:exp\.?|expires)\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
+    /(?:from|effective)\s+[A-Za-z0-9/.,\s-]{0,40}\s(?:to|through|thru|-)\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
+    /(?:period|term)\s*:?\s*[A-Za-z0-9/.,\s-]{0,40}\s(?:to|through|thru|-)\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i
   ]);
+  const candidates = extractDateCandidates(clean);
+  const expirationDate = normalizeDate(expiration) || candidates.at(-1) || "";
   return {
-    expirationDate: normalizeDate(expiration),
+    expirationDate,
+    dateDetection: normalizeDate(expiration) ? "labeled_expiration" : expirationDate ? "latest_document_date" : "not_found",
     textPreview: clean.slice(0, 800)
   };
 }
 
+function parseGenericDocumentText(text) {
+  const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
+  const dates = extractDateCandidates(clean);
+  const amount = firstMatch(clean, [
+    /(?:carrier pay|carrier rate|agreed rate|load pay|total pay|line haul|linehaul|freight charge|total due|total amount|amount due|rate|total|amount)\s*(?:amount|pay|rate)?\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
+    /(?:pay|rate)\s+to\s+carrier\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
+    /\$\s*([0-9,]+(?:\.\d{2})?)/
+  ]);
+  const compliance = parseComplianceText(clean);
+  const load = parseDocumentText(clean, "document");
+  return {
+    dates,
+    amount: Number(String(amount).replace(/,/g, "")) || load.amount || 0,
+    expirationDate: compliance.expirationDate,
+    dateDetection: compliance.dateDetection,
+    loadNumber: load.loadNumber,
+    origin: load.origin,
+    destination: load.destination,
+    miles: load.miles,
+    textPreview: clean.slice(0, 1000)
+  };
+}
+
 async function scanDocument(buffer, mimeType, type) {
-  let text = "";
-  let scanStatus = "Scanned";
-  if (/^text\//.test(mimeType) || /json|csv|xml/.test(mimeType)) {
-    text = buffer.toString("utf8");
-  } else if (/^image\//.test(mimeType)) {
-    try {
-      const tesseract = require("tesseract.js");
-      const result = await tesseract.recognize(buffer, "eng");
-      text = result?.data?.text || "";
-    } catch {
-      scanStatus = "Stored - OCR unavailable";
+  const scan = await runAiScanner(buffer, mimeType);
+  const local = parseDocumentText(scan.text, type);
+  const generic = scan.extracted || {};
+  return {
+    ...scan,
+    extracted: {
+      ...local,
+      loadNumber: local.loadNumber || generic.loadNumber || "",
+      origin: local.origin || generic.origin || "",
+      destination: local.destination || generic.destination || "",
+      miles: local.miles || generic.miles || 0,
+      amount: local.amount || generic.amount || 0,
+      date: local.date || generic.dates?.[0] || "",
+      generic
     }
-  } else if (/pdf/i.test(mimeType)) {
-    try {
-      text = await extractPdfText(buffer);
-      scanStatus = text ? "Scanned" : "Stored - no PDF text found";
-    } catch {
-      scanStatus = "Stored - PDF scan failed";
-    }
-  } else {
-    scanStatus = "Stored - unsupported scan type";
-  }
-  const extracted = parseDocumentText(text, type);
-  return { scanStatus, extracted };
+  };
 }
 
 async function scanComplianceDocument(buffer, mimeType) {
+  const scan = await runAiScanner(buffer, mimeType);
+  const local = parseComplianceText(scan.text);
+  const generic = scan.extracted || {};
+  return {
+    ...scan,
+    extracted: {
+      ...local,
+      expirationDate: local.expirationDate || generic.expirationDate || "",
+      generic
+    }
+  };
+}
+
+async function runAiScanner(buffer, mimeType) {
   let text = "";
   let scanStatus = "Scanned";
   if (/^text\//.test(mimeType) || /json|csv|xml/.test(mimeType)) {
@@ -309,7 +354,88 @@ async function scanComplianceDocument(buffer, mimeType) {
   } else {
     scanStatus = "Stored - unsupported scan type";
   }
-  return { scanStatus, extracted: parseComplianceText(text) };
+  const localExtracted = parseGenericDocumentText(text);
+  const aiExtracted = await runOpenAiDocumentScanner(buffer, mimeType, text).catch(() => null);
+  const extracted = aiExtracted ? { ...localExtracted, ...aiExtracted, aiUsed: true } : { ...localExtracted, aiUsed: false };
+  return {
+    scanStatus: aiExtracted ? "AI scanned" : `${scanStatus} - local fallback`,
+    text,
+    extracted
+  };
+}
+
+function responseText(payload) {
+  if (payload.output_text) return payload.output_text;
+  return (payload.output || [])
+    .flatMap((item) => item.content || [])
+    .map((content) => content.text || "")
+    .join("\n")
+    .trim();
+}
+
+function parseAiJson(text) {
+  const cleaned = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+  return JSON.parse(cleaned);
+}
+
+async function runOpenAiDocumentScanner(buffer, mimeType, extractedText) {
+  if (!process.env.OPENAI_API_KEY) return null;
+  const fileData = `data:${mimeType || "application/octet-stream"};base64,${buffer.toString("base64")}`;
+  const prompt = [
+    "You are the AI document scanner for TruckerBooks.",
+    "Extract structured trucking document data from the uploaded file.",
+    "Return JSON only, with these keys:",
+    "documentType, dates, expirationDate, amount, loadNumber, origin, destination, miles, confidence, notes.",
+    "Use null for unknown scalar values and [] for no dates.",
+    "Dates must be ISO YYYY-MM-DD. Amount must be a number.",
+    "For compliance documents, expirationDate should be the renewal/expiration date.",
+    "For Rate Cons/BOLs, amount should be carrier pay, total carrier pay, linehaul plus fuel, or agreed rate.",
+    "Do not guess wildly; use confidence from 0 to 1.",
+    extractedText ? `OCR/text layer already extracted:\n${extractedText.slice(0, 6000)}` : "No text layer was available; inspect the file visually if possible."
+  ].join("\n");
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: openaiModel,
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_file",
+              filename: "uploaded-document",
+              file_data: fileData
+            },
+            {
+              type: "input_text",
+              text: prompt
+            }
+          ]
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) return null;
+  const payload = await response.json();
+  const parsed = parseAiJson(responseText(payload));
+  return {
+    documentType: parsed.documentType || "",
+    dates: Array.isArray(parsed.dates) ? parsed.dates.filter(Boolean) : [],
+    expirationDate: parsed.expirationDate || "",
+    amount: Number(parsed.amount) || 0,
+    loadNumber: parsed.loadNumber || "",
+    origin: parsed.origin || "",
+    destination: parsed.destination || "",
+    miles: Number(parsed.miles) || 0,
+    confidence: Number(parsed.confidence) || 0,
+    notes: parsed.notes || ""
+  };
 }
 
 async function extractPdfText(buffer) {
@@ -676,6 +802,7 @@ async function handleApi(req, res, pathname) {
       scanStatus: scan.scanStatus,
       expirationDate: scan.extracted.expirationDate,
       extracted: scan.extracted,
+      aiScan: scan.extracted,
       uploadedAt: new Date().toISOString()
     };
     user.complianceDocuments.push(complianceDocument);
@@ -739,6 +866,7 @@ async function handleApi(req, res, pathname) {
       size: buffer.length,
       scanStatus: scan.scanStatus,
       extracted: scan.extracted,
+      aiScan: scan.extracted.generic,
       uploadedAt: new Date().toISOString()
     };
     user.documents.push(document);
