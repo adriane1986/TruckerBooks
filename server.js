@@ -9,15 +9,6 @@ const dataDir = path.join(rootDir, "data");
 const uploadDir = path.join(dataDir, "uploads");
 const dbPath = path.join(dataDir, "truckerbooks-db.json");
 const openaiModel = process.env.OPENAI_MODEL || "gpt-5-mini";
-const bundledNodeModules = path.join(
-  process.env.USERPROFILE || "",
-  ".cache",
-  "codex-runtimes",
-  "codex-primary-runtime",
-  "dependencies",
-  "node",
-  "node_modules"
-);
 
 const sampleRecords = {
   trips: [
@@ -402,7 +393,7 @@ function parseAiJson(text) {
 async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documentContext = "") {
   const openAiKey = getOpenAiKey();
   if (!openAiKey || !openAiKey.startsWith("sk-")) return null;
-  const fileData = buffer.toString("base64");
+  const fileData = `data:${mimeType || "application/octet-stream"};base64,${buffer.toString("base64")}`;
   const prompt = [
     "You are the AI document scanner for TruckerBooks.",
     "Extract structured trucking document data from the uploaded file.",
@@ -494,8 +485,7 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
 }
 
 async function extractPdfText(buffer) {
-  const pdfPath = path.join(bundledNodeModules, "pdfjs-dist", "legacy", "build", "pdf.mjs");
-  const pdfjs = await import(`file:///${pdfPath.replace(/\\/g, "/").replace(/ /g, "%20")}`);
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const document = await pdfjs.getDocument({ data: new Uint8Array(buffer), disableWorker: true }).promise;
   let text = "";
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {

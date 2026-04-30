@@ -6,5 +6,9 @@
   "scripts": {
     "start": "node server.js"
   },
-  "private": true
+  "private": true,
+  "dependencies": {
+    "pdfjs-dist": "^5.6.205",
+    "tesseract.js": "^6.0.1"
+  }
 }
