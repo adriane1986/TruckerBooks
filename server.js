@@ -226,6 +226,57 @@ function extractDateCandidates(text) {
   return [...new Set(matches)].sort();
 }
 
+function extractLabeledDateCandidates(text) {
+  const datePattern = /(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2}/gi;
+  return [...text.matchAll(datePattern)]
+    .map((match) => {
+      const date = normalizeDate(match[0]);
+      if (!date) return null;
+      const start = Math.max(0, match.index - 70);
+      const end = Math.min(text.length, match.index + match[0].length + 70);
+      return {
+        date,
+        label: text.slice(start, end).replace(/\s+/g, " ").trim()
+      };
+    })
+    .filter(Boolean);
+}
+
+function chooseBestComplianceDate({ type, expirationDate, dates = [], dateCandidates = [] }) {
+  const explicit = normalizeDate(expirationDate || "");
+  if (explicit) return explicit;
+
+  const labeled = dateCandidates
+    .map((item) => ({ date: normalizeDate(item.date), label: String(item.label || "").toLowerCase() }))
+    .filter((item) => item.date);
+
+  const expirationWords = /(exp|expires|expiration|valid until|valid through|thru|through|to|end|ending|coverage end|policy period|medical card|certification expires|renewal)/i;
+  const issueWords = /(issue|issued|effective|start|begin|created|printed|invoice|payment|paid|signature|signed)/i;
+
+  const labeledExpiration = labeled
+    .filter((item) => expirationWords.test(item.label))
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .at(-1);
+  if (labeledExpiration) return labeledExpiration.date;
+
+  if (type === "ucr") {
+    const year = labeled.map((item) => Number(item.date.slice(0, 4))).sort().at(-1);
+    if (year) return `${year}-12-31`;
+  }
+
+  if (type === "form2290") {
+    const years = labeled.map((item) => Number(item.date.slice(0, 4))).sort();
+    if (years.length) return `${years.at(-1)}-06-30`;
+  }
+
+  const cleanDates = [
+    ...dates.map(normalizeDate),
+    ...labeled.filter((item) => !issueWords.test(item.label)).map((item) => item.date)
+  ].filter(Boolean);
+
+  return [...new Set(cleanDates)].sort().at(-1) || "";
+}
+
 function parseDocumentText(text, type) {
   const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
   const amount = firstMatch(clean, [
@@ -272,10 +323,16 @@ function parseComplianceText(text) {
     /(?:period|term)\s*:?\s*[A-Za-z0-9/.,\s-]{0,40}\s(?:to|through|thru|-)\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i
   ]);
   const candidates = extractDateCandidates(clean);
-  const expirationDate = normalizeDate(expiration) || candidates.at(-1) || "";
+  const labeledCandidates = extractLabeledDateCandidates(clean);
+  const expirationDate = chooseBestComplianceDate({
+    expirationDate: normalizeDate(expiration),
+    dates: candidates,
+    dateCandidates: labeledCandidates
+  });
   return {
     expirationDate,
     dateDetection: normalizeDate(expiration) ? "labeled_expiration" : expirationDate ? "latest_document_date" : "not_found",
+    dateCandidates: labeledCandidates,
     textPreview: clean.slice(0, 800)
   };
 }
@@ -292,6 +349,7 @@ function parseGenericDocumentText(text) {
   const load = parseDocumentText(clean, "document");
   return {
     dates,
+    dateCandidates: extractLabeledDateCandidates(clean),
     amount: Number(String(amount).replace(/,/g, "")) || load.amount || 0,
     expirationDate: compliance.expirationDate,
     dateDetection: compliance.dateDetection,
@@ -323,17 +381,29 @@ async function scanDocument(buffer, mimeType, type) {
   };
 }
 
-async function scanComplianceDocument(buffer, mimeType) {
+async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
   const scan = await runAiScanner(buffer, mimeType, "This is a Compliance upload. Prioritize renewal, expiration, valid-through, policy end, coverage end, DOT physical expiration, UCR, and 2290 tax period dates.");
   const local = parseComplianceText(scan.text);
   const generic = scan.extracted || {};
   const aiExpiration = normalizeDate(generic.expirationDate || "");
-  const latestAiDate = Array.isArray(generic.dates) ? generic.dates.map(normalizeDate).filter(Boolean).sort().at(-1) : "";
+  const aiDateCandidates = Array.isArray(generic.dateCandidates) ? generic.dateCandidates : [];
+  const bestAiDate = chooseBestComplianceDate({
+    type: complianceType,
+    expirationDate: aiExpiration,
+    dates: generic.dates || [],
+    dateCandidates: aiDateCandidates
+  });
+  const bestLocalDate = chooseBestComplianceDate({
+    type: complianceType,
+    expirationDate: local.expirationDate,
+    dates: local.dateCandidates?.map((item) => item.date) || [],
+    dateCandidates: local.dateCandidates || []
+  });
   return {
     ...scan,
     extracted: {
       ...local,
-      expirationDate: local.expirationDate || aiExpiration || latestAiDate || "",
+      expirationDate: bestLocalDate || bestAiDate || "",
       generic
     }
   };
@@ -399,8 +469,9 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
     "Extract structured trucking document data from the uploaded file.",
     documentContext,
     "Return JSON only, with these keys:",
-    "documentType, dates, expirationDate, amount, loadNumber, origin, destination, miles, confidence, notes.",
+    "documentType, dates, dateCandidates, expirationDate, amount, loadNumber, origin, destination, miles, confidence, notes.",
     "Use null for unknown scalar values and [] for no dates.",
+    "dateCandidates must be an array of objects like {date: 'YYYY-MM-DD', label: 'nearby text label or context'} for every visible date.",
     "Dates must be ISO YYYY-MM-DD. Amount must be a number.",
     "For compliance documents, expirationDate should be the renewal/expiration date.",
     "For Insurance, DOT Physical, UCR, or 2290 documents, prioritize labels like Expiration Date, Expires, Valid Until, Policy Period end date, Coverage End Date, Medical Card Expires, UCR year end, and Form 2290 tax period ending date.",
@@ -430,6 +501,18 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
             properties: {
               documentType: { type: ["string", "null"] },
               dates: { type: "array", items: { type: "string" } },
+              dateCandidates: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    date: { type: "string" },
+                    label: { type: "string" }
+                  },
+                  required: ["date", "label"]
+                }
+              },
               expirationDate: { type: ["string", "null"] },
               amount: { type: ["number", "null"] },
               loadNumber: { type: ["string", "null"] },
@@ -439,7 +522,7 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
               confidence: { type: "number" },
               notes: { type: ["string", "null"] }
             },
-            required: ["documentType", "dates", "expirationDate", "amount", "loadNumber", "origin", "destination", "miles", "confidence", "notes"]
+            required: ["documentType", "dates", "dateCandidates", "expirationDate", "amount", "loadNumber", "origin", "destination", "miles", "confidence", "notes"]
           }
         }
       },
@@ -471,6 +554,7 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
   return {
     documentType: parsed.documentType || "",
     dates: Array.isArray(parsed.dates) ? parsed.dates.filter(Boolean) : [],
+    dateCandidates: Array.isArray(parsed.dateCandidates) ? parsed.dateCandidates.filter((item) => item?.date) : [],
     expirationDate: parsed.expirationDate || "",
     amount: Number(parsed.amount) || 0,
     loadNumber: parsed.loadNumber || "",
@@ -846,7 +930,7 @@ async function handleApi(req, res, pathname) {
     const id = crypto.randomUUID();
     const storedName = `${user.id}-${id}-${fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
     fs.writeFileSync(path.join(uploadDir, storedName), buffer);
-    const scan = await scanComplianceDocument(buffer, mimeType);
+    const scan = await scanComplianceDocument(buffer, mimeType, type);
     const complianceDocument = {
       id,
       type,
@@ -924,7 +1008,7 @@ async function handleApi(req, res, pathname) {
     if (!document) return sendError(res, 404, "Compliance document not found.");
     const filePath = path.join(uploadDir, document.storedName);
     if (!fs.existsSync(filePath)) return sendError(res, 404, "Uploaded file is missing.");
-    const scan = await scanComplianceDocument(fs.readFileSync(filePath), document.mimeType);
+    const scan = await scanComplianceDocument(fs.readFileSync(filePath), document.mimeType, document.type);
     document.scanStatus = scan.scanStatus;
     document.expirationDate = scan.extracted.expirationDate;
     document.extracted = scan.extracted;

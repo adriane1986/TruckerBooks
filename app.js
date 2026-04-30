@@ -391,13 +391,14 @@ function extractedSummary(item) {
 function scanDetail(item) {
   const ai = item.aiScan || item.extracted?.generic || item.extracted || {};
   const generic = ai.generic || {};
+  const candidateDates = ai.dateCandidates?.map((candidate) => candidate.date) || generic.dateCandidates?.map((candidate) => candidate.date) || [];
   const details = [
     ai.aiUsed === true || generic.aiUsed === true ? "Real AI used" : ai.aiUsed === false || generic.aiUsed === false ? "Local fallback used" : "",
     ai.aiError || generic.aiError ? `AI issue: ${(ai.aiError || generic.aiError).slice(0, 120)}` : "",
     ai.expirationDate ? `Expiration ${formatDate(ai.expirationDate)}` : generic.expirationDate ? `Expiration ${formatDate(generic.expirationDate)}` : "",
     ai.amount ? `Amount ${money(ai.amount)}` : generic.amount ? `Amount ${money(generic.amount)}` : "",
     ai.loadNumber ? `Load ${ai.loadNumber}` : generic.loadNumber ? `Load ${generic.loadNumber}` : "",
-    ai.dates?.length ? `Dates ${ai.dates.map(formatDate).join(", ")}` : generic.dates?.length ? `Dates ${generic.dates.map(formatDate).join(", ")}` : ""
+    ai.dates?.length ? `Dates ${ai.dates.map(formatDate).join(", ")}` : generic.dates?.length ? `Dates ${generic.dates.map(formatDate).join(", ")}` : candidateDates.length ? `Date candidates ${candidateDates.map(formatDate).join(", ")}` : ""
   ].filter(Boolean);
   return details.length ? details.join(" · ") : "AI scan complete";
 }
@@ -530,7 +531,7 @@ function renderCompliance() {
                 <td><strong>${item.fileName}</strong><br><span class="muted">${fileSize(item.size)}</span></td>
                 <td>
                   <strong>${item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong>
-                  ${!item.expirationDate && (item.aiScan?.generic?.dates?.length || item.aiScan?.dates?.length) ? `<br><span class="muted">Dates found: ${(item.aiScan?.generic?.dates || item.aiScan?.dates || []).map(formatDate).join(", ")}</span>` : ""}
+                  ${!item.expirationDate && (item.aiScan?.generic?.dates?.length || item.aiScan?.dates?.length || item.aiScan?.generic?.dateCandidates?.length || item.aiScan?.dateCandidates?.length) ? `<br><span class="muted">Dates found: ${(item.aiScan?.generic?.dates || item.aiScan?.dates || item.aiScan?.generic?.dateCandidates?.map((candidate) => candidate.date) || item.aiScan?.dateCandidates?.map((candidate) => candidate.date) || []).map(formatDate).join(", ")}</span>` : ""}
                   ${item.expirationDate ? "" : `
                     <form class="mini-date-form" data-expiration-form="${item.id}">
                       <input type="date" name="expirationDate" required />
