@@ -399,11 +399,14 @@ async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
     dates: local.dateCandidates?.map((item) => item.date) || [],
     dateCandidates: local.dateCandidates || []
   });
+  const narrowAiDate = bestLocalDate || bestAiDate
+    ? ""
+    : await runOpenAiExpirationOnlyScanner(buffer, mimeType, scan.text, complianceType).catch(() => "");
   return {
     ...scan,
     extracted: {
       ...local,
-      expirationDate: bestLocalDate || bestAiDate || "",
+      expirationDate: bestLocalDate || bestAiDate || narrowAiDate || "",
       generic
     }
   };
@@ -564,6 +567,55 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
     confidence: Number(parsed.confidence) || 0,
     notes: parsed.notes || ""
   };
+}
+
+async function runOpenAiExpirationOnlyScanner(buffer, mimeType, extractedText, complianceType = "") {
+  const openAiKey = getOpenAiKey();
+  if (!openAiKey || !openAiKey.startsWith("sk-")) return "";
+  const fileData = `data:${mimeType || "application/octet-stream"};base64,${buffer.toString("base64")}`;
+  const typeName = complianceTypeName(complianceType);
+  const prompt = [
+    `This is a ${typeName} compliance document for a trucking business.`,
+    "Find the document expiration, renewal, valid-through, coverage end, policy end, DOT physical expiration, UCR year end, or 2290 tax period ending date.",
+    "Return JSON only with this exact shape:",
+    "{\"expirationDate\":\"YYYY-MM-DD or null\",\"reason\":\"short explanation\",\"allDates\":[\"YYYY-MM-DD\"]}",
+    "If there is a date range, use the later/end date.",
+    "If there are multiple dates, do not use issue date, printed date, signed date, or effective/start date unless it is the only date.",
+    extractedText ? `Extracted text:\n${extractedText.slice(0, 10000)}` : "No text was extracted; inspect the uploaded file visually."
+  ].join("\n");
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${openAiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: openaiModel,
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_file",
+              filename: mimeType?.includes("pdf") ? "compliance-document.pdf" : "compliance-document",
+              file_data: fileData
+            },
+            {
+              type: "input_text",
+              text: prompt
+            }
+          ]
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) return "";
+  const payload = await response.json();
+  const text = responseText(payload);
+  const parsed = parseAiJson(text);
+  return normalizeDate(parsed.expirationDate || "");
 }
 
 async function extractPdfText(buffer) {

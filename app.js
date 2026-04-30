@@ -532,6 +532,7 @@ function renderCompliance() {
                 <td>
                   <strong>${item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong>
                   ${!item.expirationDate && (item.aiScan?.generic?.dates?.length || item.aiScan?.dates?.length || item.aiScan?.generic?.dateCandidates?.length || item.aiScan?.dateCandidates?.length) ? `<br><span class="muted">Dates found: ${(item.aiScan?.generic?.dates || item.aiScan?.dates || item.aiScan?.generic?.dateCandidates?.map((candidate) => candidate.date) || item.aiScan?.dateCandidates?.map((candidate) => candidate.date) || []).map(formatDate).join(", ")}</span>` : ""}
+                  ${!item.expirationDate && !(item.aiScan?.generic?.dates?.length || item.aiScan?.dates?.length || item.aiScan?.generic?.dateCandidates?.length || item.aiScan?.dateCandidates?.length) ? `<br><span class="muted">No dates found in scan.</span>` : ""}
                   ${item.expirationDate ? "" : `
                     <form class="mini-date-form" data-expiration-form="${item.id}">
                       <input type="date" name="expirationDate" required />
