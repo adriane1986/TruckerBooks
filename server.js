@@ -314,7 +314,7 @@ function parseGenericDocumentText(text) {
 }
 
 async function scanDocument(buffer, mimeType, type) {
-  const scan = await runAiScanner(buffer, mimeType);
+  const scan = await runAiScanner(buffer, mimeType, `This is a ${type === "bol" ? "BOL" : "Rate Confirmation"} upload. Prioritize load details, carrier pay/rate, route, mileage, and load number.`);
   const local = parseDocumentText(scan.text, type);
   const generic = scan.extracted || {};
   return {
@@ -333,20 +333,22 @@ async function scanDocument(buffer, mimeType, type) {
 }
 
 async function scanComplianceDocument(buffer, mimeType) {
-  const scan = await runAiScanner(buffer, mimeType);
+  const scan = await runAiScanner(buffer, mimeType, "This is a Compliance upload. Prioritize renewal, expiration, valid-through, policy end, coverage end, DOT physical expiration, UCR, and 2290 tax period dates.");
   const local = parseComplianceText(scan.text);
   const generic = scan.extracted || {};
+  const aiExpiration = normalizeDate(generic.expirationDate || "");
+  const latestAiDate = Array.isArray(generic.dates) ? generic.dates.map(normalizeDate).filter(Boolean).sort().at(-1) : "";
   return {
     ...scan,
     extracted: {
       ...local,
-      expirationDate: local.expirationDate || generic.expirationDate || "",
+      expirationDate: local.expirationDate || aiExpiration || latestAiDate || "",
       generic
     }
   };
 }
 
-async function runAiScanner(buffer, mimeType) {
+async function runAiScanner(buffer, mimeType, documentContext = "") {
   let text = "";
   let scanStatus = "Scanned";
   if (/^text\//.test(mimeType) || /json|csv|xml/.test(mimeType)) {
@@ -371,7 +373,7 @@ async function runAiScanner(buffer, mimeType) {
   }
   const localExtracted = parseGenericDocumentText(text);
   let aiError = "";
-  const aiExtracted = await runOpenAiDocumentScanner(buffer, mimeType, text).catch((error) => {
+  const aiExtracted = await runOpenAiDocumentScanner(buffer, mimeType, text, documentContext).catch((error) => {
     aiError = error.message;
     return null;
   });
@@ -397,13 +399,14 @@ function parseAiJson(text) {
   return JSON.parse(cleaned);
 }
 
-async function runOpenAiDocumentScanner(buffer, mimeType, extractedText) {
+async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documentContext = "") {
   const openAiKey = getOpenAiKey();
   if (!openAiKey || !openAiKey.startsWith("sk-")) return null;
   const fileData = buffer.toString("base64");
   const prompt = [
     "You are the AI document scanner for TruckerBooks.",
     "Extract structured trucking document data from the uploaded file.",
+    documentContext,
     "Return JSON only, with these keys:",
     "documentType, dates, expirationDate, amount, loadNumber, origin, destination, miles, confidence, notes.",
     "Use null for unknown scalar values and [] for no dates.",
