@@ -294,6 +294,7 @@ function parseGenericDocumentText(text) {
     origin: load.origin,
     destination: load.destination,
     miles: load.miles,
+    aiUsed: false,
     textPreview: clean.slice(0, 1000)
   };
 }
@@ -389,6 +390,9 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText) {
     "Use null for unknown scalar values and [] for no dates.",
     "Dates must be ISO YYYY-MM-DD. Amount must be a number.",
     "For compliance documents, expirationDate should be the renewal/expiration date.",
+    "For Insurance, DOT Physical, UCR, or 2290 documents, prioritize labels like Expiration Date, Expires, Valid Until, Policy Period end date, Coverage End Date, Medical Card Expires, UCR year end, and Form 2290 tax period ending date.",
+    "If no explicit expiration label exists but there is a date range, use the later/end date as expirationDate.",
+    "If multiple dates appear, choose the most likely future renewal/expiration/end date, not the issue date.",
     "For Rate Cons/BOLs, amount should be carrier pay, total carrier pay, linehaul plus fuel, or agreed rate.",
     "Do not guess wildly; use confidence from 0 to 1.",
     extractedText ? `OCR/text layer already extracted:\n${extractedText.slice(0, 6000)}` : "No text layer was available; inspect the file visually if possible."
@@ -836,6 +840,25 @@ async function handleApi(req, res, pathname) {
       const filePath = path.join(uploadDir, document.storedName);
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     }
+    user.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 200, {
+      complianceDocuments: user.complianceDocuments,
+      complianceAlerts: complianceAlerts(user)
+    });
+  }
+
+  if (req.method === "PATCH" && pathname.startsWith("/api/compliance/")) {
+    const id = pathname.split("/")[3];
+    const body = await readBody(req);
+    const document = user.complianceDocuments.find((item) => item.id === id);
+    if (!document) return sendError(res, 404, "Compliance document not found.");
+    const expirationDate = normalizeDate(String(body.expirationDate || ""));
+    if (!expirationDate) return sendError(res, 400, "Enter a valid expiration date.");
+    document.expirationDate = expirationDate;
+    document.manualExpirationDate = true;
+    document.extracted = { ...(document.extracted || {}), expirationDate, dateDetection: "manual" };
+    document.aiScan = { ...(document.aiScan || {}), expirationDate, dateDetection: "manual" };
     user.updatedAt = new Date().toISOString();
     writeDb(db);
     return sendJson(res, 200, {

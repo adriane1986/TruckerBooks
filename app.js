@@ -390,6 +390,7 @@ function extractedSummary(item) {
 function scanDetail(item) {
   const ai = item.aiScan || item.extracted?.generic || item.extracted || {};
   const details = [
+    ai.aiUsed === true ? "Real AI used" : ai.aiUsed === false ? "Local fallback used" : "",
     ai.expirationDate ? `Expiration ${formatDate(ai.expirationDate)}` : "",
     ai.amount ? `Amount ${money(ai.amount)}` : "",
     ai.loadNumber ? `Load ${ai.loadNumber}` : "",
@@ -509,7 +510,15 @@ function renderCompliance() {
               <tr>
                 <td><span class="status Paid">${complianceLabel(item.type)}</span></td>
                 <td><strong>${item.fileName}</strong><br><span class="muted">${fileSize(item.size)}</span></td>
-                <td><strong>${item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong></td>
+                <td>
+                  <strong>${item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong>
+                  ${item.expirationDate ? "" : `
+                    <form class="mini-date-form" data-expiration-form="${item.id}">
+                      <input type="date" name="expirationDate" required />
+                      <button class="chip-button" type="submit">Save</button>
+                    </form>
+                  `}
+                </td>
                 <td><strong>${item.scanStatus || "Stored"}</strong><br><span class="muted">${scanDetail(item)}</span></td>
                 <td>
                   <div class="table-actions">
@@ -940,6 +949,22 @@ async function removeComplianceDocument(id) {
   renderContent();
 }
 
+async function saveComplianceExpiration(form) {
+  try {
+    const payload = await api(`/api/compliance/${form.dataset.expirationForm}`, {
+      method: "PATCH",
+      body: JSON.stringify({ expirationDate: new FormData(form).get("expirationDate") })
+    });
+    state.complianceDocuments = payload.complianceDocuments;
+    state.complianceAlerts = payload.complianceAlerts;
+    state.accountMessage = "Expiration date saved.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
 document.addEventListener("click", (event) => {
   const navButton = event.target.closest("[data-view]");
   const shortcut = event.target.closest("[data-view-shortcut]");
@@ -987,6 +1012,10 @@ document.addEventListener("submit", (event) => {
   if (event.target.id === "complianceForm") {
     event.preventDefault();
     uploadComplianceDocument(event.target);
+  }
+  if (event.target.matches("[data-expiration-form]")) {
+    event.preventDefault();
+    saveComplianceExpiration(event.target);
   }
 });
 
