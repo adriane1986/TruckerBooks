@@ -446,19 +446,17 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
       input: [
         {
           role: "user",
-          content: extractedText
-            ? [{ type: "input_text", text: prompt }]
-            : [
-                {
-                  type: "input_file",
-                  filename: "uploaded-document",
-                  file_data: fileData
-                },
-                {
-                  type: "input_text",
-                  text: prompt
-                }
-              ]
+          content: [
+            {
+              type: "input_file",
+              filename: mimeType?.includes("pdf") ? "uploaded-document.pdf" : "uploaded-document",
+              file_data: fileData
+            },
+            {
+              type: "input_text",
+              text: prompt
+            }
+          ]
         }
       ]
     })
@@ -912,6 +910,26 @@ async function handleApi(req, res, pathname) {
     document.manualExpirationDate = true;
     document.extracted = { ...(document.extracted || {}), expirationDate, dateDetection: "manual" };
     document.aiScan = { ...(document.aiScan || {}), expirationDate, dateDetection: "manual" };
+    user.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 200, {
+      complianceDocuments: user.complianceDocuments,
+      complianceAlerts: complianceAlerts(user)
+    });
+  }
+
+  if (req.method === "POST" && pathname.match(/^\/api\/compliance\/[^/]+\/rescan$/)) {
+    const id = pathname.split("/")[3];
+    const document = user.complianceDocuments.find((item) => item.id === id);
+    if (!document) return sendError(res, 404, "Compliance document not found.");
+    const filePath = path.join(uploadDir, document.storedName);
+    if (!fs.existsSync(filePath)) return sendError(res, 404, "Uploaded file is missing.");
+    const scan = await scanComplianceDocument(fs.readFileSync(filePath), document.mimeType);
+    document.scanStatus = scan.scanStatus;
+    document.expirationDate = scan.extracted.expirationDate;
+    document.extracted = scan.extracted;
+    document.aiScan = scan.extracted;
+    document.rescannedAt = new Date().toISOString();
     user.updatedAt = new Date().toISOString();
     writeDb(db);
     return sendJson(res, 200, {

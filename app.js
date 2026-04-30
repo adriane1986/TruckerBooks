@@ -542,6 +542,7 @@ function renderCompliance() {
                 <td>
                   <div class="table-actions">
                     <a class="ghost-button" href="/api/compliance/${item.id}">Download</a>
+                    <button class="ghost-button" type="button" data-rescan-compliance="${item.id}">Rescan</button>
                     <button class="icon-button" type="button" data-delete-compliance="${item.id}" title="Delete compliance document" aria-label="Delete compliance document"><span data-icon="trash"></span></button>
                   </div>
                 </td>
@@ -979,6 +980,21 @@ async function removeComplianceDocument(id) {
   renderContent();
 }
 
+async function rescanComplianceDocument(id) {
+  try {
+    state.accountMessage = "Rescanning document with AI...";
+    renderContent();
+    const payload = await api(`/api/compliance/${id}/rescan`, { method: "POST" });
+    state.complianceDocuments = payload.complianceDocuments;
+    state.complianceAlerts = payload.complianceAlerts;
+    state.accountMessage = "Rescan complete.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
 async function saveComplianceExpiration(form) {
   try {
     const payload = await api(`/api/compliance/${form.dataset.expirationForm}`, {
@@ -1005,6 +1021,7 @@ document.addEventListener("click", (event) => {
   const deleteDriverButton = event.target.closest("[data-delete-driver]");
   const deleteDocumentButton = event.target.closest("[data-delete-document]");
   const deleteComplianceButton = event.target.closest("[data-delete-compliance]");
+  const rescanComplianceButton = event.target.closest("[data-rescan-compliance]");
   const openTripButton = event.target.closest("[data-open-trip]");
   const copyReferralButton = event.target.closest("[data-copy-referral]");
   const markPaidButton = event.target.closest("[data-mark-first-paid]");
@@ -1017,6 +1034,7 @@ document.addEventListener("click", (event) => {
   if (deleteDriverButton) removeDriver(deleteDriverButton.dataset.deleteDriver);
   if (deleteDocumentButton) removeDocument(deleteDocumentButton.dataset.deleteDocument);
   if (deleteComplianceButton) removeComplianceDocument(deleteComplianceButton.dataset.deleteCompliance);
+  if (rescanComplianceButton) rescanComplianceDocument(rescanComplianceButton.dataset.rescanCompliance);
   if (openTripButton) setView("rateCons");
   if (copyReferralButton) {
     navigator.clipboard?.writeText(copyReferralButton.dataset.copyReferral);
