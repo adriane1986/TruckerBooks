@@ -692,6 +692,14 @@ async function handleApi(req, res, pathname) {
 
   if (!user) return sendError(res, 401, "Please sign in first.");
 
+  if (req.method === "GET" && pathname === "/api/scanner-status") {
+    return sendJson(res, 200, {
+      aiConfigured: Boolean(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.startsWith("sk-")),
+      model: openaiModel,
+      fallbackAvailable: true
+    });
+  }
+
   if (req.method === "GET" && pathname === "/api/session") {
     if (await rescanPendingDocuments(user)) writeDb(db);
     return sendJson(res, 200, { customer: publicUser(user), records: user.records });

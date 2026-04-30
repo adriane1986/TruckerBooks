@@ -58,6 +58,7 @@ const state = {
   documents: [],
   complianceDocuments: [],
   complianceAlerts: [],
+  scannerStatus: null,
   accountMessage: ""
 };
 
@@ -466,6 +467,7 @@ function alertTone(days) {
 function renderCompliance() {
   const documents = state.complianceDocuments || [];
   const alerts = state.complianceAlerts || [];
+  const scanner = state.scannerStatus;
   content.innerHTML = `
     <div class="metric-grid">
       ${metric("Compliance files", documents.length, "Insurance, DOT, UCR, 2290", "shield")}
@@ -473,6 +475,15 @@ function renderCompliance() {
       ${metric("IFTA due months", "Jan Apr Jul Oct", "By the last day of month", "bar-chart")}
       ${metric("Next due", alerts[0] ? formatDate(alerts[0].date) : "Clear", alerts[0]?.label || "No urgent renewals", "file-text")}
     </div>
+    <section class="panel">
+      <div class="panel-header">
+        <h2>AI Scanner Status</h2>
+        <span class="status ${scanner?.aiConfigured ? "Paid" : "Pending"}">${scanner?.aiConfigured ? "AI connected" : "AI not connected"}</span>
+      </div>
+      <div class="panel-body">
+        <p class="muted">${scanner?.aiConfigured ? `Using ${scanner.model}.` : "The backend does not see a valid OPENAI_API_KEY. Uploads will use local fallback until Railway has the key and has redeployed."}</p>
+      </div>
+    </section>
     <section class="panel">
       <div class="panel-header">
         <h2>Upload Compliance Documents</h2>
@@ -703,7 +714,10 @@ function renderContent() {
     { label: "Status", render: (item) => `<span class="status ${item.status}">${item.status}</span>` }
   ]);
   if (state.view === "rateCons") renderDocuments();
-  if (state.view === "compliance") renderCompliance();
+  if (state.view === "compliance") {
+    if (!state.scannerStatus) loadScannerStatus().then(renderContent);
+    renderCompliance();
+  }
   if (state.view === "affiliate") renderAffiliate();
   if (state.view === "reports") renderReports();
   if (state.view === "userManagement") renderAccount();
@@ -776,6 +790,14 @@ async function refreshAffiliate() {
   const payload = await api("/api/affiliate");
   state.customer = payload.customer;
   renderContent();
+}
+
+async function loadScannerStatus() {
+  try {
+    state.scannerStatus = await api("/api/scanner-status");
+  } catch {
+    state.scannerStatus = { aiConfigured: false, model: "unknown", fallbackAvailable: true };
+  }
 }
 
 async function updatePlan(planId) {
