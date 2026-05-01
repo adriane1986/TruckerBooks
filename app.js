@@ -240,9 +240,10 @@ function renderDashboard() {
   const expenses = sum(allExpenses());
   const miles = sum(state.records.trips, "miles");
   const nextAlert = state.complianceAlerts?.[0];
+  const dashboardAlerts = state.complianceAlerts || [];
   content.innerHTML = `
     <div class="metric-grid">
-      ${metric("Gross revenue", money(revenue), "+12% from last month", "file-text")}
+      ${metric("Gross revenue", money(revenue), "Rate Cons counted as revenue", "file-text")}
       ${metric("Net profit", money(netProfit()), "After tracked deductions", "bar-chart")}
       ${metric("Loaded miles", number(miles), `${money(revenue / Math.max(miles, 1))} per mile`, "route")}
       ${metric("Compliance", state.complianceAlerts?.length || 0, nextAlert ? `${nextAlert.label} due ${formatDate(nextAlert.date)}` : "No urgent renewals", "shield")}
@@ -266,6 +267,19 @@ function renderDashboard() {
         </div>
       </section>
     </div>
+    <section class="panel">
+      <div class="panel-header"><h2>Renewal Alerts</h2><button class="chip-button" type="button" data-view-shortcut="compliance">Compliance</button></div>
+      <div class="panel-body">
+        <div class="list">
+          ${dashboardAlerts.slice(0, 4).map((alert) => `
+            <article class="list-item">
+              <div><strong>${alert.label}</strong><span>${formatDate(alert.date)} · ${alert.daysUntil} days</span></div>
+              <span class="status ${alertTone(alert.daysUntil)}">${alert.daysUntil <= 15 ? "Due soon" : "Upcoming"}</span>
+            </article>
+          `).join("") || `<p class="muted">No compliance renewals need attention right now.</p>`}
+        </div>
+      </div>
+    </section>
   `;
 }
 

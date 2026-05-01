@@ -282,7 +282,7 @@ function chooseBestComplianceDate({ type, expirationDate, dates = [], dateCandid
     .map((item) => ({ date: normalizeDate(item.date), label: String(item.label || "").toLowerCase() }))
     .filter((item) => item.date);
 
-  const expirationWords = /(exp|expires|expiration|valid until|valid through|thru|through|to|end|ending|coverage end|policy period|medical card|certification expires|renewal)/i;
+  const expirationWords = /(exp|expires|expiration|valid until|valid through|thru|through|to|end|ending|coverage end|policy exp|policy expires|policy expiration|policy period|medical card|certification expires|renewal)/i;
   const issueWords = /(issue|issued|effective|start|begin|created|printed|invoice|payment|paid|signature|signed)/i;
 
   const labeledExpiration = labeled
@@ -349,7 +349,7 @@ function parseDocumentText(text, type) {
 function parseComplianceText(text) {
   const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
   const expiration = firstMatch(clean, [
-    /(?:expiration date|expiration|expires on|expires|expiry date|valid until|medical card expires|policy expires|coverage end date|coverage ends|policy end date|end date|valid through|thru|through)\s*:?\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
+    /(?:expiration date|expiration|expires on|expires|expiry date|valid until|medical card expires|policy exp\.?|policy expires|policy expiration|coverage end date|coverage ends|policy end date|end date|valid through|thru|through)\s*:?\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
     /(?:exp\.?|expires)\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
     /(?:from|effective)\s+[A-Za-z0-9/.,\s-]{0,40}\s(?:to|through|thru|-)\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
     /(?:period|term)\s*:?\s*[A-Za-z0-9/.,\s-]{0,40}\s(?:to|through|thru|-)\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i
@@ -593,8 +593,8 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
     "dateCandidates must be an array of objects like {date: 'YYYY-MM-DD', label: 'nearby text label or context'} for every visible date.",
     "Dates must be ISO YYYY-MM-DD. Amount must be a number.",
     "For compliance documents, expirationDate should be the renewal/expiration date.",
-    "For Insurance, DOT Physical, UCR, or 2290 documents, prioritize labels like Expiration Date, Expires, Valid Until, Policy Period end date, Coverage End Date, Medical Card Expires, UCR year end, and Form 2290 tax period ending date.",
-    "For ACORD insurance certificates, read the insurance table columns labeled EFF and EXP. Use the EXP date, not the EFF date.",
+    "For Insurance, DOT Physical, UCR, or 2290 documents, prioritize labels like Expiration Date, Expires, Valid Until, Policy Exp., Policy Period end date, Coverage End Date, Medical Card Expires, UCR year end, and Form 2290 tax period ending date.",
+    "For ACORD insurance certificates, read Policy Exp., the insurance table columns labeled EFF and EXP, or policy period end. Use the Policy Exp. or EXP date, not the EFF date.",
     "If no explicit expiration label exists but there is a date range, use the later/end date as expirationDate.",
     "If multiple dates appear, choose the most likely future renewal/expiration/end date, not the issue date.",
     "For Rate Cons/BOLs, amount should be carrier pay, total carrier pay, linehaul plus fuel, or agreed rate.",
@@ -690,7 +690,7 @@ async function runOpenAiExpirationOnlyScanner(buffer, mimeType, extractedText, c
   const prompt = [
     `This is a ${typeName} compliance document for a trucking business.`,
     "Find the document expiration, renewal, valid-through, coverage end, policy end, DOT physical expiration, UCR year end, or 2290 tax period ending date.",
-    "For ACORD certificates of liability insurance, read the table columns labeled EFF and EXP. Use the EXP date as the expiration date.",
+    "For ACORD certificates of liability insurance, read Policy Exp., the table columns labeled EFF and EXP, or policy period end. Use the Policy Exp. or EXP date as the expiration date.",
     "Insurance certificates often show dates in compact MM/DD/YYYY boxes near policy numbers. Use the later date in the EFF/EXP pair.",
     "Return JSON only with this exact shape:",
     "{\"expirationDate\":\"YYYY-MM-DD or null\",\"reason\":\"short explanation\",\"allDates\":[\"YYYY-MM-DD\"]}",
