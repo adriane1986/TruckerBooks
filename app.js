@@ -59,6 +59,7 @@ const state = {
   complianceDocuments: [],
   complianceAlerts: [],
   scannerStatus: null,
+  reportYear: String(new Date().getFullYear()),
   accountMessage: ""
 };
 
@@ -186,6 +187,15 @@ function allExpenses() {
 
 function netProfit() {
   return sum(state.records.trips) - sum(allExpenses());
+}
+
+function reportYears() {
+  const currentYear = new Date().getFullYear();
+  return Array.from({ length: 5 }, (_, index) => String(currentYear - index));
+}
+
+function recordsForYear(items, year) {
+  return items.filter((item) => String(item.date || "").slice(0, 4) === String(year));
 }
 
 function renderIcons(root = document) {
@@ -393,24 +403,48 @@ function filtered(items) {
 }
 
 function renderReports() {
-  const revenue = sum(state.records.trips);
-  const expenses = sum(allExpenses());
+  const years = reportYears();
+  if (!years.includes(state.reportYear)) state.reportYear = years[0];
+  const trips = recordsForYear(state.records.trips, state.reportYear);
+  const expenseRows = recordsForYear(state.records.expenses, state.reportYear);
+  const maintenanceRows = recordsForYear(state.records.maintenance, state.reportYear);
+  const expensesForYear = [...expenseRows, ...maintenanceRows];
+  const revenue = sum(trips);
+  const expenses = sum(expensesForYear);
+  const yearlySummary = years.map((year) => {
+    const yearRevenue = sum(recordsForYear(state.records.trips, year));
+    const yearExpenses = sum([
+      ...recordsForYear(state.records.expenses, year),
+      ...recordsForYear(state.records.maintenance, year)
+    ]);
+    return { year, revenue: yearRevenue, expenses: yearExpenses, profit: yearRevenue - yearExpenses };
+  });
   const categories = [
-    { label: "Fuel", value: sum(state.records.expenses.filter((item) => item.category === "Fuel")) },
-    { label: "Insurance", value: sum(state.records.expenses.filter((item) => item.category === "Insurance")) },
-    { label: "Maintenance", value: sum(state.records.maintenance) },
-    { label: "Road costs", value: sum(state.records.expenses.filter((item) => item.category === "Road costs")) }
+    { label: "Fuel", value: sum(expenseRows.filter((item) => item.category === "Fuel")) },
+    { label: "Insurance", value: sum(expenseRows.filter((item) => item.category === "Insurance")) },
+    { label: "Maintenance", value: sum(maintenanceRows) + sum(expenseRows.filter((item) => item.category === "Maintenance")) },
+    { label: "Road costs", value: sum(expenseRows.filter((item) => item.category === "Road costs")) }
   ];
   const maxCategory = Math.max(...categories.map((item) => item.value), 1);
 
   content.innerHTML = `
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Reports</h2>
+        <div class="filters">
+          <select id="reportYearFilter" aria-label="Report year">
+            ${years.map((year) => `<option value="${year}" ${state.reportYear === year ? "selected" : ""}>${year}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+    </section>
     <div class="report-grid">
-      ${metric("Revenue", money(revenue), "Trips entered", "file-text")}
-      ${metric("Deductible costs", money(expenses), "Expenses + service", "receipt")}
-      ${metric("Estimated taxable", money(Math.max(netProfit(), 0)), "Before other adjustments", "bar-chart")}
+      ${metric("Revenue", money(revenue), `${trips.length} trips in ${state.reportYear}`, "file-text")}
+      ${metric("Deductible costs", money(expenses), `${expensesForYear.length} expenses in ${state.reportYear}`, "receipt")}
+      ${metric("Estimated taxable", money(Math.max(revenue - expenses, 0)), "Before other adjustments", "bar-chart")}
     </div>
     <section class="panel">
-      <div class="panel-header"><h2>Expense Breakdown</h2><span class="muted">Current records</span></div>
+      <div class="panel-header"><h2>Expense Breakdown</h2><span class="muted">${state.reportYear}</span></div>
       <div class="panel-body">
         <div class="bar-list">
           ${categories.map((item) => `
@@ -421,6 +455,22 @@ function renderReports() {
           `).join("")}
         </div>
       </div>
+    </section>
+    <section class="panel">
+      <div class="panel-header"><h2>Five-Year Summary</h2><span class="muted">Current year plus previous four</span></div>
+      <table class="data-table">
+        <thead><tr><th>Year</th><th>Revenue</th><th>Expenses</th><th>Net Profit</th></tr></thead>
+        <tbody>
+          ${yearlySummary.map((item) => `
+            <tr>
+              <td><strong>${item.year}</strong></td>
+              <td>${money(item.revenue)}</td>
+              <td>${money(item.expenses)}</td>
+              <td><strong>${money(item.profit)}</strong></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
     </section>
   `;
 }
@@ -458,6 +508,9 @@ function planPrice(plan) {
 function extractedSummary(item) {
   const data = item.extracted || {};
   const ai = item.aiScan || data.generic || {};
+  if (item.type === "bol" && !data.loadNumber && !data.origin && !data.destination) {
+    return "Delivery confirmation stored for bookkeeping";
+  }
   const fields = [
     data.loadNumber ? `Load ${data.loadNumber}` : "",
     data.origin && data.destination ? `${data.origin} to ${data.destination}` : "",
@@ -529,7 +582,7 @@ function renderDocuments() {
                 </form>
                 <span class="muted">${fileSize(item.size)} · ${item.mimeType}</span>
               </td>
-              <td><strong>${item.extracted?.amount ? money(item.extracted.amount) : "Needs review"}</strong></td>
+              <td><strong>${item.type === "bol" ? "Not required" : item.extracted?.amount ? money(item.extracted.amount) : "Needs review"}</strong></td>
               <td><strong>${item.scanStatus || "Stored"}</strong><br><span class="muted">${extractedSummary(item)}</span>${item.createdTripId ? `<br><button class="chip-button" type="button" data-open-trip="${item.createdTripId}">View trip</button>` : ""}</td>
               <td>${formatDate(item.uploadedAt.slice(0, 10))}</td>
               <td>
@@ -1222,6 +1275,10 @@ document.addEventListener("input", (event) => {
 document.addEventListener("change", (event) => {
   if (event.target.id === "statusFilter") {
     state.status = event.target.value;
+    renderContent();
+  }
+  if (event.target.id === "reportYearFilter") {
+    state.reportYear = event.target.value;
     renderContent();
   }
   if (event.target.id === "entryType") toggleTripFields();
