@@ -271,12 +271,7 @@ function renderDashboard() {
       <div class="panel-header"><h2>Renewal Alerts</h2><button class="chip-button" type="button" data-view-shortcut="compliance">Compliance</button></div>
       <div class="panel-body">
         <div class="list">
-          ${dashboardAlerts.slice(0, 4).map((alert) => `
-            <article class="list-item">
-              <div><strong>${alert.label}</strong><span>${formatDate(alert.date)} · ${alert.daysUntil} days</span></div>
-              <span class="status ${alertTone(alert.daysUntil)}">${alert.daysUntil <= 15 ? "Due soon" : "Upcoming"}</span>
-            </article>
-          `).join("") || `<p class="muted">No compliance renewals need attention right now.</p>`}
+          ${dashboardAlerts.slice(0, 4).map(renewalAlertItem).join("") || `<p class="muted">No compliance renewals need attention right now.</p>`}
         </div>
       </div>
     </section>
@@ -625,9 +620,27 @@ function renderDocuments() {
 }
 
 function alertTone(days) {
-  if (days < 0) return "Pending";
+  if (days < 0) return "Overdue";
   if (days <= 15) return "Pending";
   return "Scheduled";
+}
+
+function alertLabel(days) {
+  if (days < 0) return "Overdue";
+  if (days <= 15) return "Due soon";
+  return "Upcoming";
+}
+
+function renewalAlertItem(alert) {
+  return `
+    <article class="list-item">
+      <div><strong>${alert.label}</strong><span>${formatDate(alert.date)} · ${Math.abs(alert.daysUntil)} day${Math.abs(alert.daysUntil) === 1 ? "" : "s"} ${alert.daysUntil < 0 ? "overdue" : "remaining"}</span></div>
+      <div class="alert-actions">
+        <span class="status ${alertTone(alert.daysUntil)}">${alertLabel(alert.daysUntil)}</span>
+        <button class="chip-button" type="button" data-complete-alert="${alert.id}">Complete</button>
+      </div>
+    </article>
+  `;
 }
 
 function renderCompliance() {
@@ -676,12 +689,7 @@ function renderCompliance() {
         <div class="panel-header"><h2>Renewal Alerts</h2><span class="muted">45-day document window plus IFTA</span></div>
         <div class="panel-body">
           <div class="list">
-            ${alerts.map((alert) => `
-              <article class="list-item">
-                <div><strong>${alert.label}</strong><span>${formatDate(alert.date)} · ${alert.daysUntil} days</span></div>
-                <span class="status ${alertTone(alert.daysUntil)}">${alert.daysUntil <= 15 ? "Due soon" : "Upcoming"}</span>
-              </article>
-            `).join("") || `<p class="muted">No compliance alerts right now.</p>`}
+            ${alerts.map(renewalAlertItem).join("") || `<p class="muted">No compliance alerts right now.</p>`}
           </div>
         </div>
       </section>
@@ -1233,6 +1241,22 @@ async function shareSelectedComplianceDocuments() {
   }
 }
 
+async function completeComplianceAlert(alertId) {
+  try {
+    const payload = await api("/api/compliance-alerts/complete", {
+      method: "POST",
+      body: JSON.stringify({ alertId })
+    });
+    state.complianceAlerts = payload.complianceAlerts;
+    if (payload.customer) state.customer = payload.customer;
+    state.accountMessage = "Renewal alert completed.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
 async function saveComplianceExpiration(form) {
   try {
     const payload = await api(`/api/compliance/${form.dataset.expirationForm}`, {
@@ -1261,6 +1285,7 @@ document.addEventListener("click", (event) => {
   const deleteComplianceButton = event.target.closest("[data-delete-compliance]");
   const rescanComplianceButton = event.target.closest("[data-rescan-compliance]");
   const shareComplianceButton = event.target.closest("[data-share-compliance]");
+  const completeAlertButton = event.target.closest("[data-complete-alert]");
   const openTripButton = event.target.closest("[data-open-trip]");
   const copyReferralButton = event.target.closest("[data-copy-referral]");
   const markPaidButton = event.target.closest("[data-mark-first-paid]");
@@ -1275,6 +1300,7 @@ document.addEventListener("click", (event) => {
   if (deleteComplianceButton) removeComplianceDocument(deleteComplianceButton.dataset.deleteCompliance);
   if (rescanComplianceButton) rescanComplianceDocument(rescanComplianceButton.dataset.rescanCompliance);
   if (shareComplianceButton) shareSelectedComplianceDocuments();
+  if (completeAlertButton) completeComplianceAlert(completeAlertButton.dataset.completeAlert);
   if (openTripButton) setView("rateCons");
   if (copyReferralButton) {
     navigator.clipboard?.writeText(copyReferralButton.dataset.copyReferral);

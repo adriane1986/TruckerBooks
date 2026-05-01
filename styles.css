@@ -482,6 +482,19 @@ button {
   color: var(--blue);
 }
 
+.status.Overdue {
+  background: #fdecec;
+  color: #b42318;
+}
+
+.alert-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;

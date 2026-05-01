@@ -580,10 +580,36 @@ function buildOpenAiFileInput(buffer, mimeType, filename) {
   };
 }
 
+async function uploadOpenAiFile(openAiKey, buffer, mimeType, filename) {
+  const form = new FormData();
+  form.append("purpose", "user_data");
+  form.append("file", new Blob([buffer], { type: mimeType || "application/octet-stream" }), filename);
+  const response = await fetch("https://api.openai.com/v1/files", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${openAiKey}` },
+    body: form
+  });
+  if (!response.ok) throw new Error(`OpenAI file upload failed: ${response.status} ${(await response.text()).slice(0, 200)}`);
+  const payload = await response.json();
+  return payload.id;
+}
+
+async function buildOpenAiFileInputWithUpload(openAiKey, buffer, mimeType, filename) {
+  if (/pdf/i.test(mimeType || "")) {
+    try {
+      const fileId = await uploadOpenAiFile(openAiKey, buffer, mimeType, filename);
+      return { type: "input_file", file_id: fileId };
+    } catch {
+      return buildOpenAiFileInput(buffer, mimeType, filename);
+    }
+  }
+  return buildOpenAiFileInput(buffer, mimeType, filename);
+}
+
 async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documentContext = "", modelOverride = "") {
   const openAiKey = getOpenAiKey();
   if (!openAiKey || !openAiKey.startsWith("sk-")) return null;
-  const fileInput = buildOpenAiFileInput(buffer, mimeType, mimeType?.includes("pdf") ? "uploaded-document.pdf" : "uploaded-document");
+  const fileInput = await buildOpenAiFileInputWithUpload(openAiKey, buffer, mimeType, mimeType?.includes("pdf") ? "uploaded-document.pdf" : "uploaded-document");
   const prompt = [
     "You are the AI document scanner for TruckerBooks.",
     "Extract structured trucking document data from the uploaded file.",
@@ -686,7 +712,7 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
 async function runOpenAiExpirationOnlyScanner(buffer, mimeType, extractedText, complianceType = "", modelOverride = "") {
   const openAiKey = getOpenAiKey();
   if (!openAiKey || !openAiKey.startsWith("sk-")) return "";
-  const fileInput = buildOpenAiFileInput(buffer, mimeType, mimeType?.includes("pdf") ? "compliance-document.pdf" : "compliance-document");
+  const fileInput = await buildOpenAiFileInputWithUpload(openAiKey, buffer, mimeType, mimeType?.includes("pdf") ? "compliance-document.pdf" : "compliance-document");
   const typeName = complianceTypeName(complianceType);
   const prompt = [
     `This is a ${typeName} compliance document for a trucking business.`,
@@ -817,6 +843,7 @@ function normalizeUser(user) {
     return { ...document, type };
   });
   user.complianceShares = Array.isArray(user.complianceShares) ? user.complianceShares : [];
+  user.completedComplianceAlerts = Array.isArray(user.completedComplianceAlerts) ? user.completedComplianceAlerts : [];
   user.affiliateCode = user.affiliateCode || crypto.randomBytes(5).toString("hex");
   user.referredBy = user.referredBy || "";
   user.firstMonthPaid = Boolean(user.firstMonthPaid);
@@ -852,16 +879,21 @@ function upcomingIftaDeadlines() {
   const today = new Date();
   const year = today.getFullYear();
   const deadlines = [
+    { label: "October IFTA Taxes", date: lastDayOfMonth(year - 1, 9) },
     { label: "January IFTA Taxes", date: lastDayOfMonth(year, 0) },
     { label: "April IFTA Taxes", date: lastDayOfMonth(year, 3) },
     { label: "July IFTA Taxes", date: lastDayOfMonth(year, 6) },
     { label: "October IFTA Taxes", date: lastDayOfMonth(year, 9) },
     { label: "January IFTA Taxes", date: lastDayOfMonth(year + 1, 0) }
   ];
-  return deadlines.filter((item) => daysUntil(item.date) >= 0).slice(0, 4);
+  return deadlines.filter((item) => {
+    const days = daysUntil(item.date);
+    return days !== null && days <= 45 && days >= -120;
+  }).slice(0, 4);
 }
 
 function complianceAlerts(user) {
+  const completed = new Set(user.completedComplianceAlerts || []);
   const documentAlerts = (user.complianceDocuments || [])
     .filter((item) => !["w9", "noa"].includes(item.type) && item.expirationDate)
     .map((item) => ({
@@ -871,16 +903,18 @@ function complianceAlerts(user) {
       daysUntil: daysUntil(item.expirationDate),
       source: "document"
     }))
-    .filter((item) => item.daysUntil !== null && item.daysUntil <= 45)
+    .filter((item) => item.daysUntil !== null && item.daysUntil <= 45 && !completed.has(item.id))
     .sort((a, b) => a.daysUntil - b.daysUntil);
 
-  const iftaAlerts = upcomingIftaDeadlines().map((item) => ({
-    id: `ifta-${item.date}`,
-    label: item.label,
-    date: item.date,
-    daysUntil: daysUntil(item.date),
-    source: "ifta"
-  }));
+  const iftaAlerts = upcomingIftaDeadlines()
+    .map((item) => ({
+      id: `ifta-${item.date}`,
+      label: item.label,
+      date: item.date,
+      daysUntil: daysUntil(item.date),
+      source: "ifta"
+    }))
+    .filter((item) => !completed.has(item.id));
 
   return [...documentAlerts, ...iftaAlerts].sort((a, b) => a.daysUntil - b.daysUntil);
 }
@@ -1120,6 +1154,16 @@ async function handleApi(req, res, pathname) {
       complianceDocuments: user.complianceDocuments,
       complianceAlerts: complianceAlerts(user)
     });
+  }
+
+  if (req.method === "POST" && pathname === "/api/compliance-alerts/complete") {
+    const body = await readBody(req);
+    const alertId = String(body.alertId || "").trim();
+    if (!alertId) return sendError(res, 400, "Choose an alert to complete.");
+    if (!user.completedComplianceAlerts.includes(alertId)) user.completedComplianceAlerts.push(alertId);
+    user.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 200, { complianceAlerts: complianceAlerts(user), customer: publicUser(user) });
   }
 
   if (req.method === "POST" && pathname === "/api/compliance") {
