@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TruckerBooks Affiliate Partners</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <section class="auth-screen" id="partnerAuth">
+      <div class="auth-card">
+        <img class="auth-logo" src="./assets/truckerbooks-logo.png" alt="TruckerBooks logo" />
+        <p class="eyebrow">Affiliate partner access</p>
+        <h1>Promote TruckerBooks</h1>
+        <p class="auth-copy">Influencers and businesses can join the affiliate program without needing a customer dashboard.</p>
+        <div class="auth-tabs">
+          <button class="auth-tab active" type="button" data-partner-mode="signin">Sign In</button>
+          <button class="auth-tab" type="button" data-partner-mode="signup">Create Partner Account</button>
+        </div>
+        <form class="auth-form" id="partnerAuthForm">
+          <label class="partner-signup-only">
+            Your name
+            <input name="name" type="text" placeholder="Your name" />
+          </label>
+          <label class="partner-signup-only">
+            Business or brand name
+            <input name="businessName" type="text" placeholder="Company, brand, or channel" />
+          </label>
+          <label>
+            Email
+            <input name="email" type="email" required placeholder="partner@example.com" />
+          </label>
+          <label>
+            Password
+            <input name="password" type="password" required placeholder="At least 4 characters" />
+          </label>
+          <label class="partner-signup-only">
+            Social media or website
+            <input name="website" type="text" placeholder="Website, YouTube, Instagram, TikTok..." />
+          </label>
+          <label class="partner-signup-only">
+            Payout preference
+            <input name="payoutPreference" type="text" placeholder="PayPal, Zelle, ACH, check..." />
+          </label>
+          <button class="primary-button auth-submit" id="partnerAuthSubmit" type="submit">Sign In</button>
+          <p class="auth-error" id="partnerAuthError"></p>
+        </form>
+      </div>
+    </section>
+
+    <main class="owner-shell hidden" id="partnerShell">
+      <header class="owner-topbar">
+        <div>
+          <p class="eyebrow">Affiliate partner portal</p>
+          <h1 id="partnerTitle">Partner Dashboard</h1>
+        </div>
+        <button class="ghost-button" id="partnerLogoutBtn" type="button">Sign Out</button>
+      </header>
+      <section class="content" id="partnerContent"></section>
+    </main>
+
+    <script src="./partners.js"></script>
+  </body>
+</html>

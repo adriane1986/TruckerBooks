@@ -1,5 +1,6 @@
 const ownerState = {
   customers: [],
+  partners: [],
   selectedCustomer: null,
   message: ""
 };
@@ -12,6 +13,8 @@ const ownerLogoutBtn = document.querySelector("#ownerLogoutBtn");
 const customerSearch = document.querySelector("#customerSearch");
 const customerList = document.querySelector("#customerList");
 const customerCount = document.querySelector("#customerCount");
+const partnerList = document.querySelector("#partnerList");
+const partnerCount = document.querySelector("#partnerCount");
 const ownerDetail = document.querySelector("#ownerDetail");
 
 const plans = {
@@ -81,6 +84,13 @@ async function loadCustomers(query = "") {
   const payload = await ownerApi(`/api/owner/customers?q=${encodeURIComponent(query)}`);
   ownerState.customers = payload.customers || [];
   renderCustomerList();
+  await loadPartners();
+}
+
+async function loadPartners() {
+  const payload = await ownerApi("/api/owner/partners");
+  ownerState.partners = payload.partners || [];
+  renderPartnerList();
 }
 
 async function loadCustomer(id) {
@@ -100,6 +110,18 @@ function renderCustomerList() {
       <small>${escapeHtml(customer.subscriptionName)} · ${customer.status} · ${customer.supportIssueCount || 0} support issues · ${customer.scannerIssueCount} scan issues</small>
     </button>
   `).join("") || `<p class="muted">No customers found.</p>`;
+}
+
+function renderPartnerList() {
+  if (!partnerList) return;
+  partnerCount.textContent = `${ownerState.partners.length} partners`;
+  partnerList.innerHTML = ownerState.partners.map((partner) => `
+    <article class="owner-customer">
+      <strong>${escapeHtml(partner.businessName || partner.name)}</strong>
+      <span>${escapeHtml(partner.email)}</span>
+      <small>${escapeHtml(partner.affiliateCode)} · ${partner.stats?.referralCount || 0} referrals · ${partner.stats?.paidCount || 0} paid</small>
+    </article>
+  `).join("") || `<p class="muted">No affiliate partners yet.</p>`;
 }
 
 function renderCustomerDetail() {

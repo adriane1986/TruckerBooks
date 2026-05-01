@@ -78,8 +78,10 @@ function readDb() {
   ensureDb();
   const db = JSON.parse(fs.readFileSync(dbPath, "utf8"));
   db.users = (db.users || []).map(normalizeUser);
+  db.partners = (db.partners || []).map(normalizePartner);
   db.sessions = db.sessions || {};
   db.ownerSessions = db.ownerSessions || {};
+  db.partnerSessions = db.partnerSessions || {};
   return db;
 }
 
@@ -107,6 +109,23 @@ function publicUser(user) {
     referredBy: user.referredBy || "",
     firstMonthPaid: Boolean(user.firstMonthPaid),
     affiliateStats: affiliateStats(user)
+  };
+}
+
+function publicPartner(partner) {
+  return {
+    id: partner.id,
+    name: partner.name,
+    businessName: partner.businessName,
+    email: partner.email,
+    phone: partner.phone || "",
+    website: partner.website || "",
+    socialHandle: partner.socialHandle || "",
+    payoutPreference: partner.payoutPreference || "",
+    affiliateCode: partner.affiliateCode,
+    status: partner.status || "Active",
+    createdAt: partner.createdAt || "",
+    stats: partnerStats(partner)
   };
 }
 
@@ -175,6 +194,24 @@ function getOwnerSession(req, db) {
   const token = parseCookies(req).tb_owner_session;
   const session = token ? db.ownerSessions[token] : null;
   return { token, owner: session?.email === ownerEmail ? { email: ownerEmail } : null };
+}
+
+function getPartnerSession(req, db) {
+  const token = parseCookies(req).tb_partner_session;
+  const session = token ? db.partnerSessions[token] : null;
+  const partner = session ? db.partners.find((item) => item.id === session.partnerId) : null;
+  return { token, partner };
+}
+
+function setPartnerSession(res, db, partnerId) {
+  const token = crypto.randomBytes(32).toString("hex");
+  db.partnerSessions[token] = { partnerId, createdAt: new Date().toISOString() };
+  res.setHeader("Set-Cookie", `tb_partner_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800`);
+}
+
+function clearPartnerSession(res, db, token) {
+  if (token) delete db.partnerSessions[token];
+  res.setHeader("Set-Cookie", "tb_partner_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
 }
 
 function setOwnerSession(res, db) {
@@ -909,6 +946,23 @@ function normalizeUser(user) {
   return user;
 }
 
+function normalizePartner(partner) {
+  partner.id = partner.id || crypto.randomUUID();
+  partner.name = String(partner.name || "").trim() || "Affiliate Partner";
+  partner.businessName = String(partner.businessName || "").trim();
+  partner.email = normalizeEmail(partner.email);
+  partner.phone = String(partner.phone || "").trim();
+  partner.website = String(partner.website || "").trim();
+  partner.socialHandle = String(partner.socialHandle || "").trim();
+  partner.payoutPreference = String(partner.payoutPreference || "").trim();
+  partner.affiliateCode = partner.affiliateCode || crypto.randomBytes(5).toString("hex");
+  partner.status = partner.status || "Active";
+  partner.commissions = Array.isArray(partner.commissions) ? partner.commissions : [];
+  partner.createdAt = partner.createdAt || new Date().toISOString();
+  partner.updatedAt = partner.updatedAt || partner.createdAt;
+  return partner;
+}
+
 function affiliateStats(user) {
   const referrals = user.commissions || [];
   return {
@@ -918,6 +972,53 @@ function affiliateStats(user) {
     earnedTotal: referrals.filter((item) => item.status === "earned").reduce((total, item) => total + item.amount, 0),
     referrals
   };
+}
+
+function partnerStats(partner) {
+  const referrals = partner.commissions || [];
+  return {
+    referralCount: referrals.length,
+    paidCount: referrals.filter((item) => item.status === "earned").length,
+    pendingCount: referrals.filter((item) => item.status === "pending").length,
+    earnedTotal: referrals.filter((item) => item.status === "earned").reduce((total, item) => total + item.amount, 0),
+    pendingTotal: referrals.filter((item) => item.status === "pending").reduce((total, item) => total + item.amount, 0),
+    referrals
+  };
+}
+
+function findReferrer(db, referralCode) {
+  const code = String(referralCode || "").trim();
+  if (!code) return null;
+  const customer = db.users.find((item) => item.affiliateCode === code);
+  if (customer) return { type: "customer", account: customer };
+  const partner = db.partners.find((item) => item.affiliateCode === code);
+  if (partner) return { type: "partner", account: partner };
+  return null;
+}
+
+function addReferralCommission(referrer, newUser) {
+  referrer.account.commissions = Array.isArray(referrer.account.commissions) ? referrer.account.commissions : [];
+  referrer.account.commissions.push({
+    id: crypto.randomUUID(),
+    referredUserId: newUser.id,
+    referredBusinessName: newUser.businessName,
+    referredEmail: newUser.email,
+    amount: 10,
+    commissionType: "one_time_first_paid_month",
+    status: "pending",
+    referrerType: referrer.type,
+    createdAt: new Date().toISOString()
+  });
+}
+
+function earnReferralCommission(db, user) {
+  if (!user.referredBy) return;
+  const referrer = findReferrer(db, user.referredBy);
+  const commission = referrer?.account.commissions?.find((item) => item.referredUserId === user.id);
+  if (commission && commission.status !== "earned") {
+    commission.status = "earned";
+    commission.earnedAt = new Date().toISOString();
+  }
 }
 
 function ownerCustomerSummary(user) {
@@ -1102,6 +1203,7 @@ async function handleApi(req, res, pathname) {
     if (!email || !password || password.length < 4) return sendError(res, 400, "Enter an email and password with at least 4 characters.");
     if (db.users.some((item) => item.email === email)) return sendError(res, 409, "An account already exists for that email.");
 
+    const referrer = findReferrer(db, body.referralCode);
     const newUser = {
       id: crypto.randomUUID(),
       businessName: String(body.businessName || "").trim() || "My Trucking Business",
@@ -1114,7 +1216,8 @@ async function handleApi(req, res, pathname) {
       documents: [],
       complianceDocuments: [],
       affiliateCode: crypto.randomBytes(5).toString("hex"),
-      referredBy: db.users.some((item) => item.affiliateCode === body.referralCode) ? body.referralCode : "",
+      referredBy: referrer ? String(body.referralCode || "").trim() : "",
+      referredByType: referrer?.type || "",
       firstMonthPaid: false,
       commissions: [],
       records: cloneStarterRecords(),
@@ -1122,22 +1225,7 @@ async function handleApi(req, res, pathname) {
       updatedAt: new Date().toISOString()
     };
     db.users.push(newUser);
-    if (newUser.referredBy) {
-      const referrer = db.users.find((item) => item.affiliateCode === newUser.referredBy);
-      if (referrer) {
-        referrer.commissions = Array.isArray(referrer.commissions) ? referrer.commissions : [];
-        referrer.commissions.push({
-          id: crypto.randomUUID(),
-          referredUserId: newUser.id,
-          referredBusinessName: newUser.businessName,
-          referredEmail: newUser.email,
-          amount: 10,
-          commissionType: "one_time_first_paid_month",
-          status: "pending",
-          createdAt: new Date().toISOString()
-        });
-      }
-    }
+    if (referrer) addReferralCommission(referrer, newUser);
     setSession(res, db, newUser.id);
     writeDb(db);
     return sendJson(res, 201, { customer: publicUser(newUser), records: newUser.records });
@@ -1157,6 +1245,72 @@ async function handleApi(req, res, pathname) {
     clearSession(res, db, token);
     writeDb(db);
     return sendJson(res, 200, { ok: true });
+  }
+
+  if (req.method === "POST" && pathname === "/api/partners/signup") {
+    const body = await readBody(req);
+    const email = normalizeEmail(body.email);
+    const password = String(body.password || "");
+    if (!email || !password || password.length < 4) return sendError(res, 400, "Enter an email and password with at least 4 characters.");
+    if (db.partners.some((item) => item.email === email)) return sendError(res, 409, "An affiliate partner already exists for that email.");
+    const partner = normalizePartner({
+      id: crypto.randomUUID(),
+      name: String(body.name || "").trim(),
+      businessName: String(body.businessName || "").trim(),
+      email,
+      passwordHash: hashPassword(password),
+      phone: String(body.phone || "").trim(),
+      website: String(body.website || "").trim(),
+      socialHandle: String(body.socialHandle || "").trim(),
+      payoutPreference: String(body.payoutPreference || "").trim(),
+      affiliateCode: crypto.randomBytes(5).toString("hex"),
+      status: "Active",
+      commissions: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    db.partners.push(partner);
+    setPartnerSession(res, db, partner.id);
+    writeDb(db);
+    return sendJson(res, 201, { partner: publicPartner(partner) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/partners/login") {
+    const body = await readBody(req);
+    const email = normalizeEmail(body.email);
+    const partner = db.partners.find((item) => item.email === email);
+    if (!partner || !verifyPassword(body.password || "", partner.passwordHash)) return sendError(res, 401, "Email or password did not match an affiliate partner.");
+    setPartnerSession(res, db, partner.id);
+    writeDb(db);
+    return sendJson(res, 200, { partner: publicPartner(partner) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/partners/logout") {
+    const partnerSession = getPartnerSession(req, db);
+    clearPartnerSession(res, db, partnerSession.token);
+    writeDb(db);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (req.method === "GET" && pathname === "/api/partners/session") {
+    const partnerSession = getPartnerSession(req, db);
+    if (!partnerSession.partner) return sendError(res, 401, "Affiliate partner sign in required.");
+    return sendJson(res, 200, { partner: publicPartner(partnerSession.partner) });
+  }
+
+  if (req.method === "PATCH" && pathname === "/api/partners/profile") {
+    const partnerSession = getPartnerSession(req, db);
+    if (!partnerSession.partner) return sendError(res, 401, "Affiliate partner sign in required.");
+    const body = await readBody(req);
+    partnerSession.partner.name = String(body.name || "").trim() || partnerSession.partner.name;
+    partnerSession.partner.businessName = String(body.businessName || "").trim();
+    partnerSession.partner.phone = String(body.phone || "").trim();
+    partnerSession.partner.website = String(body.website || "").trim();
+    partnerSession.partner.socialHandle = String(body.socialHandle || "").trim();
+    partnerSession.partner.payoutPreference = String(body.payoutPreference || "").trim();
+    partnerSession.partner.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 200, { partner: publicPartner(partnerSession.partner) });
   }
 
   if (req.method === "POST" && pathname === "/api/owner/login") {
@@ -1192,6 +1346,12 @@ async function handleApi(req, res, pathname) {
       .map(ownerCustomerSummary)
       .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
     return sendJson(res, 200, { customers });
+  }
+
+  if (req.method === "GET" && pathname === "/api/owner/partners") {
+    if (!requireOwner(req, res, db)) return;
+    const partners = db.partners.map((partner) => publicPartner(partner));
+    return sendJson(res, 200, { partners });
   }
 
   if (req.method === "GET" && pathname.startsWith("/api/owner/customers/")) {
@@ -1309,14 +1469,7 @@ async function handleApi(req, res, pathname) {
     if (!requireAdmin(user, res)) return;
     user.firstMonthPaid = true;
     user.updatedAt = new Date().toISOString();
-    if (user.referredBy) {
-      const referrer = db.users.find((item) => item.affiliateCode === user.referredBy);
-      const commission = referrer?.commissions?.find((item) => item.referredUserId === user.id);
-      if (commission && commission.status !== "earned") {
-        commission.status = "earned";
-        commission.earnedAt = new Date().toISOString();
-      }
-    }
+    earnReferralCommission(db, user);
     writeDb(db);
     return sendJson(res, 200, { customer: publicUser(user) });
   }
@@ -1755,7 +1908,7 @@ async function handleApi(req, res, pathname) {
 }
 
 function serveStatic(req, res, pathname) {
-  const requested = pathname === "/" ? "/index.html" : pathname === "/owner" ? "/owner.html" : pathname;
+  const requested = pathname === "/" ? "/index.html" : pathname === "/owner" ? "/owner.html" : pathname === "/partners" ? "/partners.html" : pathname;
   const filePath = path.normalize(path.join(rootDir, requested));
   if (!filePath.startsWith(rootDir)) {
     res.writeHead(403);
