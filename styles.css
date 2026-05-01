@@ -347,6 +347,12 @@ button {
   gap: 18px;
 }
 
+.compliance-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+}
+
 .route-map {
   min-height: 310px;
   position: relative;
@@ -504,6 +510,39 @@ button {
 
 .document-table .table-actions {
   gap: 6px;
+}
+
+.compliance-table {
+  table-layout: fixed;
+}
+
+.compliance-table th:first-child,
+.compliance-table td:first-child {
+  width: 36px;
+  text-align: center;
+}
+
+.compliance-table th:nth-child(2),
+.compliance-table td:nth-child(2) {
+  width: 120px;
+}
+
+.compliance-table th:nth-child(4),
+.compliance-table td:nth-child(4) {
+  width: 210px;
+}
+
+.compliance-table th:last-child,
+.compliance-table td:last-child {
+  width: 230px;
+}
+
+.compliance-table td {
+  overflow-wrap: anywhere;
+}
+
+.compliance-table .table-actions {
+  flex-wrap: wrap;
 }
 
 .data-table th {
@@ -818,5 +857,18 @@ label select {
 
   .data-table {
     min-width: 680px;
+  }
+
+  .compliance-table {
+    min-width: 0;
+  }
+
+  .compliance-table th:nth-child(2),
+  .compliance-table td:nth-child(2),
+  .compliance-table th:nth-child(4),
+  .compliance-table td:nth-child(4),
+  .compliance-table th:last-child,
+  .compliance-table td:last-child {
+    width: auto;
   }
 }

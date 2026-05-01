@@ -657,7 +657,7 @@ function renderCompliance() {
         ${state.accountMessage ? `<p class="form-message">${state.accountMessage}</p>` : ""}
       </div>
     </section>
-    <div class="dashboard-grid">
+    <div class="compliance-layout">
       <section class="panel">
         <div class="panel-header"><h2>Renewal Alerts</h2><span class="muted">45-day document window plus IFTA</span></div>
         <div class="panel-body">
@@ -679,8 +679,8 @@ function renderCompliance() {
             <span class="muted">${documents.length} files</span>
           </div>
         </div>
-        <table class="data-table document-table">
-          <thead><tr><th></th><th>Type</th><th>File</th><th>Expiration</th><th>Scan</th><th></th></tr></thead>
+        <table class="data-table document-table compliance-table">
+          <thead><tr><th></th><th>Type</th><th>File</th><th>Renewal</th><th></th></tr></thead>
           <tbody>
             ${documents.map((item) => `
               <tr>
@@ -689,8 +689,6 @@ function renderCompliance() {
                 <td><strong>${item.fileName}</strong><br><span class="muted">${fileSize(item.size)}</span></td>
                 <td>
                   <strong>${isCarrierPacketDocument(item) ? "No renewal needed" : item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong>
-                  ${!item.expirationDate && !isCarrierPacketDocument(item) && (item.aiScan?.generic?.dates?.length || item.aiScan?.dates?.length || item.aiScan?.generic?.dateCandidates?.length || item.aiScan?.dateCandidates?.length) ? `<br><span class="muted">Dates found: ${(item.aiScan?.generic?.dates || item.aiScan?.dates || item.aiScan?.generic?.dateCandidates?.map((candidate) => candidate.date) || item.aiScan?.dateCandidates?.map((candidate) => candidate.date) || []).map(formatDate).join(", ")}</span>` : ""}
-                  ${!item.expirationDate && !isCarrierPacketDocument(item) && !(item.aiScan?.generic?.dates?.length || item.aiScan?.dates?.length || item.aiScan?.generic?.dateCandidates?.length || item.aiScan?.dateCandidates?.length) ? `<br><span class="muted">No dates found in scan.</span>` : ""}
                   ${item.expirationDate || isCarrierPacketDocument(item) ? "" : `
                     <form class="mini-date-form" data-expiration-form="${item.id}">
                       <input type="date" name="expirationDate" required />
@@ -698,7 +696,6 @@ function renderCompliance() {
                     </form>
                   `}
                 </td>
-                <td><strong>${item.scanStatus || "Stored"}</strong><br><span class="muted">${scanDetail(item)}</span></td>
                 <td>
                   <div class="table-actions">
                     <a class="ghost-button" href="/api/compliance/${item.id}">Download</a>
