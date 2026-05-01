@@ -972,12 +972,6 @@ function renderPaymentAccount() {
 
 function renderSupport() {
   content.innerHTML = `
-    <div class="metric-grid">
-      ${metric("Contact Email", "info@thetruckerconsultant.com", "Use this for billing, scanner, or account help", "help-circle")}
-      ${metric("Issue Reports", "Support", "Send an issue directly to the owner dashboard", "file-text")}
-      ${metric("Account", state.customer?.businessName || "Customer", state.customer?.email || "", "users")}
-      ${metric("Response", "Review", "Your report is saved for support follow-up", "receipt")}
-    </div>
     <section class="panel">
       <div class="panel-header">
         <h2>Report an Issue</h2>
