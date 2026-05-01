@@ -9,6 +9,7 @@ const dataDir = path.join(rootDir, "data");
 const uploadDir = path.join(dataDir, "uploads");
 const dbPath = path.join(dataDir, "truckerbooks-db.json");
 const openaiModel = process.env.OPENAI_MODEL || "gpt-5-mini";
+const openaiVisionModel = process.env.OPENAI_VISION_MODEL || "gpt-4o-mini";
 
 const sampleRecords = {
   trips: [
@@ -481,7 +482,7 @@ async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
       }
     };
   }
-  const scan = await runAiScanner(buffer, mimeType, "This is a Compliance upload. Prioritize renewal, expiration, valid-through, policy end, coverage end, DOT physical expiration, UCR, and 2290 tax period dates.");
+  const scan = await runAiScanner(buffer, mimeType, "This is a Compliance upload. Prioritize renewal, expiration, valid-through, policy end, coverage end, Policy Exp., DOT physical expiration, UCR, and 2290 tax period dates.", openaiVisionModel);
   const local = parseComplianceText(scan.text);
   const generic = scan.extracted || {};
   const aiExpiration = normalizeDate(generic.expirationDate || "");
@@ -500,7 +501,7 @@ async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
   });
   const narrowAiDate = bestLocalDate || bestAiDate
     ? ""
-    : await runOpenAiExpirationOnlyScanner(buffer, mimeType, scan.text, complianceType).catch(() => "");
+    : await runOpenAiExpirationOnlyScanner(buffer, mimeType, scan.text, complianceType, openaiVisionModel).catch(() => "");
   return {
     ...scan,
     extracted: {
@@ -511,7 +512,7 @@ async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
   };
 }
 
-async function runAiScanner(buffer, mimeType, documentContext = "") {
+async function runAiScanner(buffer, mimeType, documentContext = "", modelOverride = "") {
   let text = "";
   let scanStatus = "Scanned";
   if (/^text\//.test(mimeType) || /json|csv|xml/.test(mimeType)) {
@@ -536,7 +537,7 @@ async function runAiScanner(buffer, mimeType, documentContext = "") {
   }
   const localExtracted = parseGenericDocumentText(text);
   let aiError = "";
-  const aiExtracted = await runOpenAiDocumentScanner(buffer, mimeType, text, documentContext).catch((error) => {
+  const aiExtracted = await runOpenAiDocumentScanner(buffer, mimeType, text, documentContext, modelOverride).catch((error) => {
     aiError = error.message;
     return null;
   });
@@ -579,7 +580,7 @@ function buildOpenAiFileInput(buffer, mimeType, filename) {
   };
 }
 
-async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documentContext = "") {
+async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documentContext = "", modelOverride = "") {
   const openAiKey = getOpenAiKey();
   if (!openAiKey || !openAiKey.startsWith("sk-")) return null;
   const fileInput = buildOpenAiFileInput(buffer, mimeType, mimeType?.includes("pdf") ? "uploaded-document.pdf" : "uploaded-document");
@@ -609,7 +610,7 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: openaiModel,
+      model: modelOverride || openaiModel,
       text: {
         format: {
           type: "json_schema",
@@ -682,7 +683,7 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
   };
 }
 
-async function runOpenAiExpirationOnlyScanner(buffer, mimeType, extractedText, complianceType = "") {
+async function runOpenAiExpirationOnlyScanner(buffer, mimeType, extractedText, complianceType = "", modelOverride = "") {
   const openAiKey = getOpenAiKey();
   if (!openAiKey || !openAiKey.startsWith("sk-")) return "";
   const fileInput = buildOpenAiFileInput(buffer, mimeType, mimeType?.includes("pdf") ? "compliance-document.pdf" : "compliance-document");
@@ -706,7 +707,7 @@ async function runOpenAiExpirationOnlyScanner(buffer, mimeType, extractedText, c
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: openaiModel,
+      model: modelOverride || openaiVisionModel,
       input: [
         {
           role: "user",
