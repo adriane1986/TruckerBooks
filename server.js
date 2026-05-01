@@ -110,6 +110,16 @@ function publicUser(user) {
   };
 }
 
+function uploadActor(user) {
+  return {
+    id: user.id,
+    name: user.businessName || "Account Admin",
+    email: user.email || "",
+    role: user.role || "admin",
+    roleLabel: (user.role || "admin") === "admin" ? "Admin" : accountAccessRoles[user.role] || "User"
+  };
+}
+
 function cloneStarterRecords() {
   return JSON.parse(JSON.stringify(sampleRecords));
 }
@@ -859,20 +869,34 @@ function normalizeUser(user) {
     roleLabel: accountAccessRoles[driver.role] || "Driver"
   }));
   user.documents = Array.isArray(user.documents) ? user.documents : [];
+  user.documents = user.documents.map((document) => ({
+    ...document,
+    uploadedBy: document.uploadedBy || uploadActor(user)
+  }));
   user.complianceDocuments = Array.isArray(user.complianceDocuments) ? user.complianceDocuments : [];
   user.complianceDocuments = user.complianceDocuments.map((document) => {
     const type = inferComplianceType(document.type, document.fileName);
+    const uploadedBy = document.uploadedBy || uploadActor(user);
     if (["w9", "noa"].includes(type)) {
       return {
         ...document,
         type,
+        uploadedBy,
         expirationDate: "",
         extracted: { ...(document.extracted || {}), expirationDate: "", dateDetection: "not_required", carrierPacketDocument: true },
         aiScan: { ...(document.aiScan || {}), expirationDate: "", dateDetection: "not_required", carrierPacketDocument: true }
       };
     }
-    return { ...document, type };
+    return { ...document, type, uploadedBy };
   });
+  user.records = user.records || cloneStarterRecords();
+  user.records.expenses = Array.isArray(user.records.expenses) ? user.records.expenses.map((expense) => ({
+    ...expense,
+    sourceReceipt: expense.sourceReceipt ? {
+      ...expense.sourceReceipt,
+      uploadedBy: expense.sourceReceipt.uploadedBy || uploadActor(user)
+    } : expense.sourceReceipt
+  })) : [];
   user.complianceShares = Array.isArray(user.complianceShares) ? user.complianceShares : [];
   user.completedComplianceAlerts = Array.isArray(user.completedComplianceAlerts) ? user.completedComplianceAlerts : [];
   user.affiliateCode = user.affiliateCode || crypto.randomBytes(5).toString("hex");
@@ -937,6 +961,7 @@ function ownerCustomerDetail(user) {
       amount: item.extracted?.amount || 0,
       aiUsed: Boolean(item.extracted?.aiUsed),
       aiError: item.extracted?.aiError || item.aiScan?.aiError || "",
+      uploadedBy: item.uploadedBy || uploadActor(user),
       uploadedAt: item.uploadedAt || ""
     })),
     complianceDocuments: (user.complianceDocuments || []).map((item) => ({
@@ -948,8 +973,20 @@ function ownerCustomerDetail(user) {
       dateDetection: item.extracted?.dateDetection || "",
       aiUsed: Boolean(item.extracted?.generic?.aiUsed || item.aiScan?.generic?.aiUsed),
       aiError: item.extracted?.generic?.aiError || item.extracted?.aiError || item.aiScan?.aiError || "",
+      uploadedBy: item.uploadedBy || uploadActor(user),
       uploadedAt: item.uploadedAt || ""
     })),
+    receiptUploads: (user.records?.expenses || [])
+      .filter((item) => item.sourceReceipt)
+      .map((item) => ({
+        id: item.sourceReceipt.id,
+        fileName: item.sourceReceipt.fileName,
+        scanStatus: item.sourceReceipt.scanStatus || "Stored",
+        amount: item.amount || 0,
+        category: item.category || "General",
+        uploadedBy: item.sourceReceipt.uploadedBy || uploadActor(user),
+        uploadedAt: item.sourceReceipt.uploadedAt || ""
+      })),
     complianceAlerts: complianceAlerts(user),
     supportIssues: user.supportIssues || [],
     scannerErrors: [
@@ -1469,6 +1506,7 @@ async function handleApi(req, res, pathname) {
       expirationDate: scan.extracted.expirationDate,
       extracted: scan.extracted,
       aiScan: scan.extracted,
+      uploadedBy: uploadActor(user),
       uploadedAt: new Date().toISOString()
     };
     user.complianceDocuments.push(complianceDocument);
@@ -1592,6 +1630,7 @@ async function handleApi(req, res, pathname) {
       scanStatus: scan.scanStatus,
       extracted: scan.extracted,
       aiScan: scan.extracted.generic,
+      uploadedBy: uploadActor(user),
       uploadedAt: new Date().toISOString()
     };
     user.documents.push(document);
@@ -1633,6 +1672,7 @@ async function handleApi(req, res, pathname) {
         size: buffer.length,
         scanStatus: scan.scanStatus,
         extracted: scan.extracted,
+        uploadedBy: uploadActor(user),
         uploadedAt: new Date().toISOString()
       }
     };

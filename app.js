@@ -398,7 +398,7 @@ function renderExpenses() {
       </div>
       <table class="data-table document-table">
         <thead>
-          <tr><th>Date</th><th>Description</th><th>Amount</th><th>Status</th><th></th></tr>
+          <tr><th>Date</th><th>Description</th><th>Uploaded By</th><th>Amount</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
           ${rows.map((item) => `
@@ -408,6 +408,7 @@ function renderExpenses() {
                 <strong>${item.description}</strong><br>
                 <span class="muted">${item.category}${item.sourceReceipt ? ` · Receipt scanned · ${item.sourceReceipt.fileName}` : ""}</span>
               </td>
+              <td><strong>${uploadedByLabel(item.sourceReceipt?.uploadedBy)}</strong></td>
               <td>${money(item.amount)}</td>
               <td><span class="status ${item.status}">${item.status}</span></td>
               <td>
@@ -418,7 +419,7 @@ function renderExpenses() {
                 </div>
               </td>
             </tr>
-          `).join("") || `<tr><td colspan="5">No expenses match this view.</td></tr>`}
+          `).join("") || `<tr><td colspan="6">No expenses match this view.</td></tr>`}
         </tbody>
       </table>
     </section>
@@ -533,6 +534,11 @@ function fileSize(bytes) {
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
+function uploadedByLabel(uploadedBy) {
+  if (!uploadedBy) return "Admin";
+  return uploadedBy.roleLabel || uploadedBy.name || uploadedBy.email || "Admin";
+}
+
 function escapeAttribute(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -610,7 +616,7 @@ function renderDocuments() {
       <div class="panel-header"><h2>Document Library</h2><span class="muted">${documents.length} files</span></div>
       <table class="data-table document-table">
         <thead>
-          <tr><th>Type</th><th>File</th><th>Amount</th><th>Scan</th><th>Uploaded</th><th></th></tr>
+          <tr><th>Type</th><th>File</th><th>Amount</th><th>Scan</th><th>Uploaded By</th><th>Uploaded</th><th></th></tr>
         </thead>
         <tbody>
           ${documents.map((item) => `
@@ -625,6 +631,7 @@ function renderDocuments() {
               </td>
               <td><strong>${item.type === "bol" ? "Not required" : item.extracted?.amount ? money(item.extracted.amount) : "Needs review"}</strong></td>
               <td><strong>${item.scanStatus || "Stored"}</strong><br><span class="muted">${extractedSummary(item)}</span>${item.createdTripId ? `<br><button class="chip-button" type="button" data-open-trip="${item.createdTripId}">View trip</button>` : ""}</td>
+              <td><strong>${uploadedByLabel(item.uploadedBy)}</strong></td>
               <td>${formatDate(item.uploadedAt.slice(0, 10))}</td>
               <td>
                 <div class="table-actions">
@@ -633,7 +640,7 @@ function renderDocuments() {
                 </div>
               </td>
             </tr>
-          `).join("") || `<tr><td colspan="6">No Rate Cons or BOLs uploaded yet.</td></tr>`}
+          `).join("") || `<tr><td colspan="7">No Rate Cons or BOLs uploaded yet.</td></tr>`}
         </tbody>
       </table>
     </section>
@@ -723,7 +730,7 @@ function renderCompliance() {
           </div>
         </div>
         <table class="data-table document-table compliance-table">
-          <thead><tr><th></th><th>Type</th><th>File</th><th>Renewal</th><th></th></tr></thead>
+          <thead><tr><th></th><th>Type</th><th>File</th><th>Renewal</th><th>Uploaded By</th><th></th></tr></thead>
           <tbody>
             ${documents.map((item) => `
               <tr>
@@ -739,6 +746,7 @@ function renderCompliance() {
                     </form>
                   `}
                 </td>
+                <td><strong>${uploadedByLabel(item.uploadedBy)}</strong></td>
                 <td>
                   <div class="table-actions">
                     <a class="ghost-button" href="/api/compliance/${item.id}">Download</a>

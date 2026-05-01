@@ -52,6 +52,11 @@ function moneyStatus(customer) {
   return "First month not marked paid";
 }
 
+function uploadedByLabel(uploadedBy) {
+  if (!uploadedBy) return "Admin";
+  return uploadedBy.roleLabel || uploadedBy.name || uploadedBy.email || "Admin";
+}
+
 function showOwnerApp() {
   ownerAuth.classList.add("hidden");
   ownerShell.classList.remove("hidden");
@@ -114,9 +119,20 @@ function renderCustomerDetail() {
       <td><strong>${escapeHtml(document.fileName)}</strong><br><span class="muted">${escapeHtml(document.type || "Document")}</span></td>
       <td>${escapeHtml(document.scanStatus || "Stored")}</td>
       <td>${document.expirationDate ? formatDate(document.expirationDate) : document.amount ? `$${Number(document.amount).toLocaleString()}` : "Not required"}</td>
+      <td>${escapeHtml(uploadedByLabel(document.uploadedBy))}</td>
       <td>${document.aiError ? `<span class="status Overdue">Review</span>` : `<span class="status Paid">OK</span>`}</td>
     </tr>
-  `).join("") || `<tr><td colspan="4">No uploaded documents yet.</td></tr>`;
+  `).join("") || `<tr><td colspan="5">No uploaded documents yet.</td></tr>`;
+
+  const receiptRows = (customer.receiptUploads || []).map((receipt) => `
+    <tr>
+      <td><strong>${escapeHtml(receipt.fileName)}</strong><br><span class="muted">${escapeHtml(receipt.category)}</span></td>
+      <td>${escapeHtml(receipt.scanStatus || "Stored")}</td>
+      <td>$${Number(receipt.amount || 0).toLocaleString()}</td>
+      <td>${escapeHtml(uploadedByLabel(receipt.uploadedBy))}</td>
+      <td>${formatDate(receipt.uploadedAt)}</td>
+    </tr>
+  `).join("") || `<tr><td colspan="5">No receipt uploads yet.</td></tr>`;
 
   const scannerRows = customer.scannerErrors.map((item) => `
     <tr>
@@ -182,7 +198,12 @@ function renderCustomerDetail() {
 
     <section class="panel">
       <div class="panel-header"><h2>Uploaded Documents</h2><span class="muted">Document scan results</span></div>
-      <table class="data-table owner-table"><thead><tr><th>File</th><th>Scan</th><th>Result</th><th>Review</th></tr></thead><tbody>${documentRows}</tbody></table>
+      <table class="data-table owner-table"><thead><tr><th>File</th><th>Scan</th><th>Result</th><th>Uploaded By</th><th>Review</th></tr></thead><tbody>${documentRows}</tbody></table>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header"><h2>Receipt Uploads</h2><span class="muted">Driver and admin expense scans</span></div>
+      <table class="data-table owner-table"><thead><tr><th>File</th><th>Scan</th><th>Amount</th><th>Uploaded By</th><th>Uploaded</th></tr></thead><tbody>${receiptRows}</tbody></table>
     </section>
 
     <section class="panel">
