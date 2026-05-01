@@ -5,7 +5,8 @@ const navItems = [
   { id: "expenses", label: "Expenses", icon: "receipt", eyebrow: "Deductions and costs" },
   { id: "rateCons", label: "Rate Cons/BOLs", icon: "upload", eyebrow: "Load documents" },
   { id: "reports", label: "Reports", icon: "bar-chart", eyebrow: "Profit and tax summary" },
-  { id: "userManagement", label: "User Management", icon: "users", eyebrow: "Subscription and access" }
+  { id: "userManagement", label: "User Management", icon: "users", eyebrow: "Subscription and access" },
+  { id: "account", label: "Account", icon: "credit-card", eyebrow: "Admin payment settings", adminOnly: true }
 ];
 
 const icons = {
@@ -20,6 +21,7 @@ const icons = {
   share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.8 6.8-4.6M8.6 13.2l6.8 4.6"/></svg>',
   download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>',
   upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5M12 3v12"/></svg>',
+  "credit-card": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20M6 15h2M11 15h4"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5v14"/></svg>',
   save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>',
@@ -206,8 +208,16 @@ function renderIcons(root = document) {
   });
 }
 
+function isAdmin() {
+  return (state.customer?.role || "admin") === "admin";
+}
+
+function visibleNavItems() {
+  return navItems.filter((item) => !item.adminOnly || isAdmin());
+}
+
 function renderNav() {
-  navList.innerHTML = navItems.map((item) => `
+  navList.innerHTML = visibleNavItems().map((item) => `
     <button class="nav-button ${state.view === item.id ? "active" : ""}" type="button" data-view="${item.id}">
       <span data-icon="${item.icon}"></span>
       ${item.label}
@@ -217,8 +227,11 @@ function renderNav() {
 }
 
 function setView(view) {
-  state.view = view;
-  const meta = navItems.find((item) => item.id === view);
+  const availableItems = visibleNavItems();
+  const nextView = availableItems.some((item) => item.id === view) ? view : "dashboard";
+  if (view === "account" && !isAdmin()) return setView("dashboard");
+  state.view = nextView;
+  const meta = availableItems.find((item) => item.id === nextView) || availableItems[0];
   sectionTitle.textContent = meta.label;
   sectionEyebrow.textContent = meta.eyebrow;
   renderNav();
@@ -880,6 +893,75 @@ function renderAccount() {
   `;
 }
 
+function renderPaymentAccount() {
+  const customer = state.customer;
+  const plan = customer.subscription || subscriptionPlans[customer.subscriptionTier] || subscriptionPlans.silver;
+  const payment = customer.paymentInfo || {};
+  const last4 = payment.last4 ? `ending in ${payment.last4}` : "No payment method saved";
+  const exp = payment.expMonth && payment.expYear ? `${String(payment.expMonth).padStart(2, "0")}/${payment.expYear}` : "Not added";
+  content.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Plan", plan.name, planPrice(plan), "credit-card")}
+      ${metric("Payment", last4, payment.cardBrand || "Add a card for billing", "credit-card")}
+      ${metric("Expires", exp, "Admin-managed payment method", "receipt")}
+      ${metric("Billing Email", payment.billingEmail || customer.email, "Receipts and account notices", "file-text")}
+    </div>
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Payment Information</h2>
+        <span class="muted">Only account admins can add or update billing details</span>
+      </div>
+      <div class="panel-body">
+        <form class="billing-form" id="paymentForm">
+          <label>
+            Billing name
+            <input name="billingName" type="text" required value="${payment.billingName || customer.businessName || ""}" placeholder="Name on card" />
+          </label>
+          <label>
+            Billing email
+            <input name="billingEmail" type="email" required value="${payment.billingEmail || customer.email || ""}" placeholder="billing@example.com" />
+          </label>
+          <label>
+            Card number
+            <input name="cardNumber" type="text" inputmode="numeric" autocomplete="cc-number" placeholder="${payment.last4 ? `Card ending ${payment.last4}` : "Enter card number"}" />
+          </label>
+          <label>
+            Card type
+            <select name="cardBrand">
+              ${["Visa", "Mastercard", "American Express", "Discover", "Other"].map((brand) => `<option value="${brand}" ${payment.cardBrand === brand ? "selected" : ""}>${brand}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            Expiration month
+            <select name="expMonth" required>
+              ${Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0")).map((month) => `<option value="${month}" ${String(payment.expMonth || "").padStart(2, "0") === month ? "selected" : ""}>${month}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            Expiration year
+            <select name="expYear" required>
+              ${Array.from({ length: 12 }, (_, index) => String(new Date().getFullYear() + index)).map((year) => `<option value="${year}" ${String(payment.expYear || "") === year ? "selected" : ""}>${year}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            Billing ZIP
+            <input name="billingZip" type="text" required value="${payment.billingZip || ""}" placeholder="ZIP code" />
+          </label>
+          <label>
+            CVV
+            <input name="cvv" type="password" inputmode="numeric" autocomplete="cc-csc" placeholder="Not saved" />
+          </label>
+          <div class="billing-actions">
+            <button class="primary-button" type="submit">Update Payment</button>
+            <span class="muted">For security, only the card type and last 4 digits are saved.</span>
+          </div>
+        </form>
+        ${state.accountMessage ? `<p class="form-message">${state.accountMessage}</p>` : ""}
+      </div>
+    </section>
+  `;
+}
+
 function renderContent() {
   if (state.view === "dashboard") renderDashboard();
   if (state.view === "trips") renderTableView("trips", "Trip Ledger", [
@@ -910,6 +992,7 @@ function renderContent() {
   if (state.view === "affiliate") renderAffiliate();
   if (state.view === "reports") renderReports();
   if (state.view === "userManagement") renderAccount();
+  if (state.view === "account") renderPaymentAccount();
   renderIcons(content);
 }
 
@@ -1010,6 +1093,31 @@ async function markFirstMonthPaid() {
     const payload = await api("/api/billing/first-month-paid", { method: "POST" });
     state.customer = payload.customer;
     state.accountMessage = "First month marked paid. Any one-time referral commission is now earned.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
+async function updatePaymentInfo(form) {
+  try {
+    state.accountMessage = "";
+    const formData = new FormData(form);
+    const payload = await api("/api/account/payment", {
+      method: "PATCH",
+      body: JSON.stringify({
+        billingName: formData.get("billingName"),
+        billingEmail: formData.get("billingEmail"),
+        cardNumber: formData.get("cardNumber"),
+        cardBrand: formData.get("cardBrand"),
+        expMonth: formData.get("expMonth"),
+        expYear: formData.get("expYear"),
+        billingZip: formData.get("billingZip")
+      })
+    });
+    state.customer = payload.customer;
+    state.accountMessage = "Payment information updated.";
     renderContent();
   } catch (error) {
     state.accountMessage = error.message;
@@ -1318,6 +1426,10 @@ document.addEventListener("submit", (event) => {
   if (event.target.id === "driverForm") {
     event.preventDefault();
     inviteDriver(event.target);
+  }
+  if (event.target.id === "paymentForm") {
+    event.preventDefault();
+    updatePaymentInfo(event.target);
   }
   if (event.target.id === "documentForm") {
     event.preventDefault();
