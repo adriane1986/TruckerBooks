@@ -488,6 +488,24 @@ button {
   vertical-align: middle;
 }
 
+.document-table th,
+.document-table td {
+  padding: 8px 10px;
+}
+
+.document-table .muted {
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.document-table strong {
+  line-height: 1.25;
+}
+
+.document-table .table-actions {
+  gap: 6px;
+}
+
 .data-table th {
   color: var(--muted);
   font-size: 0.78rem;

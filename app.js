@@ -291,7 +291,7 @@ function renderTableView(collection, title, columns) {
           </select>
         </div>
       </div>
-      <table class="data-table">
+      <table class="data-table document-table">
         <thead>
           <tr>${columns.map((column) => `<th>${column.label}</th>`).join("")}<th></th></tr>
         </thead>
@@ -522,7 +522,7 @@ function renderCompliance() {
       </section>
       <section class="panel">
         <div class="panel-header"><h2>Compliance Library</h2><span class="muted">${documents.length} files</span></div>
-        <table class="data-table">
+        <table class="data-table document-table">
           <thead><tr><th>Type</th><th>File</th><th>Expiration</th><th>Scan</th><th></th></tr></thead>
           <tbody>
             ${documents.map((item) => `

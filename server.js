@@ -463,10 +463,27 @@ function parseAiJson(text) {
   return JSON.parse(cleaned);
 }
 
+function buildOpenAiFileInput(buffer, mimeType, filename) {
+  const normalizedMimeType = mimeType || "application/octet-stream";
+  const base64File = buffer.toString("base64");
+  if (normalizedMimeType.startsWith("image/")) {
+    return {
+      type: "input_image",
+      image_url: `data:${normalizedMimeType};base64,${base64File}`
+    };
+  }
+
+  return {
+    type: "input_file",
+    filename,
+    file_data: base64File
+  };
+}
+
 async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documentContext = "") {
   const openAiKey = getOpenAiKey();
   if (!openAiKey || !openAiKey.startsWith("sk-")) return null;
-  const fileData = `data:${mimeType || "application/octet-stream"};base64,${buffer.toString("base64")}`;
+  const fileInput = buildOpenAiFileInput(buffer, mimeType, mimeType?.includes("pdf") ? "uploaded-document.pdf" : "uploaded-document");
   const prompt = [
     "You are the AI document scanner for TruckerBooks.",
     "Extract structured trucking document data from the uploaded file.",
@@ -478,6 +495,7 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
     "Dates must be ISO YYYY-MM-DD. Amount must be a number.",
     "For compliance documents, expirationDate should be the renewal/expiration date.",
     "For Insurance, DOT Physical, UCR, or 2290 documents, prioritize labels like Expiration Date, Expires, Valid Until, Policy Period end date, Coverage End Date, Medical Card Expires, UCR year end, and Form 2290 tax period ending date.",
+    "For ACORD insurance certificates, read the insurance table columns labeled EFF and EXP. Use the EXP date, not the EFF date.",
     "If no explicit expiration label exists but there is a date range, use the later/end date as expirationDate.",
     "If multiple dates appear, choose the most likely future renewal/expiration/end date, not the issue date.",
     "For Rate Cons/BOLs, amount should be carrier pay, total carrier pay, linehaul plus fuel, or agreed rate.",
@@ -533,11 +551,7 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
         {
           role: "user",
           content: [
-            {
-              type: "input_file",
-              filename: mimeType?.includes("pdf") ? "uploaded-document.pdf" : "uploaded-document",
-              file_data: fileData
-            },
+            fileInput,
             {
               type: "input_text",
               text: prompt
@@ -572,11 +586,13 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
 async function runOpenAiExpirationOnlyScanner(buffer, mimeType, extractedText, complianceType = "") {
   const openAiKey = getOpenAiKey();
   if (!openAiKey || !openAiKey.startsWith("sk-")) return "";
-  const fileData = `data:${mimeType || "application/octet-stream"};base64,${buffer.toString("base64")}`;
+  const fileInput = buildOpenAiFileInput(buffer, mimeType, mimeType?.includes("pdf") ? "compliance-document.pdf" : "compliance-document");
   const typeName = complianceTypeName(complianceType);
   const prompt = [
     `This is a ${typeName} compliance document for a trucking business.`,
     "Find the document expiration, renewal, valid-through, coverage end, policy end, DOT physical expiration, UCR year end, or 2290 tax period ending date.",
+    "For ACORD certificates of liability insurance, read the table columns labeled EFF and EXP. Use the EXP date as the expiration date.",
+    "Insurance certificates often show dates in compact MM/DD/YYYY boxes near policy numbers. Use the later date in the EFF/EXP pair.",
     "Return JSON only with this exact shape:",
     "{\"expirationDate\":\"YYYY-MM-DD or null\",\"reason\":\"short explanation\",\"allDates\":[\"YYYY-MM-DD\"]}",
     "If there is a date range, use the later/end date.",
@@ -596,11 +612,7 @@ async function runOpenAiExpirationOnlyScanner(buffer, mimeType, extractedText, c
         {
           role: "user",
           content: [
-            {
-              type: "input_file",
-              filename: mimeType?.includes("pdf") ? "compliance-document.pdf" : "compliance-document",
-              file_data: fileData
-            },
+            fileInput,
             {
               type: "input_text",
               text: prompt
