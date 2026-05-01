@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TruckerBooks Owner</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <section class="auth-screen" id="ownerAuth">
+      <div class="auth-card">
+        <img class="auth-logo" src="./assets/truckerbooks-logo.png" alt="TruckerBooks logo" />
+        <h1>Owner Admin</h1>
+        <p class="auth-copy">Private support access for customer accounts, scanner issues, invites, and billing status.</p>
+        <form class="auth-form" id="ownerLoginForm">
+          <label>
+            Owner email
+            <input name="email" type="email" required placeholder="owner@example.com" />
+          </label>
+          <label>
+            Password
+            <input name="password" type="password" required placeholder="Owner password" />
+          </label>
+          <button class="primary-button auth-submit" type="submit">Sign In</button>
+          <p class="auth-error" id="ownerAuthError"></p>
+        </form>
+      </div>
+    </section>
+
+    <main class="owner-shell hidden" id="ownerShell">
+      <header class="owner-topbar">
+        <div>
+          <p class="eyebrow">TruckerBooks support</p>
+          <h1>Owner Dashboard</h1>
+        </div>
+        <button class="ghost-button" id="ownerLogoutBtn" type="button">Sign Out</button>
+      </header>
+
+      <section class="owner-grid">
+        <aside class="panel owner-customer-panel">
+          <div class="panel-header">
+            <h2>Customers</h2>
+            <span class="muted" id="customerCount">0 accounts</span>
+          </div>
+          <div class="panel-body">
+            <input class="owner-search" id="customerSearch" type="search" placeholder="Search customer or email" />
+            <div class="owner-list" id="customerList"></div>
+          </div>
+        </aside>
+
+        <section class="owner-detail" id="ownerDetail">
+          <section class="panel">
+            <div class="panel-body">
+              <p class="muted">Select a customer to view account status, payment status, uploads, scanner issues, and access invites.</p>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <script src="./owner.js"></script>
+  </body>
+</html>

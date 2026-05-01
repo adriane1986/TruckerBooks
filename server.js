@@ -10,6 +10,8 @@ const uploadDir = path.join(dataDir, "uploads");
 const dbPath = path.join(dataDir, "truckerbooks-db.json");
 const openaiModel = process.env.OPENAI_MODEL || "gpt-5-mini";
 const openaiVisionModel = process.env.OPENAI_VISION_MODEL || "gpt-4o-mini";
+const ownerEmail = normalizeEmail(process.env.OWNER_EMAIL || "owner@truckerbooks.local");
+const ownerPassword = process.env.OWNER_PASSWORD || "";
 
 const sampleRecords = {
   trips: [
@@ -77,6 +79,7 @@ function readDb() {
   const db = JSON.parse(fs.readFileSync(dbPath, "utf8"));
   db.users = (db.users || []).map(normalizeUser);
   db.sessions = db.sessions || {};
+  db.ownerSessions = db.ownerSessions || {};
   return db;
 }
 
@@ -155,6 +158,32 @@ function getCurrentUser(req, db) {
   const session = token ? db.sessions[token] : null;
   const user = session ? db.users.find((item) => item.id === session.userId) : null;
   return { token, user };
+}
+
+function getOwnerSession(req, db) {
+  const token = parseCookies(req).tb_owner_session;
+  const session = token ? db.ownerSessions[token] : null;
+  return { token, owner: session?.email === ownerEmail ? { email: ownerEmail } : null };
+}
+
+function setOwnerSession(res, db) {
+  const token = crypto.randomBytes(32).toString("hex");
+  db.ownerSessions[token] = { email: ownerEmail, createdAt: new Date().toISOString() };
+  res.setHeader("Set-Cookie", `tb_owner_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800`);
+}
+
+function clearOwnerSession(res, db, token) {
+  if (token) delete db.ownerSessions[token];
+  res.setHeader("Set-Cookie", "tb_owner_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
+}
+
+function requireOwner(req, res, db) {
+  const session = getOwnerSession(req, db);
+  if (!session.owner) {
+    sendError(res, 401, "Owner sign in required.");
+    return null;
+  }
+  return session;
 }
 
 function sendJson(res, status, payload) {
@@ -865,6 +894,79 @@ function affiliateStats(user) {
   };
 }
 
+function ownerCustomerSummary(user) {
+  const plan = currentPlan(user);
+  const documents = [...(user.documents || []), ...(user.complianceDocuments || [])];
+  const scannerErrors = documents.filter((item) => item.extracted?.aiError || item.aiScan?.aiError || /fallback|failed|unavailable|not detected/i.test(`${item.scanStatus || ""} ${item.extracted?.dateDetection || ""}`));
+  return {
+    id: user.id,
+    businessName: user.businessName,
+    email: user.email,
+    status: user.accountStatus || "Active",
+    subscriptionTier: user.subscriptionTier,
+    subscriptionName: plan.name,
+    trucksUsed: (user.trucks || []).length,
+    trucksAllowed: plan.maxTrucks,
+    driverAccessCount: (user.drivers || []).length,
+    documentCount: documents.length,
+    scannerIssueCount: scannerErrors.length,
+    firstMonthPaid: Boolean(user.firstMonthPaid),
+    paymentMethod: user.paymentInfo?.last4 ? `${user.paymentInfo.cardBrand || "Card"} ending ${user.paymentInfo.last4}` : "No payment saved",
+    createdAt: user.createdAt || "",
+    updatedAt: user.updatedAt || ""
+  };
+}
+
+function ownerCustomerDetail(user) {
+  return {
+    ...ownerCustomerSummary(user),
+    businessName: user.businessName,
+    email: user.email,
+    subscriptionTier: user.subscriptionTier,
+    paymentInfo: user.paymentInfo || {},
+    trucks: user.trucks || [],
+    drivers: user.drivers || [],
+    documents: (user.documents || []).map((item) => ({
+      id: item.id,
+      type: item.type,
+      fileName: item.fileName,
+      scanStatus: item.scanStatus || "Stored",
+      amount: item.extracted?.amount || 0,
+      aiUsed: Boolean(item.extracted?.aiUsed),
+      aiError: item.extracted?.aiError || item.aiScan?.aiError || "",
+      uploadedAt: item.uploadedAt || ""
+    })),
+    complianceDocuments: (user.complianceDocuments || []).map((item) => ({
+      id: item.id,
+      type: item.type,
+      fileName: item.fileName,
+      scanStatus: item.scanStatus || "Stored",
+      expirationDate: item.expirationDate || item.extracted?.expirationDate || "",
+      dateDetection: item.extracted?.dateDetection || "",
+      aiUsed: Boolean(item.extracted?.generic?.aiUsed || item.aiScan?.generic?.aiUsed),
+      aiError: item.extracted?.generic?.aiError || item.extracted?.aiError || item.aiScan?.aiError || "",
+      uploadedAt: item.uploadedAt || ""
+    })),
+    complianceAlerts: complianceAlerts(user),
+    scannerErrors: [
+      ...(user.documents || []).filter((item) => item.extracted?.aiError || /fallback|failed|unavailable/i.test(item.scanStatus || "")).map((item) => ({
+        type: "Rate Con/BOL",
+        fileName: item.fileName,
+        scanStatus: item.scanStatus || "Stored",
+        message: item.extracted?.aiError || "Review scan status",
+        uploadedAt: item.uploadedAt || ""
+      })),
+      ...(user.complianceDocuments || []).filter((item) => item.extracted?.generic?.aiError || item.extracted?.aiError || /fallback|failed|unavailable|not detected/i.test(`${item.scanStatus || ""} ${item.extracted?.dateDetection || ""}`)).map((item) => ({
+        type: "Compliance",
+        fileName: item.fileName,
+        scanStatus: item.scanStatus || "Stored",
+        message: item.extracted?.generic?.aiError || item.extracted?.aiError || item.extracted?.dateDetection || "Review scan status",
+        uploadedAt: item.uploadedAt || ""
+      }))
+    ]
+  };
+}
+
 function daysUntil(date) {
   const target = new Date(`${date}T12:00:00`);
   if (Number.isNaN(target.getTime())) return null;
@@ -1014,6 +1116,100 @@ async function handleApi(req, res, pathname) {
     clearSession(res, db, token);
     writeDb(db);
     return sendJson(res, 200, { ok: true });
+  }
+
+  if (req.method === "POST" && pathname === "/api/owner/login") {
+    const body = await readBody(req);
+    const email = normalizeEmail(body.email);
+    if (!ownerPassword) return sendError(res, 503, "Owner login is not configured yet. Add OWNER_EMAIL and OWNER_PASSWORD in Railway.");
+    if (email !== ownerEmail || String(body.password || "") !== ownerPassword) {
+      return sendError(res, 401, "Owner email or password did not match.");
+    }
+    setOwnerSession(res, db);
+    writeDb(db);
+    return sendJson(res, 200, { owner: { email: ownerEmail } });
+  }
+
+  if (req.method === "POST" && pathname === "/api/owner/logout") {
+    const ownerSession = getOwnerSession(req, db);
+    clearOwnerSession(res, db, ownerSession.token);
+    writeDb(db);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (req.method === "GET" && pathname === "/api/owner/session") {
+    const ownerSession = getOwnerSession(req, db);
+    if (!ownerSession.owner) return sendError(res, 401, "Owner sign in required.");
+    return sendJson(res, 200, { owner: ownerSession.owner });
+  }
+
+  if (req.method === "GET" && pathname === "/api/owner/customers") {
+    if (!requireOwner(req, res, db)) return;
+    const query = String(new URL(req.url, `http://${req.headers.host}`).searchParams.get("q") || "").toLowerCase();
+    const customers = db.users
+      .filter((item) => !query || `${item.businessName} ${item.email}`.toLowerCase().includes(query))
+      .map(ownerCustomerSummary)
+      .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    return sendJson(res, 200, { customers });
+  }
+
+  if (req.method === "GET" && pathname.startsWith("/api/owner/customers/")) {
+    if (!requireOwner(req, res, db)) return;
+    const id = pathname.split("/")[4];
+    const customer = db.users.find((item) => item.id === id);
+    if (!customer) return sendError(res, 404, "Customer not found.");
+    return sendJson(res, 200, { customer: ownerCustomerDetail(customer) });
+  }
+
+  if (req.method === "PATCH" && pathname.startsWith("/api/owner/customers/")) {
+    if (!requireOwner(req, res, db)) return;
+    const id = pathname.split("/")[4];
+    const customer = db.users.find((item) => item.id === id);
+    if (!customer) return sendError(res, 404, "Customer not found.");
+    const body = await readBody(req);
+    const businessName = String(body.businessName || "").trim();
+    const email = normalizeEmail(body.email);
+    const tier = subscriptionPlans[body.subscriptionTier] ? body.subscriptionTier : customer.subscriptionTier;
+    const accountStatus = ["Active", "Needs Support", "Paused"].includes(body.accountStatus) ? body.accountStatus : "Active";
+    if (!businessName) return sendError(res, 400, "Enter the business name.");
+    if (!email) return sendError(res, 400, "Enter the customer email.");
+    if (db.users.some((item) => item.id !== customer.id && item.email === email)) return sendError(res, 409, "Another customer already uses that email.");
+    customer.businessName = businessName;
+    customer.email = email;
+    customer.subscriptionTier = tier;
+    customer.accountStatus = accountStatus;
+    customer.firstMonthPaid = Boolean(body.firstMonthPaid);
+    customer.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 200, { customer: ownerCustomerDetail(customer), customers: db.users.map(ownerCustomerSummary) });
+  }
+
+  if (req.method === "POST" && pathname.match(/^\/api\/owner\/customers\/[^/]+\/reset-password$/)) {
+    if (!requireOwner(req, res, db)) return;
+    const id = pathname.split("/")[4];
+    const customer = db.users.find((item) => item.id === id);
+    if (!customer) return sendError(res, 404, "Customer not found.");
+    const temporaryPassword = crypto.randomBytes(5).toString("hex");
+    customer.passwordHash = hashPassword(temporaryPassword);
+    customer.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 200, { temporaryPassword, customer: ownerCustomerDetail(customer) });
+  }
+
+  if (req.method === "POST" && pathname.match(/^\/api\/owner\/customers\/[^/]+\/drivers\/[^/]+\/resend$/)) {
+    if (!requireOwner(req, res, db)) return;
+    const [, , , , customerId, , driverId] = pathname.split("/");
+    const customer = db.users.find((item) => item.id === customerId);
+    if (!customer) return sendError(res, 404, "Customer not found.");
+    const driver = customer.drivers.find((item) => item.id === driverId);
+    if (!driver) return sendError(res, 404, "Account access invite not found.");
+    driver.inviteToken = crypto.randomBytes(24).toString("hex");
+    driver.inviteLink = `/account-access/${driver.inviteToken}`;
+    driver.status = "Access resent";
+    driver.resentAt = new Date().toISOString();
+    customer.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 200, { inviteLink: driver.inviteLink, customer: ownerCustomerDetail(customer) });
   }
 
   if (!user) return sendError(res, 401, "Please sign in first.");
@@ -1473,7 +1669,7 @@ async function handleApi(req, res, pathname) {
 }
 
 function serveStatic(req, res, pathname) {
-  const requested = pathname === "/" ? "/index.html" : pathname;
+  const requested = pathname === "/" ? "/index.html" : pathname === "/owner" ? "/owner.html" : pathname;
   const filePath = path.normalize(path.join(rootDir, requested));
   if (!filePath.startsWith(rootDir)) {
     res.writeHead(403);
