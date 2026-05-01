@@ -291,7 +291,7 @@ function renderTableView(collection, title, columns) {
           </select>
         </div>
       </div>
-      <table class="data-table document-table">
+      <table class="data-table">
         <thead>
           <tr>${columns.map((column) => `<th>${column.label}</th>`).join("")}<th></th></tr>
         </thead>
@@ -370,6 +370,14 @@ function fileSize(bytes) {
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
+function escapeAttribute(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function planPrice(plan) {
   return `$${plan.monthlyPrice}/month or $${number(plan.annualPrice)}/year`;
 }
@@ -433,7 +441,7 @@ function renderDocuments() {
     </section>
     <section class="panel">
       <div class="panel-header"><h2>Document Library</h2><span class="muted">${documents.length} files</span></div>
-      <table class="data-table">
+      <table class="data-table document-table">
         <thead>
           <tr><th>Type</th><th>File</th><th>Amount</th><th>Scan</th><th>Uploaded</th><th></th></tr>
         </thead>
@@ -441,7 +449,13 @@ function renderDocuments() {
           ${documents.map((item) => `
             <tr>
               <td><span class="status ${item.type === "bol" ? "Scheduled" : "Paid"}">${documentLabel(item.type)}</span></td>
-              <td><strong>${item.fileName}</strong><br><span class="muted">${fileSize(item.size)} · ${item.mimeType}</span></td>
+              <td>
+                <form class="rename-file-form" data-rename-document="${item.id}">
+                  <input name="fileName" value="${escapeAttribute(item.fileName)}" maxlength="120" required aria-label="File name" />
+                  <button class="chip-button" type="submit">Save</button>
+                </form>
+                <span class="muted">${fileSize(item.size)} · ${item.mimeType}</span>
+              </td>
               <td><strong>${item.extracted?.amount ? money(item.extracted.amount) : "Needs review"}</strong></td>
               <td><strong>${item.scanStatus || "Stored"}</strong><br><span class="muted">${extractedSummary(item)}</span>${item.createdTripId ? `<br><button class="chip-button" type="button" data-open-trip="${item.createdTripId}">View trip</button>` : ""}</td>
               <td>${formatDate(item.uploadedAt.slice(0, 10))}</td>
@@ -970,6 +984,22 @@ async function removeDocument(id) {
   renderContent();
 }
 
+async function renameDocument(form) {
+  try {
+    const payload = await api(`/api/documents/${form.dataset.renameDocument}`, {
+      method: "PATCH",
+      body: JSON.stringify({ fileName: new FormData(form).get("fileName") })
+    });
+    state.documents = payload.documents;
+    if (state.customer) state.customer.documents = payload.documents;
+    state.accountMessage = "File name updated.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
 async function removeComplianceDocument(id) {
   const payload = await api(`/api/compliance/${id}`, { method: "DELETE" });
   state.complianceDocuments = payload.complianceDocuments;
@@ -1066,6 +1096,10 @@ document.addEventListener("submit", (event) => {
   if (event.target.matches("[data-expiration-form]")) {
     event.preventDefault();
     saveComplianceExpiration(event.target);
+  }
+  if (event.target.matches("[data-rename-document]")) {
+    event.preventDefault();
+    renameDocument(event.target);
   }
 });
 

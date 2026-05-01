@@ -677,6 +677,23 @@ button {
   min-width: 0;
 }
 
+.rename-file-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.rename-file-form input {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 8px;
+  min-width: 0;
+  font-weight: 800;
+}
+
 .entry-dialog {
   border: 0;
   padding: 0;

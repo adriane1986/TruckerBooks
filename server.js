@@ -1135,6 +1135,20 @@ async function handleApi(req, res, pathname) {
     return fs.createReadStream(filePath).pipe(res);
   }
 
+  if (req.method === "PATCH" && pathname.startsWith("/api/documents/")) {
+    const id = pathname.split("/")[3];
+    const body = await readBody(req);
+    const document = user.documents.find((item) => item.id === id);
+    if (!document) return sendError(res, 404, "Document not found.");
+    const fileName = path.basename(String(body.fileName || "").trim());
+    if (!fileName) return sendError(res, 400, "Enter a file name.");
+    if (fileName.length > 120) return sendError(res, 400, "File name must be 120 characters or less.");
+    document.fileName = fileName;
+    user.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 200, { document, documents: user.documents });
+  }
+
   if (req.method === "DELETE" && pathname.startsWith("/api/documents/")) {
     const id = pathname.split("/")[3];
     const document = user.documents.find((item) => item.id === id);
