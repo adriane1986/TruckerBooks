@@ -12,6 +12,7 @@ const openaiModel = process.env.OPENAI_MODEL || "gpt-5-mini";
 const openaiVisionModel = process.env.OPENAI_VISION_MODEL || "gpt-4o-mini";
 const ownerEmail = normalizeEmail(process.env.OWNER_EMAIL || "owner@truckerbooks.local");
 const ownerPassword = process.env.OWNER_PASSWORD || "";
+const trialDays = 7;
 
 const sampleRecords = {
   trips: [
@@ -108,6 +109,7 @@ function publicUser(user) {
     affiliateCode: user.affiliateCode,
     referredBy: user.referredBy || "",
     firstMonthPaid: Boolean(user.firstMonthPaid),
+    trial: trialSummary(user),
     affiliateStats: affiliateStats(user)
   };
 }
@@ -157,6 +159,25 @@ function verifyPassword(password, stored) {
   if (!salt || !hash) return false;
   const attempted = hashPassword(password, salt).split(":")[1];
   return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(attempted, "hex"));
+}
+
+function addDaysIso(dateValue, days) {
+  const date = new Date(dateValue || Date.now());
+  if (Number.isNaN(date.getTime())) return new Date(Date.now() + days * 86400000).toISOString();
+  date.setDate(date.getDate() + days);
+  return date.toISOString();
+}
+
+function trialSummary(user) {
+  const startedAt = user.trialStartedAt || user.createdAt || new Date().toISOString();
+  const endsAt = user.trialEndsAt || addDaysIso(startedAt, trialDays);
+  const end = new Date(endsAt);
+  const now = new Date();
+  const daysLeft = Number.isNaN(end.getTime()) ? 0 : Math.max(0, Math.ceil((end - now) / 86400000));
+  const paymentAdded = Boolean(user.paymentInfo?.last4);
+  const activePaid = Boolean(user.firstMonthPaid);
+  const status = activePaid ? "Active" : daysLeft > 0 ? "Trial" : "Expired";
+  return { startedAt, endsAt, daysLeft, status, paymentAdded, activePaid };
 }
 
 function parseCookies(req) {
@@ -941,6 +962,9 @@ function normalizeUser(user) {
   user.firstMonthPaid = Boolean(user.firstMonthPaid);
   user.commissions = Array.isArray(user.commissions) ? user.commissions : [];
   user.paymentInfo = user.paymentInfo && typeof user.paymentInfo === "object" ? user.paymentInfo : {};
+  user.trialStartedAt = user.trialStartedAt || user.createdAt || new Date().toISOString();
+  user.trialEndsAt = user.trialEndsAt || addDaysIso(user.trialStartedAt, trialDays);
+  user.trialStatus = trialSummary(user).status;
   user.supportIssues = Array.isArray(user.supportIssues) ? user.supportIssues : [];
   user.role = user.role || "admin";
   return user;
@@ -1023,6 +1047,7 @@ function earnReferralCommission(db, user) {
 
 function ownerCustomerSummary(user) {
   const plan = currentPlan(user);
+  const trial = trialSummary(user);
   const documents = [...(user.documents || []), ...(user.complianceDocuments || [])];
   const scannerErrors = documents.filter((item) => item.extracted?.aiError || item.aiScan?.aiError || /fallback|failed|unavailable|not detected/i.test(`${item.scanStatus || ""} ${item.extracted?.dateDetection || ""}`));
   return {
@@ -1039,6 +1064,7 @@ function ownerCustomerSummary(user) {
     scannerIssueCount: scannerErrors.length,
     supportIssueCount: (user.supportIssues || []).filter((item) => item.status !== "Closed").length,
     firstMonthPaid: Boolean(user.firstMonthPaid),
+    trial,
     paymentMethod: user.paymentInfo?.last4 ? `${user.paymentInfo.cardBrand || "Card"} ending ${user.paymentInfo.last4}` : "No payment saved",
     createdAt: user.createdAt || "",
     updatedAt: user.updatedAt || ""
@@ -1204,6 +1230,7 @@ async function handleApi(req, res, pathname) {
     if (db.users.some((item) => item.email === email)) return sendError(res, 409, "An account already exists for that email.");
 
     const referrer = findReferrer(db, body.referralCode);
+    const createdAt = new Date().toISOString();
     const newUser = {
       id: crypto.randomUUID(),
       businessName: String(body.businessName || "").trim() || "My Trucking Business",
@@ -1219,10 +1246,13 @@ async function handleApi(req, res, pathname) {
       referredBy: referrer ? String(body.referralCode || "").trim() : "",
       referredByType: referrer?.type || "",
       firstMonthPaid: false,
+      trialStartedAt: createdAt,
+      trialEndsAt: addDaysIso(createdAt, trialDays),
+      trialStatus: "Trial",
       commissions: [],
       records: cloneStarterRecords(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt,
+      updatedAt: createdAt
     };
     db.users.push(newUser);
     if (referrer) addReferralCommission(referrer, newUser);
@@ -1468,6 +1498,7 @@ async function handleApi(req, res, pathname) {
   if (req.method === "POST" && pathname === "/api/billing/first-month-paid") {
     if (!requireAdmin(user, res)) return;
     user.firstMonthPaid = true;
+    user.trialStatus = "Active";
     user.updatedAt = new Date().toISOString();
     earnReferralCommission(db, user);
     writeDb(db);

@@ -262,11 +262,13 @@ function renderDashboard() {
   const miles = sum(state.records.trips, "miles");
   const nextAlert = state.complianceAlerts?.[0];
   const dashboardAlerts = state.complianceAlerts || [];
+  const trial = state.customer?.trial;
   content.innerHTML = `
     <div class="metric-grid">
       ${metric("Gross revenue", money(revenue), "Rate Cons counted as revenue", "file-text")}
       ${metric("Net profit", money(netProfit()), "After tracked deductions", "bar-chart")}
       ${metric("Loaded miles", number(miles), `${money(revenue / Math.max(miles, 1))} per mile`, "route")}
+      ${metric("Trial", trialLabel(trial), trialDetail(trial), "credit-card")}
       ${metric("Compliance", state.complianceAlerts?.length || 0, nextAlert ? `${nextAlert.label} due ${formatDate(nextAlert.date)}` : "No urgent renewals", "shield")}
     </div>
     <div class="dashboard-grid">
@@ -551,6 +553,20 @@ function planPrice(plan) {
   return `$${plan.monthlyPrice}/month or $${number(plan.annualPrice)}/year`;
 }
 
+function trialLabel(trial) {
+  if (!trial) return "Trial not started";
+  if (trial.status === "Active") return "Active";
+  if (trial.status === "Expired") return "Trial expired";
+  return `${trial.daysLeft} day${trial.daysLeft === 1 ? "" : "s"} left`;
+}
+
+function trialDetail(trial) {
+  if (!trial) return "7-day trial";
+  if (trial.status === "Active") return "Paid account";
+  if (trial.status === "Expired") return trial.paymentAdded ? "Payment pending" : "Add payment to continue";
+  return `Ends ${formatDate(String(trial.endsAt || "").slice(0, 10))}`;
+}
+
 function extractedSummary(item) {
   const data = item.extracted || {};
   const ai = item.aiScan || data.generic || {};
@@ -809,9 +825,11 @@ function renderAccount() {
   const drivers = customer.drivers || [];
   const driverCount = drivers.filter((driver) => (driver.role || "driver") === "driver").length;
   const staffCount = drivers.length - driverCount;
+  const trial = customer.trial;
   content.innerHTML = `
     <div class="metric-grid">
       ${metric("Subscription", plan.name, planPrice(plan), "users")}
+      ${metric("Trial", trialLabel(trial), trialDetail(trial), "credit-card")}
       ${metric("Truck slots", `${trucks.length}/${plan.maxTrucks}`, `${Math.max(plan.maxTrucks - trucks.length, 0)} slots available`, "route")}
       ${metric("Driver access", `${driverCount}/${plan.maxTrucks}`, "Package driver seats", "file-text")}
       ${metric("Office access", staffCount, "Bookkeeper/accountant and dispatcher", "users")}
@@ -840,8 +858,8 @@ function renderAccount() {
       <div class="panel-body">
         <div class="list-item">
           <div>
-            <strong>First month payment</strong>
-            <span>${customer.firstMonthPaid ? "Marked paid" : "Not marked paid yet"}</span>
+            <strong>Trial and first month payment</strong>
+            <span>${trialLabel(trial)} · ${customer.firstMonthPaid ? "First month marked paid" : "First month not marked paid yet"}</span>
           </div>
           <button class="primary-button" type="button" data-mark-first-paid ${customer.firstMonthPaid ? "disabled" : ""}>Mark First Month Paid</button>
         </div>
@@ -911,9 +929,11 @@ function renderPaymentAccount() {
   const payment = customer.paymentInfo || {};
   const last4 = payment.last4 ? `ending in ${payment.last4}` : "No payment method saved";
   const exp = payment.expMonth && payment.expYear ? `${String(payment.expMonth).padStart(2, "0")}/${payment.expYear}` : "Not added";
+  const trial = customer.trial;
   content.innerHTML = `
     <div class="metric-grid">
       ${metric("Plan", plan.name, planPrice(plan), "credit-card")}
+      ${metric("Trial", trialLabel(trial), trialDetail(trial), "credit-card")}
       ${metric("Payment", last4, payment.cardBrand || "Add a card for billing", "credit-card")}
       ${metric("Expires", exp, "Admin-managed payment method", "receipt")}
       ${metric("Billing Email", payment.billingEmail || customer.email, "Receipts and account notices", "file-text")}

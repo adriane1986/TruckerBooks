@@ -55,6 +55,13 @@ function moneyStatus(customer) {
   return "First month not marked paid";
 }
 
+function trialLabel(trial) {
+  if (!trial) return "Trial not started";
+  if (trial.status === "Active") return "Active";
+  if (trial.status === "Expired") return "Trial expired";
+  return `${trial.daysLeft} day${trial.daysLeft === 1 ? "" : "s"} left`;
+}
+
 function uploadedByLabel(uploadedBy) {
   if (!uploadedBy) return "Admin";
   return uploadedBy.roleLabel || uploadedBy.name || uploadedBy.email || "Admin";
@@ -107,7 +114,7 @@ function renderCustomerList() {
     <button class="owner-customer ${ownerState.selectedCustomer?.id === customer.id ? "active" : ""}" type="button" data-customer-id="${customer.id}">
       <strong>${escapeHtml(customer.businessName)}</strong>
       <span>${escapeHtml(customer.email)}</span>
-      <small>${escapeHtml(customer.subscriptionName)} · ${customer.status} · ${customer.supportIssueCount || 0} support issues · ${customer.scannerIssueCount} scan issues</small>
+      <small>${escapeHtml(customer.subscriptionName)} · ${trialLabel(customer.trial)} · ${customer.supportIssueCount || 0} support issues · ${customer.scannerIssueCount} scan issues</small>
     </button>
   `).join("") || `<p class="muted">No customers found.</p>`;
 }
@@ -178,6 +185,7 @@ function renderCustomerDetail() {
     <div class="metric-grid">
       <article class="metric-card"><header><span>Status</span></header><strong class="metric-value-long">${escapeHtml(customer.status)}</strong><span class="delta">${moneyStatus(customer)}</span></article>
       <article class="metric-card"><header><span>Plan</span></header><strong class="metric-value-long">${escapeHtml(customer.subscriptionName)}</strong><span class="delta">${customer.trucksUsed}/${customer.trucksAllowed} trucks</span></article>
+      <article class="metric-card"><header><span>Trial</span></header><strong class="metric-value-long">${escapeHtml(trialLabel(customer.trial))}</strong><span class="delta">${customer.trial?.paymentAdded ? "Payment added" : "No payment saved"}</span></article>
       <article class="metric-card"><header><span>Payment</span></header><strong class="metric-value-long">${escapeHtml(customer.paymentMethod)}</strong><span class="delta">${escapeHtml(customer.paymentInfo?.billingEmail || customer.email)}</span></article>
       <article class="metric-card"><header><span>Support Issues</span></header><strong>${(customer.supportIssues || []).length}</strong><span class="delta">${customer.scannerErrors.length} scanner issues</span></article>
     </div>
