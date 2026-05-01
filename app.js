@@ -240,11 +240,15 @@ function setView(view) {
 
 function metric(label, value, delta, icon) {
   const valueText = String(value || "").replace(/<[^>]*>/g, "");
-  const valueClass = valueText.includes("@") || valueText.length > 22 ? " metric-value-long" : "";
+  const isLongValue = valueText.includes("@") || valueText.length > 22;
+  const valueClass = isLongValue ? " metric-value-long" : "";
+  const displayValue = isLongValue
+    ? Array.from(valueText).map((character) => escapeAttribute(character)).join("<wbr>")
+    : value;
   return `
     <article class="metric-card">
       <header><span>${label}</span><span data-icon="${icon}"></span></header>
-      <strong class="metric-value${valueClass}">${value}</strong>
+      <strong class="metric-value${valueClass}">${displayValue}</strong>
       <span class="delta">${delta}</span>
     </article>
   `;
