@@ -239,10 +239,12 @@ function setView(view) {
 }
 
 function metric(label, value, delta, icon) {
+  const valueText = String(value || "").replace(/<[^>]*>/g, "");
+  const valueClass = valueText.includes("@") || valueText.length > 22 ? " metric-value-long" : "";
   return `
     <article class="metric-card">
       <header><span>${label}</span><span data-icon="${icon}"></span></header>
-      <strong>${value}</strong>
+      <strong class="metric-value${valueClass}">${value}</strong>
       <span class="delta">${delta}</span>
     </article>
   `;

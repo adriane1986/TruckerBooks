@@ -98,6 +98,7 @@ function publicUser(user) {
     documents: user.documents || [],
     complianceDocuments: user.complianceDocuments || [],
     complianceAlerts: complianceAlerts(user),
+    paymentInfo: user.paymentInfo || {},
     affiliateCode: user.affiliateCode,
     referredBy: user.referredBy || "",
     firstMonthPaid: Boolean(user.firstMonthPaid),
@@ -848,6 +849,7 @@ function normalizeUser(user) {
   user.referredBy = user.referredBy || "";
   user.firstMonthPaid = Boolean(user.firstMonthPaid);
   user.commissions = Array.isArray(user.commissions) ? user.commissions : [];
+  user.paymentInfo = user.paymentInfo && typeof user.paymentInfo === "object" ? user.paymentInfo : {};
   user.role = user.role || "admin";
   return user;
 }
@@ -1067,6 +1069,41 @@ async function handleApi(req, res, pathname) {
       return sendError(res, 400, `Remove trucks before changing to ${nextPlan.name}. It allows up to ${nextPlan.maxTrucks}.`);
     }
     user.subscriptionTier = body.subscriptionTier;
+    user.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 200, { customer: publicUser(user) });
+  }
+
+  if (req.method === "PATCH" && pathname === "/api/account/payment") {
+    if (!requireAdmin(user, res)) return;
+    const body = await readBody(req);
+    const billingName = String(body.billingName || "").trim();
+    const billingEmail = normalizeEmail(body.billingEmail);
+    const cardBrand = String(body.cardBrand || "Other").trim() || "Other";
+    const cardDigits = String(body.cardNumber || "").replace(/\D/g, "");
+    const expMonth = String(body.expMonth || "").padStart(2, "0");
+    const expYear = String(body.expYear || "");
+    const billingZip = String(body.billingZip || "").trim();
+    const previous = user.paymentInfo || {};
+
+    if (!billingName) return sendError(res, 400, "Enter the billing name.");
+    if (!billingEmail) return sendError(res, 400, "Enter the billing email.");
+    if (!/^(0[1-9]|1[0-2])$/.test(expMonth)) return sendError(res, 400, "Choose a valid expiration month.");
+    if (!/^20\d{2}$/.test(expYear)) return sendError(res, 400, "Choose a valid expiration year.");
+    if (!billingZip) return sendError(res, 400, "Enter the billing ZIP.");
+    if (!previous.last4 && cardDigits.length < 4) return sendError(res, 400, "Enter the card number.");
+    if (cardDigits && cardDigits.length < 12) return sendError(res, 400, "Enter a valid card number.");
+
+    user.paymentInfo = {
+      billingName,
+      billingEmail,
+      cardBrand,
+      last4: cardDigits ? cardDigits.slice(-4) : previous.last4 || "",
+      expMonth,
+      expYear,
+      billingZip,
+      updatedAt: new Date().toISOString()
+    };
     user.updatedAt = new Date().toISOString();
     writeDb(db);
     return sendJson(res, 200, { customer: publicUser(user) });
