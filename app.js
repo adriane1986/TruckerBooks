@@ -67,7 +67,9 @@ const complianceTypes = {
   insurance: "Insurance",
   dotPhysical: "DOT Physical",
   ucr: "UCR",
-  form2290: "2290"
+  form2290: "2290",
+  w9: "W9",
+  noa: "NOA"
 };
 
 const accountAccessRoles = {
@@ -616,7 +618,7 @@ function renderCompliance() {
       : "The backend does not see OPENAI_API_KEY. Add it to the Railway app service Variables, then redeploy.";
   content.innerHTML = `
     <div class="metric-grid">
-      ${metric("Compliance files", documents.length, "Insurance, DOT, UCR, 2290", "shield")}
+      ${metric("Compliance files", documents.length, "Insurance, DOT, UCR, 2290, W9, NOA", "shield")}
       ${metric("Renewal alerts", alerts.length, "Includes IFTA deadlines", "receipt")}
       ${metric("IFTA due months", "Jan Apr Jul Oct", "By the last day of month", "bar-chart")}
       ${metric("Next due", alerts[0] ? formatDate(alerts[0].date) : "Clear", alerts[0]?.label || "No urgent renewals", "file-text")}
@@ -661,19 +663,26 @@ function renderCompliance() {
         </div>
       </section>
       <section class="panel">
-        <div class="panel-header"><h2>Compliance Library</h2><span class="muted">${documents.length} files</span></div>
+        <div class="panel-header">
+          <h2>Compliance Library</h2>
+          <div class="table-actions">
+            <button class="primary-button" type="button" data-share-compliance>Share Selected</button>
+            <span class="muted">${documents.length} files</span>
+          </div>
+        </div>
         <table class="data-table document-table">
-          <thead><tr><th>Type</th><th>File</th><th>Expiration</th><th>Scan</th><th></th></tr></thead>
+          <thead><tr><th></th><th>Type</th><th>File</th><th>Expiration</th><th>Scan</th><th></th></tr></thead>
           <tbody>
             ${documents.map((item) => `
               <tr>
+                <td><input type="checkbox" data-compliance-select="${item.id}" aria-label="Select ${complianceLabel(item.type)} ${item.fileName}" /></td>
                 <td><span class="status Paid">${complianceLabel(item.type)}</span></td>
                 <td><strong>${item.fileName}</strong><br><span class="muted">${fileSize(item.size)}</span></td>
                 <td>
-                  <strong>${item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong>
-                  ${!item.expirationDate && (item.aiScan?.generic?.dates?.length || item.aiScan?.dates?.length || item.aiScan?.generic?.dateCandidates?.length || item.aiScan?.dateCandidates?.length) ? `<br><span class="muted">Dates found: ${(item.aiScan?.generic?.dates || item.aiScan?.dates || item.aiScan?.generic?.dateCandidates?.map((candidate) => candidate.date) || item.aiScan?.dateCandidates?.map((candidate) => candidate.date) || []).map(formatDate).join(", ")}</span>` : ""}
-                  ${!item.expirationDate && !(item.aiScan?.generic?.dates?.length || item.aiScan?.dates?.length || item.aiScan?.generic?.dateCandidates?.length || item.aiScan?.dateCandidates?.length) ? `<br><span class="muted">No dates found in scan.</span>` : ""}
-                  ${item.expirationDate ? "" : `
+                  <strong>${["w9", "noa"].includes(item.type) ? "Carrier packet document" : item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong>
+                  ${!item.expirationDate && !["w9", "noa"].includes(item.type) && (item.aiScan?.generic?.dates?.length || item.aiScan?.dates?.length || item.aiScan?.generic?.dateCandidates?.length || item.aiScan?.dateCandidates?.length) ? `<br><span class="muted">Dates found: ${(item.aiScan?.generic?.dates || item.aiScan?.dates || item.aiScan?.generic?.dateCandidates?.map((candidate) => candidate.date) || item.aiScan?.dateCandidates?.map((candidate) => candidate.date) || []).map(formatDate).join(", ")}</span>` : ""}
+                  ${!item.expirationDate && !["w9", "noa"].includes(item.type) && !(item.aiScan?.generic?.dates?.length || item.aiScan?.dates?.length || item.aiScan?.generic?.dateCandidates?.length || item.aiScan?.dateCandidates?.length) ? `<br><span class="muted">No dates found in scan.</span>` : ""}
+                  ${item.expirationDate || ["w9", "noa"].includes(item.type) ? "" : `
                     <form class="mini-date-form" data-expiration-form="${item.id}">
                       <input type="date" name="expirationDate" required />
                       <button class="chip-button" type="submit">Save</button>
@@ -689,7 +698,7 @@ function renderCompliance() {
                   </div>
                 </td>
               </tr>
-            `).join("") || `<tr><td colspan="5">No compliance documents uploaded yet.</td></tr>`}
+            `).join("") || `<tr><td colspan="6">No compliance documents uploaded yet.</td></tr>`}
           </tbody>
         </table>
       </section>
@@ -1185,6 +1194,25 @@ async function rescanComplianceDocument(id) {
   }
 }
 
+async function shareSelectedComplianceDocuments() {
+  try {
+    const selectedIds = [...document.querySelectorAll("[data-compliance-select]:checked")].map((item) => item.dataset.complianceSelect);
+    if (!selectedIds.length) throw new Error("Select at least one compliance document to share.");
+    const payload = await api("/api/compliance/share", {
+      method: "POST",
+      body: JSON.stringify({ documentIds: selectedIds, origin: location.origin })
+    });
+    const subject = encodeURIComponent(`${state.customer?.businessName || "Carrier"} carrier packet`);
+    const body = encodeURIComponent(`Hello,\n\nHere is the carrier packet link with the selected compliance documents:\n\n${payload.shareUrl}\n\nThank you.`);
+    state.accountMessage = "Carrier packet share link created. Your email draft is opening.";
+    renderContent();
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
 async function saveComplianceExpiration(form) {
   try {
     const payload = await api(`/api/compliance/${form.dataset.expirationForm}`, {
@@ -1212,6 +1240,7 @@ document.addEventListener("click", (event) => {
   const deleteDocumentButton = event.target.closest("[data-delete-document]");
   const deleteComplianceButton = event.target.closest("[data-delete-compliance]");
   const rescanComplianceButton = event.target.closest("[data-rescan-compliance]");
+  const shareComplianceButton = event.target.closest("[data-share-compliance]");
   const openTripButton = event.target.closest("[data-open-trip]");
   const copyReferralButton = event.target.closest("[data-copy-referral]");
   const markPaidButton = event.target.closest("[data-mark-first-paid]");
@@ -1225,6 +1254,7 @@ document.addEventListener("click", (event) => {
   if (deleteDocumentButton) removeDocument(deleteDocumentButton.dataset.deleteDocument);
   if (deleteComplianceButton) removeComplianceDocument(deleteComplianceButton.dataset.deleteCompliance);
   if (rescanComplianceButton) rescanComplianceDocument(rescanComplianceButton.dataset.rescanCompliance);
+  if (shareComplianceButton) shareSelectedComplianceDocuments();
   if (openTripButton) setView("rateCons");
   if (copyReferralButton) {
     navigator.clipboard?.writeText(copyReferralButton.dataset.copyReferral);
