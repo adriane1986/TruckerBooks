@@ -278,7 +278,7 @@ function renderDashboard() {
         </div>
       </section>
       <section class="panel">
-        <div class="panel-header"><h2>Recent Activity</h2><button class="chip-button" type="button" data-view-shortcut="rateCons">Rate Cons/BOLs</button></div>
+        <div class="panel-header"><h2>Recent Activity</h2></div>
         <div class="panel-body">
           <div class="list">
             ${recentActivity().map(listItem).join("")}
