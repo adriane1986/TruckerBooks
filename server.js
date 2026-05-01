@@ -102,6 +102,7 @@ function publicUser(user) {
     complianceDocuments: user.complianceDocuments || [],
     complianceAlerts: complianceAlerts(user),
     paymentInfo: user.paymentInfo || {},
+    supportIssues: user.supportIssues || [],
     affiliateCode: user.affiliateCode,
     referredBy: user.referredBy || "",
     firstMonthPaid: Boolean(user.firstMonthPaid),
@@ -879,6 +880,7 @@ function normalizeUser(user) {
   user.firstMonthPaid = Boolean(user.firstMonthPaid);
   user.commissions = Array.isArray(user.commissions) ? user.commissions : [];
   user.paymentInfo = user.paymentInfo && typeof user.paymentInfo === "object" ? user.paymentInfo : {};
+  user.supportIssues = Array.isArray(user.supportIssues) ? user.supportIssues : [];
   user.role = user.role || "admin";
   return user;
 }
@@ -910,6 +912,7 @@ function ownerCustomerSummary(user) {
     driverAccessCount: (user.drivers || []).length,
     documentCount: documents.length,
     scannerIssueCount: scannerErrors.length,
+    supportIssueCount: (user.supportIssues || []).filter((item) => item.status !== "Closed").length,
     firstMonthPaid: Boolean(user.firstMonthPaid),
     paymentMethod: user.paymentInfo?.last4 ? `${user.paymentInfo.cardBrand || "Card"} ending ${user.paymentInfo.last4}` : "No payment saved",
     createdAt: user.createdAt || "",
@@ -948,6 +951,7 @@ function ownerCustomerDetail(user) {
       uploadedAt: item.uploadedAt || ""
     })),
     complianceAlerts: complianceAlerts(user),
+    supportIssues: user.supportIssues || [],
     scannerErrors: [
       ...(user.documents || []).filter((item) => item.extracted?.aiError || /fallback|failed|unavailable/i.test(item.scanStatus || "")).map((item) => ({
         type: "Rate Con/BOL",
@@ -1238,6 +1242,30 @@ async function handleApi(req, res, pathname) {
 
   if (req.method === "GET" && pathname === "/api/affiliate") {
     return sendJson(res, 200, { customer: publicUser(user) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/support/issues") {
+    const body = await readBody(req);
+    const category = String(body.category || "Other").trim() || "Other";
+    const subject = String(body.subject || "").trim();
+    const message = String(body.message || "").trim();
+    if (!subject) return sendError(res, 400, "Enter a subject for the issue.");
+    if (!message) return sendError(res, 400, "Describe the issue.");
+    const issue = {
+      id: crypto.randomUUID(),
+      category,
+      subject,
+      message,
+      status: "Open",
+      customerEmail: user.email,
+      customerBusinessName: user.businessName,
+      createdAt: new Date().toISOString()
+    };
+    user.supportIssues.push(issue);
+    user.accountStatus = "Needs Support";
+    user.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 201, { issue, supportIssues: user.supportIssues, customer: publicUser(user) });
   }
 
   if (req.method === "POST" && pathname === "/api/billing/first-month-paid") {

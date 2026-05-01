@@ -92,7 +92,7 @@ function renderCustomerList() {
     <button class="owner-customer ${ownerState.selectedCustomer?.id === customer.id ? "active" : ""}" type="button" data-customer-id="${customer.id}">
       <strong>${escapeHtml(customer.businessName)}</strong>
       <span>${escapeHtml(customer.email)}</span>
-      <small>${escapeHtml(customer.subscriptionName)} · ${customer.status} · ${customer.scannerIssueCount} scan issues</small>
+      <small>${escapeHtml(customer.subscriptionName)} · ${customer.status} · ${customer.supportIssueCount || 0} support issues · ${customer.scannerIssueCount} scan issues</small>
     </button>
   `).join("") || `<p class="muted">No customers found.</p>`;
 }
@@ -127,12 +127,21 @@ function renderCustomerDetail() {
     </tr>
   `).join("") || `<tr><td colspan="4">No scanner errors found.</td></tr>`;
 
+  const supportRows = (customer.supportIssues || []).map((issue) => `
+    <tr>
+      <td><strong>${escapeHtml(issue.subject)}</strong><br><span class="muted">${escapeHtml(issue.category)}</span></td>
+      <td>${escapeHtml(issue.status || "Open")}</td>
+      <td class="owner-wrap">${escapeHtml(issue.message)}</td>
+      <td>${formatDate(issue.createdAt)}</td>
+    </tr>
+  `).join("") || `<tr><td colspan="4">No support issues reported.</td></tr>`;
+
   ownerDetail.innerHTML = `
     <div class="metric-grid">
       <article class="metric-card"><header><span>Status</span></header><strong class="metric-value-long">${escapeHtml(customer.status)}</strong><span class="delta">${moneyStatus(customer)}</span></article>
       <article class="metric-card"><header><span>Plan</span></header><strong class="metric-value-long">${escapeHtml(customer.subscriptionName)}</strong><span class="delta">${customer.trucksUsed}/${customer.trucksAllowed} trucks</span></article>
       <article class="metric-card"><header><span>Payment</span></header><strong class="metric-value-long">${escapeHtml(customer.paymentMethod)}</strong><span class="delta">${escapeHtml(customer.paymentInfo?.billingEmail || customer.email)}</span></article>
-      <article class="metric-card"><header><span>Scanner Issues</span></header><strong>${customer.scannerErrors.length}</strong><span class="delta">${customer.documentCount} total documents</span></article>
+      <article class="metric-card"><header><span>Support Issues</span></header><strong>${(customer.supportIssues || []).length}</strong><span class="delta">${customer.scannerErrors.length} scanner issues</span></article>
     </div>
 
     <section class="panel">
@@ -164,6 +173,11 @@ function renderCustomerDetail() {
     <section class="panel">
       <div class="panel-header"><h2>Account Access</h2><span class="muted">Drivers, bookkeepers/accountants, and dispatchers</span></div>
       <table class="data-table owner-table"><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Action</th></tr></thead><tbody>${accessRows}</tbody></table>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header"><h2>Reported Issues</h2><span class="muted">Customer-submitted support requests</span></div>
+      <table class="data-table owner-table"><thead><tr><th>Issue</th><th>Status</th><th>Message</th><th>Reported</th></tr></thead><tbody>${supportRows}</tbody></table>
     </section>
 
     <section class="panel">

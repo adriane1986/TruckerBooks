@@ -6,7 +6,8 @@ const navItems = [
   { id: "rateCons", label: "Rate Cons/BOLs", icon: "upload", eyebrow: "Load documents" },
   { id: "reports", label: "Reports", icon: "bar-chart", eyebrow: "Profit and tax summary" },
   { id: "userManagement", label: "User Management", icon: "users", eyebrow: "Subscription and access" },
-  { id: "account", label: "Account", icon: "credit-card", eyebrow: "Admin payment settings", adminOnly: true }
+  { id: "account", label: "Account", icon: "credit-card", eyebrow: "Admin payment settings", adminOnly: true },
+  { id: "support", label: "Support", icon: "help-circle", eyebrow: "Report issues and contact us" }
 ];
 
 const icons = {
@@ -22,6 +23,7 @@ const icons = {
   download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>',
   upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5M12 3v12"/></svg>',
   "credit-card": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20M6 15h2M11 15h4"/></svg>',
+  "help-circle": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 1 1 5.8 1c-.5 1.1-1.6 1.5-2.3 2.2-.4.4-.6.9-.6 1.8"/><path d="M12 17h.01"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5v14"/></svg>',
   save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>',
@@ -968,6 +970,52 @@ function renderPaymentAccount() {
   `;
 }
 
+function renderSupport() {
+  content.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Contact Email", "info@thetruckerconsultant.com", "Use this for billing, scanner, or account help", "help-circle")}
+      ${metric("Issue Reports", "Support", "Send an issue directly to the owner dashboard", "file-text")}
+      ${metric("Account", state.customer?.businessName || "Customer", state.customer?.email || "", "users")}
+      ${metric("Response", "Review", "Your report is saved for support follow-up", "receipt")}
+    </div>
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Report an Issue</h2>
+        <a class="ghost-button" href="mailto:info@thetruckerconsultant.com?subject=TruckerBooks Support Request">Contact Us</a>
+      </div>
+      <div class="panel-body">
+        <form class="support-form" id="supportIssueForm">
+          <label>
+            Issue area
+            <select name="category" required>
+              <option value="AI Scanner">AI Scanner</option>
+              <option value="Login or Access">Login or Access</option>
+              <option value="Billing or Subscription">Billing or Subscription</option>
+              <option value="Compliance Documents">Compliance Documents</option>
+              <option value="Rate Cons/BOLs">Rate Cons/BOLs</option>
+              <option value="Expenses">Expenses</option>
+              <option value="Other">Other</option>
+            </select>
+          </label>
+          <label>
+            Subject
+            <input name="subject" type="text" required maxlength="120" placeholder="Short description" />
+          </label>
+          <label class="support-message-field">
+            What happened?
+            <textarea name="message" required rows="7" placeholder="Describe the issue so support can review it."></textarea>
+          </label>
+          <div class="billing-actions">
+            <button class="primary-button" type="submit">Send Issue</button>
+            <a class="chip-button" href="mailto:info@thetruckerconsultant.com">Email Support</a>
+          </div>
+        </form>
+        ${state.accountMessage ? `<p class="form-message">${state.accountMessage}</p>` : ""}
+      </div>
+    </section>
+  `;
+}
+
 function renderContent() {
   if (state.view === "dashboard") renderDashboard();
   if (state.view === "trips") renderTableView("trips", "Trip Ledger", [
@@ -999,6 +1047,7 @@ function renderContent() {
   if (state.view === "reports") renderReports();
   if (state.view === "userManagement") renderAccount();
   if (state.view === "account") renderPaymentAccount();
+  if (state.view === "support") renderSupport();
   renderIcons(content);
 }
 
@@ -1124,6 +1173,28 @@ async function updatePaymentInfo(form) {
     });
     state.customer = payload.customer;
     state.accountMessage = "Payment information updated.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
+async function submitSupportIssue(form) {
+  try {
+    state.accountMessage = "";
+    const formData = new FormData(form);
+    const payload = await api("/api/support/issues", {
+      method: "POST",
+      body: JSON.stringify({
+        category: formData.get("category"),
+        subject: formData.get("subject"),
+        message: formData.get("message")
+      })
+    });
+    if (state.customer) state.customer.supportIssues = payload.supportIssues;
+    form.reset();
+    state.accountMessage = "Issue sent. Support can now review it from the Owner/Admin dashboard.";
     renderContent();
   } catch (error) {
     state.accountMessage = error.message;
@@ -1436,6 +1507,10 @@ document.addEventListener("submit", (event) => {
   if (event.target.id === "paymentForm") {
     event.preventDefault();
     updatePaymentInfo(event.target);
+  }
+  if (event.target.id === "supportIssueForm") {
+    event.preventDefault();
+    submitSupportIssue(event.target);
   }
   if (event.target.id === "documentForm") {
     event.preventDefault();
