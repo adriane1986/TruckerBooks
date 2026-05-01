@@ -1373,6 +1373,23 @@ async function handleApi(req, res, pathname) {
     const email = normalizeEmail(body.email);
     if (!email) return sendError(res, 400, "Enter the user's email.");
     if (user.drivers.some((driver) => driver.email === email)) return sendError(res, 409, "That user already has access or an invite.");
+    const truckNumber = String(body.truckNumber || "").trim();
+    let truckId = "";
+    if (role === "driver" && truckNumber) {
+      let truck = user.trucks.find((item) => item.unitNumber.toLowerCase() === truckNumber.toLowerCase());
+      if (!truck) {
+        if (user.trucks.length >= plan.maxTrucks) return sendError(res, 400, `${plan.name} allows up to ${plan.maxTrucks} trucks. Add this driver to an existing truck number or upgrade the plan.`);
+        truck = {
+          id: crypto.randomUUID(),
+          unitNumber: truckNumber,
+          vin: "",
+          status: "Active",
+          createdAt: new Date().toISOString()
+        };
+        user.trucks.push(truck);
+      }
+      truckId = truck.id;
+    }
     const inviteToken = crypto.randomBytes(24).toString("hex");
     const driver = {
       id: crypto.randomUUID(),
@@ -1380,7 +1397,8 @@ async function handleApi(req, res, pathname) {
       email,
       role,
       roleLabel: accountAccessRoles[role],
-      truckId: role === "driver" ? String(body.truckId || "") : "",
+      truckId,
+      truckNumber: role === "driver" ? truckNumber : "",
       status: "Access sent",
       inviteToken,
       inviteLink: `/account-access/${inviteToken}`,

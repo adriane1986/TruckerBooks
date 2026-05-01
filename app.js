@@ -801,7 +801,6 @@ function renderAccount() {
   const drivers = customer.drivers || [];
   const driverCount = drivers.filter((driver) => (driver.role || "driver") === "driver").length;
   const staffCount = drivers.length - driverCount;
-  const truckOptions = trucks.map((truck) => `<option value="${truck.id}">${truck.unitNumber}</option>`).join("");
   content.innerHTML = `
     <div class="metric-grid">
       ${metric("Subscription", plan.name, planPrice(plan), "users")}
@@ -863,15 +862,12 @@ function renderAccount() {
         <div class="panel-header"><h2>Account Access</h2><span class="muted">Invite drivers, bookkeepers/accountants, and dispatchers</span></div>
         <div class="panel-body">
           <form class="inline-form driver-form" id="driverForm">
-            <input name="name" type="text" placeholder="Name" />
+            <input name="name" type="text" required placeholder="Driver name" />
             <input name="email" type="email" required placeholder="user@example.com" />
             <select name="role">
               ${Object.entries(accountAccessRoles).map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}
             </select>
-            <select name="truckId">
-              <option value="">Assign truck for driver</option>
-              ${truckOptions}
-            </select>
+            <input name="truckNumber" type="text" placeholder="Truck/unit number" />
             <button class="primary-button" type="submit">Send Access</button>
           </form>
           <div class="list account-list">
@@ -1226,7 +1222,7 @@ async function inviteDriver(form) {
         name: formData.get("name"),
         email: formData.get("email"),
         role: formData.get("role"),
-        truckId: formData.get("truckId")
+        truckNumber: formData.get("truckNumber")
       })
     });
     state.customer = payload.customer;
