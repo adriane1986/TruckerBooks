@@ -41,7 +41,9 @@ const complianceTypes = {
   insurance: { id: "insurance", name: "Insurance" },
   dotPhysical: { id: "dotPhysical", name: "DOT Physical" },
   ucr: { id: "ucr", name: "UCR" },
-  form2290: { id: "form2290", name: "2290" }
+  form2290: { id: "form2290", name: "2290" },
+  w9: { id: "w9", name: "W9" },
+  noa: { id: "noa", name: "NOA" }
 };
 
 const accountAccessRoles = {
@@ -162,6 +164,14 @@ function sendError(res, status, message) {
   sendJson(res, status, { error: message });
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function getOpenAiKey() {
   return String(process.env.OPENAI_API_KEY || "").trim().replace(/^["']|["']$/g, "");
 }
@@ -202,6 +212,22 @@ function isAllowedCollection(collection) {
 
 function complianceTypeName(type) {
   return complianceTypes[type]?.name || "Compliance Document";
+}
+
+function inferComplianceType(type, fileName = "") {
+  const cleanType = String(type || "");
+  const cleanName = String(fileName || "").toLowerCase();
+  if (/\bw-?9\b/.test(cleanName)) return "w9";
+  if (/\bnoa\b|notice\s+of\s+assignment/.test(cleanName)) return "noa";
+  return complianceTypes[cleanType] ? cleanType : "insurance";
+}
+
+function findComplianceShare(db, token) {
+  for (const user of db.users || []) {
+    const share = (user.complianceShares || []).find((item) => item.token === token);
+    if (share) return { user, share };
+  }
+  return null;
 }
 
 function firstMatch(text, patterns) {
@@ -381,6 +407,8 @@ function parseReceiptText(text) {
   const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
   const generic = parseGenericDocumentText(clean);
   const totalAmount = firstMatch(clean, [
+    /(?:total\s+purchases\s+(?:for\s+)?(?:this\s+)?account|total\s+purchases)\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
+    /\*\*\s*total\s+purchases\s+(?:for\s+)?(?:this\s+)?account\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
     /(?:grand\s+total|total\s+sale|total\s+paid|amount\s+paid|balance\s+due|total)\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
     /\$\s*([0-9,]+(?:\.\d{2})?)/
   ]);
@@ -401,7 +429,10 @@ function parseReceiptText(text) {
 }
 
 async function scanDocument(buffer, mimeType, type) {
-  const scan = await runAiScanner(buffer, mimeType, `This is a ${type === "bol" ? "BOL" : "Rate Confirmation"} upload. Prioritize load details, carrier pay/rate, route, mileage, and load number.`);
+  const documentContext = type === "bol"
+    ? "This is a BOL/delivery confirmation upload. Prioritize delivery confirmation, load number, shipper/receiver, pickup/delivery route, and dates. BOLs usually do not include carrier pay, so amount can be null or 0."
+    : "This is a Rate Confirmation upload. Prioritize carrier pay/rate, route, mileage, load details, and load number.";
+  const scan = await runAiScanner(buffer, mimeType, documentContext);
   const local = parseDocumentText(scan.text, type);
   const generic = scan.extracted || {};
   return {
@@ -420,7 +451,7 @@ async function scanDocument(buffer, mimeType, type) {
 }
 
 async function scanReceiptDocument(buffer, mimeType) {
-  const scan = await runAiScanner(buffer, mimeType, "This is an expense receipt. Prioritize merchant/vendor name, purchase date, total amount paid, and trucking expense category such as Fuel, Road costs, Maintenance, Insurance, or General.");
+  const scan = await runAiScanner(buffer, mimeType, "This is an expense receipt or fuel card summary. Prioritize merchant/vendor name, purchase date, total amount paid, and trucking expense category such as Fuel, Road costs, Maintenance, Insurance, or General. For fuel card summary reports, use the line labeled Total Purchases This Account or Total Purchases for this Account as the expense amount, not an individual transaction amount.");
   const local = parseReceiptText(scan.text);
   const generic = scan.extracted || {};
   const category = categorizeExpense(`${scan.text} ${generic.notes || ""} ${generic.documentType || ""}`);
@@ -438,6 +469,18 @@ async function scanReceiptDocument(buffer, mimeType) {
 }
 
 async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
+  if (["w9", "noa"].includes(complianceType)) {
+    const scan = await runAiScanner(buffer, mimeType, "This is a carrier packet compliance document. W9 and NOA documents do not have renewal dates. Store the document for broker packet sharing and do not require an expiration date.");
+    return {
+      ...scan,
+      extracted: {
+        ...(scan.extracted || {}),
+        expirationDate: "",
+        dateDetection: "not_required",
+        carrierPacketDocument: true
+      }
+    };
+  }
   const scan = await runAiScanner(buffer, mimeType, "This is a Compliance upload. Prioritize renewal, expiration, valid-through, policy end, coverage end, DOT physical expiration, UCR, and 2290 tax period dates.");
   const local = parseComplianceText(scan.text);
   const generic = scan.extracted || {};
@@ -759,6 +802,20 @@ function normalizeUser(user) {
   }));
   user.documents = Array.isArray(user.documents) ? user.documents : [];
   user.complianceDocuments = Array.isArray(user.complianceDocuments) ? user.complianceDocuments : [];
+  user.complianceDocuments = user.complianceDocuments.map((document) => {
+    const type = inferComplianceType(document.type, document.fileName);
+    if (["w9", "noa"].includes(type)) {
+      return {
+        ...document,
+        type,
+        expirationDate: "",
+        extracted: { ...(document.extracted || {}), expirationDate: "", dateDetection: "not_required", carrierPacketDocument: true },
+        aiScan: { ...(document.aiScan || {}), expirationDate: "", dateDetection: "not_required", carrierPacketDocument: true }
+      };
+    }
+    return { ...document, type };
+  });
+  user.complianceShares = Array.isArray(user.complianceShares) ? user.complianceShares : [];
   user.affiliateCode = user.affiliateCode || crypto.randomBytes(5).toString("hex");
   user.referredBy = user.referredBy || "";
   user.firstMonthPaid = Boolean(user.firstMonthPaid);
@@ -805,7 +862,7 @@ function upcomingIftaDeadlines() {
 
 function complianceAlerts(user) {
   const documentAlerts = (user.complianceDocuments || [])
-    .filter((item) => item.expirationDate)
+    .filter((item) => !["w9", "noa"].includes(item.type) && item.expirationDate)
     .map((item) => ({
       id: item.id,
       label: `${complianceTypeName(item.type)} renewal`,
@@ -842,6 +899,21 @@ function requireAdmin(user, res) {
 async function handleApi(req, res, pathname) {
   const db = readDb();
   const { token, user } = getCurrentUser(req, db);
+
+  if (req.method === "GET" && pathname.match(/^\/api\/shared-compliance\/[^/]+\/[^/]+$/)) {
+    const [, , , tokenValue, documentId] = pathname.split("/");
+    const found = findComplianceShare(db, tokenValue);
+    if (!found || !found.share.documentIds.includes(documentId)) return sendError(res, 404, "Shared document not found.");
+    const document = found.user.complianceDocuments.find((item) => item.id === documentId);
+    if (!document) return sendError(res, 404, "Shared document not found.");
+    const filePath = path.join(uploadDir, document.storedName);
+    if (!fs.existsSync(filePath)) return sendError(res, 404, "Uploaded file is missing.");
+    res.writeHead(200, {
+      "Content-Type": document.mimeType,
+      "Content-Disposition": `attachment; filename="${document.fileName.replace(/"/g, "")}"`
+    });
+    return fs.createReadStream(filePath).pipe(res);
+  }
 
   if (req.method === "POST" && pathname === "/api/signup") {
     const body = await readBody(req);
@@ -1051,8 +1123,8 @@ async function handleApi(req, res, pathname) {
 
   if (req.method === "POST" && pathname === "/api/compliance") {
     const body = await readBody(req);
-    const type = complianceTypes[body.type] ? body.type : "insurance";
     const fileName = path.basename(String(body.fileName || "compliance-document"));
+    const type = inferComplianceType(body.type, fileName);
     const mimeType = String(body.mimeType || "application/octet-stream");
     const base64 = String(body.data || "").replace(/^data:[^;]+;base64,/, "");
     if (!base64) return sendError(res, 400, "Choose a compliance document to upload.");
@@ -1096,6 +1168,26 @@ async function handleApi(req, res, pathname) {
       "Content-Disposition": `attachment; filename="${document.fileName.replace(/"/g, "")}"`
     });
     return fs.createReadStream(filePath).pipe(res);
+  }
+
+  if (req.method === "POST" && pathname === "/api/compliance/share") {
+    const body = await readBody(req);
+    const ids = Array.isArray(body.documentIds) ? body.documentIds.map(String) : [];
+    const selectedDocuments = user.complianceDocuments.filter((item) => ids.includes(item.id));
+    if (!selectedDocuments.length) return sendError(res, 400, "Select at least one compliance document to share.");
+    const tokenValue = crypto.randomBytes(18).toString("hex");
+    const share = {
+      token: tokenValue,
+      documentIds: selectedDocuments.map((item) => item.id),
+      createdAt: new Date().toISOString()
+    };
+    user.complianceShares.push(share);
+    user.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 201, {
+      shareUrl: `${body.origin || ""}/shared-compliance/${tokenValue}`,
+      documents: selectedDocuments.map((item) => ({ id: item.id, fileName: item.fileName, type: item.type }))
+    });
   }
 
   if (req.method === "DELETE" && pathname.startsWith("/api/compliance/")) {
@@ -1318,11 +1410,52 @@ function serveStatic(req, res, pathname) {
   });
 }
 
+function serveComplianceShare(res, tokenValue) {
+  const db = readDb();
+  const found = findComplianceShare(db, tokenValue);
+  if (!found) {
+    res.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
+    res.end("<h1>Carrier packet not found</h1>");
+    return;
+  }
+  const documents = found.share.documentIds
+    .map((id) => found.user.complianceDocuments.find((item) => item.id === id))
+    .filter(Boolean);
+  const links = documents.map((document) => `
+    <li><a href="/api/shared-compliance/${found.share.token}/${document.id}">${escapeHtml(complianceTypeName(document.type))}: ${escapeHtml(document.fileName)}</a></li>
+  `).join("");
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  res.end(`<!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Carrier Packet - ${escapeHtml(found.user.businessName)}</title>
+        <style>
+          body{font-family:Arial,sans-serif;margin:0;background:#f5f7f8;color:#10222b}
+          main{max-width:760px;margin:40px auto;background:#fff;border:1px solid #dbe4e7;border-radius:8px;padding:24px}
+          h1{margin:0 0 8px;font-size:28px} p{color:#5f6f76} li{margin:12px 0} a{color:#0f6f72;font-weight:700}
+        </style>
+      </head>
+      <body>
+        <main>
+          <h1>${escapeHtml(found.user.businessName)} Carrier Packet</h1>
+          <p>Download the selected compliance documents below.</p>
+          <ul>${links || "<li>No documents are currently available.</li>"}</ul>
+        </main>
+      </body>
+    </html>`);
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (url.pathname.startsWith("/api/")) {
       await handleApi(req, res, url.pathname);
+      return;
+    }
+    if (url.pathname.startsWith("/shared-compliance/")) {
+      serveComplianceShare(res, decodeURIComponent(url.pathname.split("/")[2] || ""));
       return;
     }
     serveStatic(req, res, decodeURIComponent(url.pathname));

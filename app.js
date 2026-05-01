@@ -481,8 +481,16 @@ function documentLabel(type) {
   return type === "bol" ? "BOL" : "Rate Con";
 }
 
-function complianceLabel(type) {
+function complianceLabel(type, fileName = "") {
+  const cleanName = String(fileName || "").toLowerCase();
+  if (/\bw-?9\b/.test(cleanName)) return "W9";
+  if (/\bnoa\b|notice\s+of\s+assignment/.test(cleanName)) return "NOA";
   return complianceTypes[type] || "Compliance";
+}
+
+function isCarrierPacketDocument(item) {
+  const cleanName = String(item?.fileName || "").toLowerCase();
+  return ["w9", "noa"].includes(item?.type) || /\bw-?9\b/.test(cleanName) || /\bnoa\b|notice\s+of\s+assignment/.test(cleanName);
 }
 
 function accountRoleLabel(role) {
@@ -525,6 +533,7 @@ function extractedSummary(item) {
 }
 
 function scanDetail(item) {
+  if (isCarrierPacketDocument(item)) return "Carrier packet document - no renewal date needed";
   const ai = item.aiScan || item.extracted?.generic || item.extracted || {};
   const generic = ai.generic || {};
   const candidateDates = ai.dateCandidates?.map((candidate) => candidate.date) || generic.dateCandidates?.map((candidate) => candidate.date) || [];
@@ -675,14 +684,14 @@ function renderCompliance() {
           <tbody>
             ${documents.map((item) => `
               <tr>
-                <td><input type="checkbox" data-compliance-select="${item.id}" aria-label="Select ${complianceLabel(item.type)} ${item.fileName}" /></td>
-                <td><span class="status Paid">${complianceLabel(item.type)}</span></td>
+                <td><input type="checkbox" data-compliance-select="${item.id}" aria-label="Select ${complianceLabel(item.type, item.fileName)} ${item.fileName}" /></td>
+                <td><span class="status Paid">${complianceLabel(item.type, item.fileName)}</span></td>
                 <td><strong>${item.fileName}</strong><br><span class="muted">${fileSize(item.size)}</span></td>
                 <td>
-                  <strong>${["w9", "noa"].includes(item.type) ? "Carrier packet document" : item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong>
-                  ${!item.expirationDate && !["w9", "noa"].includes(item.type) && (item.aiScan?.generic?.dates?.length || item.aiScan?.dates?.length || item.aiScan?.generic?.dateCandidates?.length || item.aiScan?.dateCandidates?.length) ? `<br><span class="muted">Dates found: ${(item.aiScan?.generic?.dates || item.aiScan?.dates || item.aiScan?.generic?.dateCandidates?.map((candidate) => candidate.date) || item.aiScan?.dateCandidates?.map((candidate) => candidate.date) || []).map(formatDate).join(", ")}</span>` : ""}
-                  ${!item.expirationDate && !["w9", "noa"].includes(item.type) && !(item.aiScan?.generic?.dates?.length || item.aiScan?.dates?.length || item.aiScan?.generic?.dateCandidates?.length || item.aiScan?.dateCandidates?.length) ? `<br><span class="muted">No dates found in scan.</span>` : ""}
-                  ${item.expirationDate || ["w9", "noa"].includes(item.type) ? "" : `
+                  <strong>${isCarrierPacketDocument(item) ? "No renewal needed" : item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong>
+                  ${!item.expirationDate && !isCarrierPacketDocument(item) && (item.aiScan?.generic?.dates?.length || item.aiScan?.dates?.length || item.aiScan?.generic?.dateCandidates?.length || item.aiScan?.dateCandidates?.length) ? `<br><span class="muted">Dates found: ${(item.aiScan?.generic?.dates || item.aiScan?.dates || item.aiScan?.generic?.dateCandidates?.map((candidate) => candidate.date) || item.aiScan?.dateCandidates?.map((candidate) => candidate.date) || []).map(formatDate).join(", ")}</span>` : ""}
+                  ${!item.expirationDate && !isCarrierPacketDocument(item) && !(item.aiScan?.generic?.dates?.length || item.aiScan?.dates?.length || item.aiScan?.generic?.dateCandidates?.length || item.aiScan?.dateCandidates?.length) ? `<br><span class="muted">No dates found in scan.</span>` : ""}
+                  ${item.expirationDate || isCarrierPacketDocument(item) ? "" : `
                     <form class="mini-date-form" data-expiration-form="${item.id}">
                       <input type="date" name="expirationDate" required />
                       <button class="chip-button" type="submit">Save</button>
