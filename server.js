@@ -368,6 +368,38 @@ function parseGenericDocumentText(text) {
   };
 }
 
+function categorizeExpense(text) {
+  const clean = text.toLowerCase();
+  if (/(fuel|diesel|gas|pilot|flying j|love'?s|ta travel|petro|shell|bp|chevron|exxon|ta-petro)/i.test(clean)) return "Fuel";
+  if (/(toll|scale|weigh|parking|lumper|permit|ifta|ucr|2290)/i.test(clean)) return "Road costs";
+  if (/(repair|service|oil|tire|brake|maintenance|mechanic|parts)/i.test(clean)) return "Maintenance";
+  if (/(insurance|policy|premium)/i.test(clean)) return "Insurance";
+  return "General";
+}
+
+function parseReceiptText(text) {
+  const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
+  const generic = parseGenericDocumentText(clean);
+  const totalAmount = firstMatch(clean, [
+    /(?:grand\s+total|total\s+sale|total\s+paid|amount\s+paid|balance\s+due|total)\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
+    /\$\s*([0-9,]+(?:\.\d{2})?)/
+  ]);
+  const vendor = firstMatch(clean, [
+    /(?:merchant|vendor|store|supplier)\s*:?\s*([A-Za-z0-9 &'#.,-]{2,60})/i,
+    /^([A-Za-z0-9 &'#.,-]{2,60})/m
+  ]);
+  const amount = Number(String(totalAmount || generic.amount || "").replace(/,/g, "")) || 0;
+  const date = generic.dates?.[0] || new Date().toISOString().slice(0, 10);
+  const category = categorizeExpense(clean);
+  return {
+    date,
+    amount,
+    category,
+    description: vendor ? `${category} - ${vendor.trim()}` : `${category} receipt`,
+    textPreview: clean.slice(0, 800)
+  };
+}
+
 async function scanDocument(buffer, mimeType, type) {
   const scan = await runAiScanner(buffer, mimeType, `This is a ${type === "bol" ? "BOL" : "Rate Confirmation"} upload. Prioritize load details, carrier pay/rate, route, mileage, and load number.`);
   const local = parseDocumentText(scan.text, type);
@@ -382,6 +414,24 @@ async function scanDocument(buffer, mimeType, type) {
       miles: local.miles || generic.miles || 0,
       amount: local.amount || generic.amount || 0,
       date: local.date || generic.dates?.[0] || "",
+      generic
+    }
+  };
+}
+
+async function scanReceiptDocument(buffer, mimeType) {
+  const scan = await runAiScanner(buffer, mimeType, "This is an expense receipt. Prioritize merchant/vendor name, purchase date, total amount paid, and trucking expense category such as Fuel, Road costs, Maintenance, Insurance, or General.");
+  const local = parseReceiptText(scan.text);
+  const generic = scan.extracted || {};
+  const category = categorizeExpense(`${scan.text} ${generic.notes || ""} ${generic.documentType || ""}`);
+  return {
+    ...scan,
+    extracted: {
+      ...local,
+      date: generic.dates?.[0] || local.date,
+      amount: local.amount || generic.amount || 0,
+      category: category || local.category,
+      description: generic.notes ? `${category || local.category} - ${generic.notes.slice(0, 50)}` : local.description,
       generic
     }
   };
@@ -1137,6 +1187,43 @@ async function handleApi(req, res, pathname) {
     user.updatedAt = new Date().toISOString();
     writeDb(db);
     return sendJson(res, 201, { document, documents: user.documents, records: user.records });
+  }
+
+  if (req.method === "POST" && pathname === "/api/expenses/receipt") {
+    const body = await readBody(req);
+    const fileName = path.basename(String(body.fileName || "receipt"));
+    const mimeType = String(body.mimeType || "application/octet-stream");
+    const categoryOverride = String(body.category || "").trim();
+    const base64 = String(body.data || "").replace(/^data:[^;]+;base64,/, "");
+    if (!base64) return sendError(res, 400, "Choose a receipt to upload.");
+    const buffer = Buffer.from(base64, "base64");
+    if (buffer.length > 10_000_000) return sendError(res, 400, "Uploads are limited to 10 MB each.");
+    const id = crypto.randomUUID();
+    const storedName = `${user.id}-${id}-${fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+    fs.writeFileSync(path.join(uploadDir, storedName), buffer);
+    const scan = await scanReceiptDocument(buffer, mimeType);
+    const expense = {
+      id: crypto.randomUUID(),
+      date: scan.extracted.date || new Date().toISOString().slice(0, 10),
+      description: scan.extracted.description || fileName,
+      amount: scan.extracted.amount || 0,
+      category: categoryOverride || scan.extracted.category || "General",
+      status: "Paid",
+      sourceReceipt: {
+        id,
+        fileName,
+        mimeType,
+        storedName,
+        size: buffer.length,
+        scanStatus: scan.scanStatus,
+        extracted: scan.extracted,
+        uploadedAt: new Date().toISOString()
+      }
+    };
+    user.records.expenses.push(expense);
+    user.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 201, { expense, records: user.records });
   }
 
   if (req.method === "GET" && pathname.startsWith("/api/documents/")) {

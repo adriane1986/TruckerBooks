@@ -320,6 +320,69 @@ function renderTableView(collection, title, columns) {
   `;
 }
 
+function renderExpenses() {
+  const rows = filtered(state.records.expenses);
+  content.innerHTML = `
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Upload Receipt</h2>
+        <span class="muted">Drivers can scan fuel, toll, repair, and road expense receipts</span>
+      </div>
+      <div class="panel-body">
+        <form class="inline-form document-form" id="receiptForm">
+          <select name="category">
+            <option value="">Auto-detect category</option>
+            <option value="Fuel">Fuel</option>
+            <option value="Road costs">Road costs</option>
+            <option value="Maintenance">Maintenance</option>
+            <option value="Insurance">Insurance</option>
+            <option value="General">General</option>
+          </select>
+          <input name="file" type="file" accept="image/*,.pdf" required />
+          <button class="primary-button" type="submit">Scan Receipt</button>
+        </form>
+        ${state.accountMessage ? `<p class="form-message">${state.accountMessage}</p>` : ""}
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Expense Ledger</h2>
+        <div class="filters">
+          <input id="searchInput" type="search" value="${state.query}" placeholder="Search records" />
+          <select id="statusFilter">
+            ${["All", "Paid", "Pending", "Scheduled"].map((value) => `<option ${state.status === value ? "selected" : ""}>${value}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      <table class="data-table document-table">
+        <thead>
+          <tr><th>Date</th><th>Description</th><th>Amount</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+          ${rows.map((item) => `
+            <tr>
+              <td>${formatDate(item.date)}</td>
+              <td>
+                <strong>${item.description}</strong><br>
+                <span class="muted">${item.category}${item.sourceReceipt ? ` · Receipt scanned · ${item.sourceReceipt.fileName}` : ""}</span>
+              </td>
+              <td>${money(item.amount)}</td>
+              <td><span class="status ${item.status}">${item.status}</span></td>
+              <td>
+                <div class="table-actions">
+                  <button class="icon-button" type="button" data-delete="${item.id}" title="Delete" aria-label="Delete">
+                    <span data-icon="trash"></span>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          `).join("") || `<tr><td colspan="5">No expenses match this view.</td></tr>`}
+        </tbody>
+      </table>
+    </section>
+  `;
+}
+
 function filtered(items) {
   return items.filter((item) => {
     const haystack = Object.values(item).join(" ").toLowerCase();
@@ -736,12 +799,7 @@ function renderContent() {
     { label: "Revenue", render: (item) => money(item.amount) },
     { label: "Status", render: (item) => `<span class="status ${item.status}">${item.status}</span>` }
   ]);
-  if (state.view === "expenses") renderTableView("expenses", "Expense Ledger", [
-    { label: "Date", render: (item) => formatDate(item.date) },
-    { label: "Description", render: (item) => `<strong>${item.description}</strong><br><span class="muted">${item.category}</span>` },
-    { label: "Amount", render: (item) => money(item.amount) },
-    { label: "Status", render: (item) => `<span class="status ${item.status}">${item.status}</span>` }
-  ]);
+  if (state.view === "expenses") renderExpenses();
   if (state.view === "invoices") renderTableView("invoices", "Invoice Tracker", [
     { label: "Date", render: (item) => formatDate(item.date) },
     { label: "Invoice", render: (item) => `<strong>${item.description}</strong>` },
@@ -961,6 +1019,34 @@ async function uploadDocument(form) {
   }
 }
 
+async function uploadReceipt(form) {
+  try {
+    const formData = new FormData(form);
+    const file = formData.get("file");
+    if (!file || !file.name) throw new Error("Choose a receipt image or PDF.");
+    state.accountMessage = "Scanning receipt and creating expense...";
+    renderContent();
+    const data = await readFileAsDataUrl(file);
+    const payload = await api("/api/expenses/receipt", {
+      method: "POST",
+      body: JSON.stringify({
+        fileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        category: formData.get("category"),
+        data
+      })
+    });
+    state.records = payload.records;
+    state.accountMessage = payload.expense?.amount
+      ? `Receipt scanned. Expense added for ${money(payload.expense.amount)}.`
+      : "Receipt scanned and expense added. Please review the amount.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
 async function uploadComplianceDocument(form) {
   try {
     const formData = new FormData(form);
@@ -1107,6 +1193,10 @@ document.addEventListener("submit", (event) => {
   if (event.target.id === "documentForm") {
     event.preventDefault();
     uploadDocument(event.target);
+  }
+  if (event.target.id === "receiptForm") {
+    event.preventDefault();
+    uploadReceipt(event.target);
   }
   if (event.target.id === "complianceForm") {
     event.preventDefault();
