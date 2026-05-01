@@ -617,7 +617,7 @@ button {
 }
 
 .inline-form.driver-form {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(150px, 0.65fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(155px, 0.75fr) minmax(155px, 0.75fr) auto;
 }
 
 .inline-form.document-form {

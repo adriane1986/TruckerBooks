@@ -44,6 +44,12 @@ const complianceTypes = {
   form2290: { id: "form2290", name: "2290" }
 };
 
+const accountAccessRoles = {
+  driver: "Driver",
+  bookkeeper: "Bookkeeper/Accountant",
+  dispatcher: "Dispatcher"
+};
+
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
@@ -696,6 +702,11 @@ function normalizeUser(user) {
   user.subscriptionTier = subscriptionPlans[user.subscriptionTier] ? user.subscriptionTier : "silver";
   user.trucks = Array.isArray(user.trucks) ? user.trucks : [];
   user.drivers = Array.isArray(user.drivers) ? user.drivers : [];
+  user.drivers = user.drivers.map((driver) => ({
+    ...driver,
+    role: accountAccessRoles[driver.role] ? driver.role : "driver",
+    roleLabel: accountAccessRoles[driver.role] || "Driver"
+  }));
   user.documents = Array.isArray(user.documents) ? user.documents : [];
   user.complianceDocuments = Array.isArray(user.complianceDocuments) ? user.complianceDocuments : [];
   user.affiliateCode = user.affiliateCode || crypto.randomBytes(5).toString("hex");
@@ -772,7 +783,7 @@ function currentPlan(user) {
 
 function requireAdmin(user, res) {
   if ((user.role || "admin") !== "admin") {
-    sendError(res, 403, "Only account admins can manage trucks and driver access.");
+    sendError(res, 403, "Only account admins can manage trucks and account access.");
     return false;
   }
   return true;
@@ -935,20 +946,26 @@ async function handleApi(req, res, pathname) {
   if (req.method === "POST" && pathname === "/api/drivers/invite") {
     if (!requireAdmin(user, res)) return;
     const plan = currentPlan(user);
-    if (user.drivers.length >= plan.maxTrucks) return sendError(res, 400, `${plan.name} allows driver access for up to ${plan.maxTrucks} drivers.`);
     const body = await readBody(req);
+    const role = accountAccessRoles[body.role] ? body.role : "driver";
+    const currentDriverCount = user.drivers.filter((driver) => (driver.role || "driver") === "driver").length;
+    if (role === "driver" && currentDriverCount >= plan.maxTrucks) {
+      return sendError(res, 400, `${plan.name} allows driver access for up to ${plan.maxTrucks} drivers.`);
+    }
     const email = normalizeEmail(body.email);
-    if (!email) return sendError(res, 400, "Enter the driver's email.");
-    if (user.drivers.some((driver) => driver.email === email)) return sendError(res, 409, "That driver already has access or an invite.");
+    if (!email) return sendError(res, 400, "Enter the user's email.");
+    if (user.drivers.some((driver) => driver.email === email)) return sendError(res, 409, "That user already has access or an invite.");
     const inviteToken = crypto.randomBytes(24).toString("hex");
     const driver = {
       id: crypto.randomUUID(),
-      name: String(body.name || "").trim() || "Driver",
+      name: String(body.name || "").trim() || accountAccessRoles[role],
       email,
-      truckId: String(body.truckId || ""),
+      role,
+      roleLabel: accountAccessRoles[role],
+      truckId: role === "driver" ? String(body.truckId || "") : "",
       status: "Access sent",
       inviteToken,
-      inviteLink: `/driver-access/${inviteToken}`,
+      inviteLink: `/account-access/${inviteToken}`,
       createdAt: new Date().toISOString()
     };
     user.drivers.push(driver);

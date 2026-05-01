@@ -69,6 +69,12 @@ const complianceTypes = {
   form2290: "2290"
 };
 
+const accountAccessRoles = {
+  driver: "Driver",
+  bookkeeper: "Bookkeeper/Accountant",
+  dispatcher: "Dispatcher"
+};
+
 const subscriptionPlans = {
   silver: { id: "silver", name: "Silver Package", minTrucks: 1, maxTrucks: 5, monthlyPrice: 49, annualPrice: 499 },
   gold: { id: "gold", name: "Gold Package", minTrucks: 6, maxTrucks: 10, monthlyPrice: 99, annualPrice: 999 },
@@ -364,6 +370,10 @@ function complianceLabel(type) {
   return complianceTypes[type] || "Compliance";
 }
 
+function accountRoleLabel(role) {
+  return accountAccessRoles[role] || "Driver";
+}
+
 function fileSize(bytes) {
   if (!bytes) return "0 KB";
   if (bytes < 1_000_000) return `${Math.round(bytes / 1024)} KB`;
@@ -615,12 +625,15 @@ function renderAccount() {
   const plan = customer.subscription || subscriptionPlans[customer.subscriptionTier] || subscriptionPlans.silver;
   const trucks = customer.trucks || [];
   const drivers = customer.drivers || [];
+  const driverCount = drivers.filter((driver) => (driver.role || "driver") === "driver").length;
+  const staffCount = drivers.length - driverCount;
   const truckOptions = trucks.map((truck) => `<option value="${truck.id}">${truck.unitNumber}</option>`).join("");
   content.innerHTML = `
     <div class="metric-grid">
       ${metric("Subscription", plan.name, planPrice(plan), "users")}
       ${metric("Truck slots", `${trucks.length}/${plan.maxTrucks}`, `${Math.max(plan.maxTrucks - trucks.length, 0)} slots available`, "route")}
-      ${metric("Driver access", `${drivers.length}/${plan.maxTrucks}`, "Invites and active drivers", "file-text")}
+      ${metric("Driver access", `${driverCount}/${plan.maxTrucks}`, "Package driver seats", "file-text")}
+      ${metric("Office access", staffCount, "Bookkeeper/accountant and dispatcher", "users")}
       ${metric("Admin", customer.email, customer.businessName, "receipt")}
     </div>
     <section class="panel">
@@ -673,13 +686,16 @@ function renderAccount() {
         </div>
       </section>
       <section class="panel">
-        <div class="panel-header"><h2>Driver Access</h2><span class="muted">Send access to each driver</span></div>
+        <div class="panel-header"><h2>Account Access</h2><span class="muted">Invite drivers, bookkeepers/accountants, and dispatchers</span></div>
         <div class="panel-body">
           <form class="inline-form driver-form" id="driverForm">
-            <input name="name" type="text" placeholder="Driver name" />
-            <input name="email" type="email" required placeholder="driver@example.com" />
+            <input name="name" type="text" placeholder="Name" />
+            <input name="email" type="email" required placeholder="user@example.com" />
+            <select name="role">
+              ${Object.entries(accountAccessRoles).map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}
+            </select>
             <select name="truckId">
-              <option value="">Assign truck</option>
+              <option value="">Assign truck for driver</option>
               ${truckOptions}
             </select>
             <button class="primary-button" type="submit">Send Access</button>
@@ -688,12 +704,14 @@ function renderAccount() {
             ${drivers.map((driver) => {
               const assignedTruck = trucks.find((truck) => truck.id === driver.truckId);
               const absoluteLink = `${location.origin}${driver.inviteLink}`;
+              const role = driver.role || "driver";
               return `
                 <article class="list-item driver-item">
                   <div>
                     <strong>${driver.name}</strong>
-                    <span>${driver.email} · ${assignedTruck ? assignedTruck.unitNumber : "No truck assigned"}</span>
-                    <a href="mailto:${driver.email}?subject=Your TruckerBooks access&body=${encodeURIComponent(`Use this link to access your TruckerBooks driver dashboard: ${absoluteLink}`)}">Open email</a>
+                    <span>${accountRoleLabel(role)}${role === "driver" ? ` · ${assignedTruck ? assignedTruck.unitNumber : "No truck assigned"}` : ""}</span>
+                    <span>${driver.email}</span>
+                    <a href="mailto:${driver.email}?subject=Your TruckerBooks access&body=${encodeURIComponent(`Use this link to access your TruckerBooks account dashboard: ${absoluteLink}`)}">Open email</a>
                   </div>
                   <div>
                     <span class="status Scheduled">${driver.status}</span>
@@ -701,7 +719,7 @@ function renderAccount() {
                   </div>
                 </article>
               `;
-            }).join("") || `<p class="muted">No driver access has been sent yet.</p>`}
+            }).join("") || `<p class="muted">No account access has been sent yet.</p>`}
           </div>
         </div>
       </section>
@@ -880,11 +898,12 @@ async function inviteDriver(form) {
       body: JSON.stringify({
         name: formData.get("name"),
         email: formData.get("email"),
+        role: formData.get("role"),
         truckId: formData.get("truckId")
       })
     });
     state.customer = payload.customer;
-    state.accountMessage = "Driver access created. Use the email button to send the invite.";
+    state.accountMessage = "Account access created. Use the email button to send the invite.";
     renderContent();
   } catch (error) {
     state.accountMessage = error.message;
@@ -902,7 +921,7 @@ async function removeTruck(id) {
 async function removeDriver(id) {
   const payload = await api(`/api/drivers/${id}`, { method: "DELETE" });
   state.customer = payload.customer;
-  state.accountMessage = "Driver access removed.";
+  state.accountMessage = "Account access removed.";
   renderContent();
 }
 
