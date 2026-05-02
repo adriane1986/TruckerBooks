@@ -13,7 +13,9 @@ const openaiVisionModel = process.env.OPENAI_VISION_MODEL || "gpt-4o-mini";
 const ownerEmail = normalizeEmail(process.env.OWNER_EMAIL || "owner@truckerbooks.local");
 const ownerPassword = process.env.OWNER_PASSWORD || "";
 const ownerAccessCode = String(process.env.OWNER_ACCESS_CODE || "").trim();
-const stripeConfigured = Boolean(String(process.env.STRIPE_SECRET_KEY || "").trim());
+const stripeSecretKey = String(process.env.STRIPE_SECRET_KEY || "").trim();
+const stripePublishableKey = String(process.env.STRIPE_PUBLISHABLE_KEY || "").trim();
+const stripeConfigured = Boolean(stripeSecretKey);
 const plaidConfigured = Boolean(String(process.env.PLAID_CLIENT_ID || "").trim() && String(process.env.PLAID_SECRET || "").trim());
 const trialDays = 7;
 const sessionMaxAgeSeconds = 60 * 60 * 24 * 7;
@@ -134,6 +136,7 @@ function publicUser(user) {
 function integrationStatus() {
   return {
     stripe: stripeConfigured ? "Connected" : "Not connected",
+    stripePublishable: stripePublishableKey ? "Connected" : "Not connected",
     plaid: plaidConfigured ? "Connected" : "Not connected",
     documentStorage: "Private app storage",
     https: "Required on Railway/custom domain"
@@ -431,6 +434,82 @@ function readBody(req) {
       }
     });
   });
+}
+
+function originForRequest(req) {
+  const proto = String(req.headers["x-forwarded-proto"] || (req.socket.encrypted ? "https" : "http")).split(",")[0].trim();
+  return `${proto}://${req.headers.host}`;
+}
+
+async function stripeRequest(pathname, params) {
+  if (!stripeSecretKey) throw new Error("Stripe is not connected yet.");
+  const response = await fetch(`https://api.stripe.com/v1${pathname}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${stripeSecretKey}`,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: new URLSearchParams(params)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error?.message || "Stripe request failed.");
+  return payload;
+}
+
+async function createStripeCheckoutSession(req, user, interval = "month") {
+  const plan = currentPlan(user);
+  const isAnnual = interval === "year";
+  const amount = Math.round((isAnnual ? plan.annualPrice : plan.monthlyPrice) * 100);
+  const origin = originForRequest(req);
+  const customerEmail = user.paymentInfo?.billingEmail || user.email;
+  const params = {
+    mode: "subscription",
+    success_url: `${origin}/?stripe=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${origin}/?stripe=cancelled`,
+    customer_email: customerEmail,
+    client_reference_id: user.id,
+    "metadata[userId]": user.id,
+    "metadata[plan]": plan.id,
+    "line_items[0][quantity]": "1",
+    "line_items[0][price_data][currency]": "usd",
+    "line_items[0][price_data][product_data][name]": `${plan.name} - TruckerBooks`,
+    "line_items[0][price_data][recurring][interval]": isAnnual ? "year" : "month",
+    "line_items[0][price_data][unit_amount]": String(amount),
+    "subscription_data[metadata][userId]": user.id,
+    "subscription_data[metadata][plan]": plan.id
+  };
+  if (!user.firstMonthPaid) params["subscription_data[trial_period_days]"] = String(trialDays);
+  return stripeRequest("/checkout/sessions", params);
+}
+
+async function retrieveStripeCheckoutSession(sessionId) {
+  if (!stripeSecretKey) throw new Error("Stripe is not connected yet.");
+  const response = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
+    headers: { Authorization: `Bearer ${stripeSecretKey}` }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error?.message || "Could not verify Stripe checkout.");
+  return payload;
+}
+
+function applyStripeSessionToUser(db, user, session) {
+  if (!session || session.client_reference_id !== user.id) throw new Error("Stripe session does not match this account.");
+  if (!["paid", "no_payment_required"].includes(session.payment_status) && session.status !== "complete") {
+    throw new Error("Stripe checkout is not complete yet.");
+  }
+  user.firstMonthPaid = true;
+  user.trialStatus = "Active";
+  user.paymentInfo = {
+    ...(user.paymentInfo || {}),
+    provider: "Stripe",
+    providerStatus: "Stripe subscription active",
+    customerId: session.customer || user.paymentInfo?.customerId || "",
+    subscriptionId: session.subscription || user.paymentInfo?.subscriptionId || "",
+    billingEmail: session.customer_details?.email || user.paymentInfo?.billingEmail || user.email,
+    updatedAt: new Date().toISOString()
+  };
+  user.updatedAt = new Date().toISOString();
+  earnReferralCommission(db, user);
 }
 
 function isAllowedCollection(collection) {
@@ -1733,6 +1812,35 @@ async function handleApi(req, res, pathname) {
     user.trialStatus = "Active";
     user.updatedAt = new Date().toISOString();
     earnReferralCommission(db, user);
+    writeDb(db);
+    return sendJson(res, 200, { customer: publicUser(user) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/billing/stripe-checkout") {
+    if (!requireAdmin(user, res)) return;
+    if (!stripeConfigured) return sendError(res, 503, "Stripe is not connected yet. Add STRIPE_SECRET_KEY in Railway.");
+    const body = await readBody(req);
+    const interval = body.interval === "year" ? "year" : "month";
+    const session = await createStripeCheckoutSession(req, user, interval);
+    user.paymentInfo = {
+      ...(user.paymentInfo || {}),
+      provider: "Stripe",
+      providerStatus: "Stripe checkout started",
+      pendingCheckoutSessionId: session.id,
+      updatedAt: new Date().toISOString()
+    };
+    user.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 200, { url: session.url, sessionId: session.id, customer: publicUser(user) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/billing/stripe-confirm") {
+    if (!requireAdmin(user, res)) return;
+    const body = await readBody(req);
+    const sessionId = String(body.sessionId || "").trim();
+    if (!sessionId) return sendError(res, 400, "Stripe session is missing.");
+    const session = await retrieveStripeCheckoutSession(sessionId);
+    applyStripeSessionToUser(db, user, session);
     writeDb(db);
     return sendJson(res, 200, { customer: publicUser(user) });
   }

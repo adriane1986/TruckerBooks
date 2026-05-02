@@ -160,6 +160,7 @@ function showDashboard(account, records) {
   customerName.textContent = account.businessName;
   customerFile.textContent = `${account.businessName} - 2026`;
   setView("dashboard");
+  confirmStripeCheckoutFromUrl();
 }
 
 async function restoreSession() {
@@ -1006,6 +1007,7 @@ function renderPaymentAccount() {
   const trial = customer.trial;
   const integrations = customer.integrations || {};
   const paymentStatus = payment.providerStatus || integrations.stripe || "Stripe not connected";
+  const stripeConnected = integrations.stripe === "Connected";
   content.innerHTML = `
     <div class="metric-grid">
       ${metric("Plan", plan.name, planPrice(plan), "credit-card")}
@@ -1035,6 +1037,8 @@ function renderPaymentAccount() {
           </label>
           <div class="billing-actions">
             <button class="primary-button" type="submit">Save Billing Contact</button>
+            <button class="primary-button" type="button" data-stripe-checkout="month" ${stripeConnected ? "" : "disabled"}>Pay Monthly with Stripe</button>
+            <button class="ghost-button" type="button" data-stripe-checkout="year" ${stripeConnected ? "" : "disabled"}>Pay Annual with Stripe</button>
             <a class="chip-button" href="/terms" target="_blank" rel="noreferrer">Terms</a>
             <a class="chip-button" href="/privacy" target="_blank" rel="noreferrer">Privacy</a>
           </div>
@@ -1253,6 +1257,41 @@ async function updatePaymentInfo(form) {
   } catch (error) {
     state.accountMessage = error.message;
     renderContent();
+  }
+}
+
+async function startStripeCheckout(interval) {
+  try {
+    state.accountMessage = "Opening Stripe Checkout...";
+    renderContent();
+    const payload = await api("/api/billing/stripe-checkout", {
+      method: "POST",
+      body: JSON.stringify({ interval })
+    });
+    window.location.href = payload.url;
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
+async function confirmStripeCheckoutFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const sessionId = params.get("session_id");
+  if (params.get("stripe") !== "success" || !sessionId) return;
+  try {
+    const payload = await api("/api/billing/stripe-confirm", {
+      method: "POST",
+      body: JSON.stringify({ sessionId })
+    });
+    state.customer = payload.customer;
+    state.accountMessage = "Stripe payment connected. Subscription is active.";
+    history.replaceState({}, "", location.pathname);
+    setView("account");
+  } catch (error) {
+    state.accountMessage = error.message;
+    history.replaceState({}, "", location.pathname);
+    setView("account");
   }
 }
 
@@ -1553,6 +1592,7 @@ document.addEventListener("click", (event) => {
   const openTripButton = event.target.closest("[data-open-trip]");
   const copyReferralButton = event.target.closest("[data-copy-referral]");
   const markPaidButton = event.target.closest("[data-mark-first-paid]");
+  const stripeCheckoutButton = event.target.closest("[data-stripe-checkout]");
   if (navButton) setView(navButton.dataset.view);
   if (shortcut) setView(shortcut.dataset.viewShortcut);
   if (deleteButton) deleteEntry(deleteButton.dataset.delete);
@@ -1572,6 +1612,7 @@ document.addEventListener("click", (event) => {
     refreshAffiliate();
   }
   if (markPaidButton) markFirstMonthPaid();
+  if (stripeCheckoutButton) startStripeCheckout(stripeCheckoutButton.dataset.stripeCheckout);
 });
 
 document.addEventListener("submit", (event) => {
