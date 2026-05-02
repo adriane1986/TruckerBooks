@@ -195,6 +195,25 @@ button {
   gap: 4px;
 }
 
+.policy-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.policy-links a {
+  color: inherit;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.auth-policy-links {
+  color: var(--accent);
+  justify-content: center;
+  margin-top: 18px;
+}
+
 .main {
   min-width: 0;
   padding: 24px;
@@ -692,10 +711,78 @@ button {
   grid-template-columns: minmax(150px, 0.45fr) minmax(0, 1fr) auto;
 }
 
+.upload-choice {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.file-button {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--accent-dark);
+  display: grid;
+  place-items: center;
+  padding: 8px 10px;
+  font-weight: 850;
+  text-align: center;
+  cursor: pointer;
+}
+
+.file-button input {
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  pointer-events: none;
+}
+
 .billing-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.security-banner {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(0, 103, 168, 0.2);
+  background: rgba(0, 103, 168, 0.08);
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.security-banner strong {
+  color: var(--accent-dark);
+}
+
+.security-banner span {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.policy-page {
+  min-height: 100vh;
+  padding: 28px;
+  display: grid;
+  place-items: start center;
+}
+
+.policy-page .panel {
+  width: min(860px, 100%);
+}
+
+.policy-copy {
+  display: grid;
+  gap: 14px;
+  line-height: 1.65;
+}
+
+.policy-copy p {
+  margin: 0;
 }
 
 .support-form {

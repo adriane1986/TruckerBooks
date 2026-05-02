@@ -392,7 +392,10 @@ function renderExpenses() {
             <option value="Insurance">Insurance</option>
             <option value="General">General</option>
           </select>
-          <input name="file" type="file" accept="image/*,.pdf" required />
+          <div class="upload-choice">
+            <label class="file-button">Upload file<input name="fileUpload" type="file" accept="image/*,.pdf" /></label>
+            <label class="file-button">Take photo<input name="fileCamera" type="file" accept="image/*" capture="environment" /></label>
+          </div>
           <button class="primary-button" type="submit">Scan Receipt</button>
         </form>
         ${state.accountMessage ? `<p class="form-message">${state.accountMessage}</p>` : ""}
@@ -673,7 +676,10 @@ function renderDocuments() {
             <option value="rateCon">Rate Con</option>
             <option value="bol">BOL</option>
           </select>
-          <input name="file" type="file" required />
+          <div class="upload-choice">
+            <label class="file-button">Upload file<input name="fileUpload" type="file" accept="image/*,.pdf" /></label>
+            <label class="file-button">Take photo<input name="fileCamera" type="file" accept="image/*" capture="environment" /></label>
+          </div>
           <button class="primary-button" type="submit">Upload</button>
         </form>
         ${state.accountMessage ? `<p class="form-message">${state.accountMessage}</p>` : ""}
@@ -779,7 +785,10 @@ function renderCompliance() {
           <select name="type">
             ${Object.entries(complianceTypes).map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}
           </select>
-          <input name="file" type="file" required />
+          <div class="upload-choice">
+            <label class="file-button">Upload file<input name="fileUpload" type="file" accept="image/*,.pdf" /></label>
+            <label class="file-button">Take photo<input name="fileCamera" type="file" accept="image/*" capture="environment" /></label>
+          </div>
           <button class="primary-button" type="submit">Upload</button>
         </form>
         ${state.accountMessage ? `<p class="form-message">${state.accountMessage}</p>` : ""}
@@ -1385,11 +1394,16 @@ function readFileAsDataUrl(file) {
   });
 }
 
+function selectedUploadFile(formData) {
+  return [formData.get("fileUpload"), formData.get("fileCamera"), formData.get("file")]
+    .find((file) => file && file.name);
+}
+
 async function uploadDocument(form) {
   try {
     state.accountMessage = "";
     const formData = new FormData(form);
-    const file = formData.get("file");
+    const file = selectedUploadFile(formData);
     if (!file || !file.name) throw new Error("Choose a Rate Con or BOL file.");
     const data = await readFileAsDataUrl(file);
     const payload = await api("/api/documents", {
@@ -1415,7 +1429,7 @@ async function uploadDocument(form) {
 async function uploadReceipt(form) {
   try {
     const formData = new FormData(form);
-    const file = formData.get("file");
+    const file = selectedUploadFile(formData);
     if (!file || !file.name) throw new Error("Choose a receipt image or PDF.");
     state.accountMessage = "Scanning receipt and creating expense...";
     renderContent();
@@ -1443,7 +1457,7 @@ async function uploadReceipt(form) {
 async function uploadComplianceDocument(form) {
   try {
     const formData = new FormData(form);
-    const file = formData.get("file");
+    const file = selectedUploadFile(formData);
     if (!file || !file.name) throw new Error("Choose a compliance document.");
     const documentType = formData.get("type");
     state.accountMessage = "Scanning document for expiration date...";
