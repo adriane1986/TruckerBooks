@@ -1,6 +1,6 @@
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: "layout-dashboard", eyebrow: "Business snapshot" },
-  { id: "affiliate", label: "Affiliate Program", icon: "share", eyebrow: "Referral growth" },
+  { id: "affiliate", label: "Referral Program", icon: "share", eyebrow: "Referral growth" },
   { id: "compliance", label: "Compliance", icon: "shield", eyebrow: "Renewals and filings" },
   { id: "expenses", label: "Expenses", icon: "receipt", eyebrow: "Deductions and costs" },
   { id: "rateCons", label: "Rate Cons/BOLs", icon: "upload", eyebrow: "Load documents" },
@@ -64,6 +64,7 @@ const state = {
   complianceAlerts: [],
   scannerStatus: null,
   reportYear: String(new Date().getFullYear()),
+  dateRange: "all",
   accountMessage: ""
 };
 
@@ -72,6 +73,7 @@ const complianceTypes = {
   dotPhysical: "DOT Physical",
   ucr: "UCR",
   form2290: "2290",
+  irp: "IRP",
   w9: "W9",
   noa: "NOA"
 };
@@ -80,6 +82,13 @@ const accountAccessRoles = {
   driver: "Driver",
   bookkeeper: "Bookkeeper/Accountant",
   dispatcher: "Dispatcher"
+};
+
+const roleNavAccess = {
+  admin: ["dashboard", "affiliate", "compliance", "expenses", "rateCons", "reports", "userManagement", "account", "support"],
+  driver: ["dashboard", "expenses", "rateCons", "compliance", "support"],
+  bookkeeper: ["dashboard", "expenses", "rateCons", "reports", "support"],
+  dispatcher: ["dashboard", "rateCons", "reports", "support"]
 };
 
 const subscriptionPlans = {
@@ -215,7 +224,9 @@ function isAdmin() {
 }
 
 function visibleNavItems() {
-  return navItems.filter((item) => !item.adminOnly || isAdmin());
+  const role = state.customer?.role || "admin";
+  const allowed = roleNavAccess[role] || roleNavAccess.driver;
+  return navItems.filter((item) => allowed.includes(item.id) && (!item.adminOnly || isAdmin()));
 }
 
 function renderNav() {
@@ -231,7 +242,7 @@ function renderNav() {
 function setView(view) {
   const availableItems = visibleNavItems();
   const nextView = availableItems.some((item) => item.id === view) ? view : "dashboard";
-  if (view === "account" && !isAdmin()) return setView("dashboard");
+  if ((view === "account" && !isAdmin()) || !availableItems.some((item) => item.id === view)) return setView("dashboard");
   state.view = nextView;
   const meta = availableItems.find((item) => item.id === nextView) || availableItems[0];
   sectionTitle.textContent = meta.label;
@@ -336,9 +347,7 @@ function renderTableView(collection, title, columns) {
         <h2>${title}</h2>
         <div class="filters">
           <input id="searchInput" type="search" value="${state.query}" placeholder="Search records" />
-          <select id="statusFilter">
-            ${["All", "Paid", "Pending", "Scheduled"].map((value) => `<option ${state.status === value ? "selected" : ""}>${value}</option>`).join("")}
-          </select>
+          ${dateRangeSelect()}
         </div>
       </div>
       <table class="data-table">
@@ -393,9 +402,7 @@ function renderExpenses() {
         <h2>Expense Ledger</h2>
         <div class="filters">
           <input id="searchInput" type="search" value="${state.query}" placeholder="Search records" />
-          <select id="statusFilter">
-            ${["All", "Paid", "Pending", "Scheduled"].map((value) => `<option ${state.status === value ? "selected" : ""}>${value}</option>`).join("")}
-          </select>
+          ${dateRangeSelect()}
         </div>
       </div>
       <table class="data-table document-table">
@@ -432,9 +439,41 @@ function filtered(items) {
   return items.filter((item) => {
     const haystack = Object.values(item).join(" ").toLowerCase();
     const matchesQuery = haystack.includes(state.query.toLowerCase());
-    const matchesStatus = state.status === "All" || item.status === state.status;
-    return matchesQuery && matchesStatus;
+    return matchesQuery && matchesDateRange(item.date || item.uploadedAt);
   });
+}
+
+function dateRangeSelect() {
+  const ranges = [
+    ["all", "All dates"],
+    ["thisMonth", "This month"],
+    ["lastMonth", "Last month"],
+    ["last30", "Last 30 days"],
+    ["last90", "Last 90 days"],
+    ["thisQuarter", "This quarter"],
+    ["thisYear", "This year"]
+  ];
+  return `<select id="dateRangeFilter" aria-label="Date range">${ranges.map(([value, label]) => `<option value="${value}" ${state.dateRange === value ? "selected" : ""}>${label}</option>`).join("")}</select>`;
+}
+
+function matchesDateRange(value) {
+  if (!value || state.dateRange === "all") return true;
+  const date = new Date(String(value).length === 10 ? `${value}T12:00:00` : value);
+  if (Number.isNaN(date.getTime())) return true;
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+  const startOfQuarter = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const daysAgo = (days) => new Date(now.getTime() - days * 86400000);
+  if (state.dateRange === "thisMonth") return date >= startOfMonth;
+  if (state.dateRange === "lastMonth") return date >= startOfLastMonth && date <= endOfLastMonth;
+  if (state.dateRange === "last30") return date >= daysAgo(30);
+  if (state.dateRange === "last90") return date >= daysAgo(90);
+  if (state.dateRange === "thisQuarter") return date >= startOfQuarter;
+  if (state.dateRange === "thisYear") return date >= startOfYear;
+  return true;
 }
 
 function renderReports() {
@@ -530,6 +569,13 @@ function accountRoleLabel(role) {
   return accountAccessRoles[role] || "Driver";
 }
 
+function driverPayLabel(driver) {
+  const loadedMiles = (state.records.trips || []).reduce((total, trip) => total + Number(trip.miles || 0), 0);
+  if (driver.payType === "per_mile" && Number(driver.ratePerMile)) return `${money(Number(driver.ratePerMile))} per mile · est. ${money(loadedMiles * Number(driver.ratePerMile))}`;
+  if (driver.payType === "weekly" && Number(driver.weeklyRate)) return `${money(Number(driver.weeklyRate))} weekly rate`;
+  return "Driver pay not set";
+}
+
 function fileSize(bytes) {
   if (!bytes) return "0 KB";
   if (bytes < 1_000_000) return `${Math.round(bytes / 1024)} KB`;
@@ -602,14 +648,18 @@ function scanDetail(item) {
 
 function renderDocuments() {
   const documents = state.documents || [];
-  const rateCons = documents.filter((item) => item.type === "rateCon").length;
-  const bols = documents.filter((item) => item.type === "bol").length;
+  const visibleDocuments = documents.filter((item) => {
+    const haystack = Object.values(item).join(" ").toLowerCase();
+    return haystack.includes(state.query.toLowerCase()) && matchesDateRange(item.uploadedAt);
+  });
+  const rateCons = visibleDocuments.filter((item) => item.type === "rateCon").length;
+  const bols = visibleDocuments.filter((item) => item.type === "bol").length;
   content.innerHTML = `
     <div class="metric-grid">
       ${metric("Rate Cons", rateCons, "Uploaded confirmations", "file-text")}
       ${metric("BOLs", bols, "Bills of lading", "receipt")}
-      ${metric("Total documents", documents.length, "Stored on the server", "upload")}
-      ${metric("Auto-populated", documents.filter((item) => item.createdTripId).length, "Trips created from docs", "route")}
+      ${metric("Total documents", visibleDocuments.length, "Stored on the server", "upload")}
+      ${metric("Auto-populated", visibleDocuments.filter((item) => item.createdTripId).length, "Trips created from docs", "route")}
     </div>
     <section class="panel">
       <div class="panel-header">
@@ -629,13 +679,19 @@ function renderDocuments() {
       </div>
     </section>
     <section class="panel">
-      <div class="panel-header"><h2>Document Library</h2><span class="muted">${documents.length} files</span></div>
+      <div class="panel-header">
+        <h2>Document Library</h2>
+        <div class="filters">
+          <input id="searchInput" type="search" value="${state.query}" placeholder="Search documents" />
+          ${dateRangeSelect()}
+        </div>
+      </div>
       <table class="data-table document-table">
         <thead>
           <tr><th>Type</th><th>File</th><th>Amount</th><th>Scan</th><th>Uploaded By</th><th>Uploaded</th><th></th></tr>
         </thead>
         <tbody>
-          ${documents.map((item) => `
+          ${visibleDocuments.map((item) => `
             <tr>
               <td><span class="status ${item.type === "bol" ? "Scheduled" : "Paid"}">${documentLabel(item.type)}</span></td>
               <td>
@@ -656,7 +712,7 @@ function renderDocuments() {
                 </div>
               </td>
             </tr>
-          `).join("") || `<tr><td colspan="7">No Rate Cons or BOLs uploaded yet.</td></tr>`}
+          `).join("") || `<tr><td colspan="7">No Rate Cons or BOLs match this date range.</td></tr>`}
         </tbody>
       </table>
     </section>
@@ -781,37 +837,49 @@ function renderCompliance() {
 
 function renderAffiliate() {
   const stats = state.customer?.affiliateStats || { referrals: [], earnedTotal: 0, pendingCount: 0, paidCount: 0 };
+  const tier = stats.tier || { name: "Starter", commissionRate: 0.3 };
   const referralLink = `${location.origin}/?ref=${state.customer?.affiliateCode || ""}`;
   content.innerHTML = `
     <div class="metric-grid">
-      ${metric("Commission", "$10", "One-time first paid month", "receipt")}
-      ${metric("Earned", money(stats.earnedTotal || 0), `${stats.paidCount || 0} paid referrals`, "bar-chart")}
-      ${metric("Pending", stats.pendingCount || 0, "Waiting on first payment", "users")}
+      ${metric("Tier", tier.name, `${Math.round((tier.commissionRate || 0.3) * 100)}% recurring commission`, "receipt")}
+      ${metric("Monthly Recurring", money(stats.monthlyRecurringTotal || 0), "Projected monthly commission", "bar-chart")}
+      ${metric("Signup Bonus", money(stats.signupBonusPendingTotal || 0), "$25 after 30 days active", "users")}
       ${metric("Referral code", state.customer?.affiliateCode || "None", "Unique to this customer", "share")}
     </div>
     <section class="panel">
-      <div class="panel-header"><h2>Affiliate Link</h2><span class="muted">One-time $10 commission after first month is paid</span></div>
+      <div class="panel-header"><h2>Referral Tiers</h2><span class="muted">Automatic upgrades based on active customers</span></div>
+      <div class="panel-body">
+        <div class="package-grid">
+          <article class="package-option ${tier.name === "Starter" ? "active" : ""}"><strong>Starter</strong><span>30% commission</span><em>Starts immediately</em></article>
+          <article class="package-option ${tier.name === "Growth" ? "active" : ""}"><strong>Growth</strong><span>35% commission</span><em>After 10 customers</em></article>
+          <article class="package-option ${tier.name === "Elite" ? "active" : ""}"><strong>Elite</strong><span>40% commission</span><em>After 25 customers</em></article>
+        </div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-header"><h2>Referral Link</h2><span class="muted">30% recurring commission for 12 months</span></div>
       <div class="panel-body">
         <div class="copy-row">
           <input value="${referralLink}" readonly aria-label="Affiliate referral link" />
           <button class="primary-button" type="button" data-copy-referral="${referralLink}">Copy Link</button>
         </div>
-        <p class="muted">When a new customer signs up with this link and their first month is paid, this account earns one $10 commission for that referral.</p>
+        <p class="muted">When a new customer signs up with this link and becomes active, this account earns recurring commission for 12 months plus a $25 signup bonus after 30 active days.</p>
       </div>
     </section>
     <section class="panel">
       <div class="panel-header"><h2>Referral Activity</h2><span class="muted">${stats.referrals?.length || 0} referrals</span></div>
       <table class="data-table">
-        <thead><tr><th>Customer</th><th>Email</th><th>Commission</th><th>Status</th></tr></thead>
+        <thead><tr><th>Customer</th><th>Email</th><th>Type</th><th>Commission</th><th>Status</th></tr></thead>
         <tbody>
           ${(stats.referrals || []).map((item) => `
             <tr>
               <td><strong>${item.referredBusinessName}</strong></td>
               <td>${item.referredEmail}</td>
+              <td>${item.commissionType === "signup_bonus_30_day" ? "Signup bonus" : item.commissionType === "recurring_12_months" ? "12-month recurring" : "Referral"}</td>
               <td>${money(item.amount)}</td>
-              <td><span class="status ${item.status === "earned" ? "Paid" : "Pending"}">${item.status === "earned" ? "Earned" : "Pending"}</span></td>
+              <td><span class="status ${["earned", "active_recurring"].includes(item.status) ? "Paid" : "Pending"}">${item.status === "active_recurring" ? "Active" : item.status === "bonus_pending" ? "30-day pending" : item.status === "earned" ? "Earned" : "Pending"}</span></td>
             </tr>
-          `).join("") || `<tr><td colspan="4">No referrals yet.</td></tr>`}
+          `).join("") || `<tr><td colspan="5">No referrals yet.</td></tr>`}
         </tbody>
       </table>
     </section>
@@ -894,6 +962,13 @@ function renderAccount() {
               ${Object.entries(accountAccessRoles).map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}
             </select>
             <input name="truckNumber" type="text" placeholder="Truck/unit number" />
+            <select name="payType">
+              <option value="">Driver pay type</option>
+              <option value="per_mile">Rate per mile</option>
+              <option value="weekly">Set weekly rate</option>
+            </select>
+            <input name="ratePerMile" type="number" min="0" step="0.01" placeholder="Rate per mile" />
+            <input name="weeklyRate" type="number" min="0" step="0.01" placeholder="Weekly rate" />
             <button class="primary-button" type="submit">Send Access</button>
           </form>
           <div class="list account-list">
@@ -906,6 +981,7 @@ function renderAccount() {
                   <div>
                     <strong>${driver.name}</strong>
                     <span>${accountRoleLabel(role)}${role === "driver" ? ` · ${assignedTruck ? assignedTruck.unitNumber : "No truck assigned"}` : ""}</span>
+                    ${role === "driver" ? `<span>${driverPayLabel(driver)}</span>` : ""}
                     <span>${driver.email}</span>
                     <a href="mailto:${driver.email}?subject=Your TruckerBooks access&body=${encodeURIComponent(`Use this link to access your TruckerBooks account dashboard: ${absoluteLink}`)}">Open email</a>
                   </div>
@@ -927,23 +1003,27 @@ function renderPaymentAccount() {
   const customer = state.customer;
   const plan = customer.subscription || subscriptionPlans[customer.subscriptionTier] || subscriptionPlans.silver;
   const payment = customer.paymentInfo || {};
-  const last4 = payment.last4 ? `ending in ${payment.last4}` : "No payment method saved";
-  const exp = payment.expMonth && payment.expYear ? `${String(payment.expMonth).padStart(2, "0")}/${payment.expYear}` : "Not added";
   const trial = customer.trial;
+  const integrations = customer.integrations || {};
+  const paymentStatus = payment.providerStatus || integrations.stripe || "Stripe not connected";
   content.innerHTML = `
     <div class="metric-grid">
       ${metric("Plan", plan.name, planPrice(plan), "credit-card")}
       ${metric("Trial", trialLabel(trial), trialDetail(trial), "credit-card")}
-      ${metric("Payment", last4, payment.cardBrand || "Add a card for billing", "credit-card")}
-      ${metric("Expires", exp, "Admin-managed payment method", "receipt")}
+      ${metric("Stripe", integrations.stripe || "Not connected", "Use Stripe for cards and subscriptions", "credit-card")}
+      ${metric("Plaid", integrations.plaid || "Not connected", "Use Plaid for bank connection", "shield")}
       ${metric("Billing Email", payment.billingEmail || customer.email, "Receipts and account notices", "file-text")}
     </div>
     <section class="panel">
       <div class="panel-header">
-        <h2>Payment Information</h2>
-        <span class="muted">Only account admins can add or update billing details</span>
+        <h2>Billing Setup</h2>
+        <span class="muted">Only account admins can update billing contact details</span>
       </div>
       <div class="panel-body">
+        <div class="security-banner">
+          <strong>${paymentStatus}</strong>
+          <span>For security, customers should enter card details only through Stripe Checkout after Stripe is connected. TruckerBooks will not store full card numbers or CVV codes.</span>
+        </div>
         <form class="billing-form" id="paymentForm">
           <label>
             Billing name
@@ -953,42 +1033,25 @@ function renderPaymentAccount() {
             Billing email
             <input name="billingEmail" type="email" required value="${payment.billingEmail || customer.email || ""}" placeholder="billing@example.com" />
           </label>
-          <label>
-            Card number
-            <input name="cardNumber" type="text" inputmode="numeric" autocomplete="cc-number" placeholder="${payment.last4 ? `Card ending ${payment.last4}` : "Enter card number"}" />
-          </label>
-          <label>
-            Card type
-            <select name="cardBrand">
-              ${["Visa", "Mastercard", "American Express", "Discover", "Other"].map((brand) => `<option value="${brand}" ${payment.cardBrand === brand ? "selected" : ""}>${brand}</option>`).join("")}
-            </select>
-          </label>
-          <label>
-            Expiration month
-            <select name="expMonth" required>
-              ${Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0")).map((month) => `<option value="${month}" ${String(payment.expMonth || "").padStart(2, "0") === month ? "selected" : ""}>${month}</option>`).join("")}
-            </select>
-          </label>
-          <label>
-            Expiration year
-            <select name="expYear" required>
-              ${Array.from({ length: 12 }, (_, index) => String(new Date().getFullYear() + index)).map((year) => `<option value="${year}" ${String(payment.expYear || "") === year ? "selected" : ""}>${year}</option>`).join("")}
-            </select>
-          </label>
-          <label>
-            Billing ZIP
-            <input name="billingZip" type="text" required value="${payment.billingZip || ""}" placeholder="ZIP code" />
-          </label>
-          <label>
-            CVV
-            <input name="cvv" type="password" inputmode="numeric" autocomplete="cc-csc" placeholder="Not saved" />
-          </label>
           <div class="billing-actions">
-            <button class="primary-button" type="submit">Update Payment</button>
-            <span class="muted">For security, only the card type and last 4 digits are saved.</span>
+            <button class="primary-button" type="submit">Save Billing Contact</button>
+            <a class="chip-button" href="/terms" target="_blank" rel="noreferrer">Terms</a>
+            <a class="chip-button" href="/privacy" target="_blank" rel="noreferrer">Privacy</a>
           </div>
         </form>
         ${state.accountMessage ? `<p class="form-message">${state.accountMessage}</p>` : ""}
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Bank Connection</h2>
+        <span class="muted">Plaid-ready for beta testing</span>
+      </div>
+      <div class="panel-body">
+        <div class="security-banner">
+          <strong>${integrations.plaid || "Plaid not connected"}</strong>
+          <span>When Plaid is added, users will connect their bank through Plaid Link. TruckerBooks will never ask for or save bank usernames or passwords.</span>
+        </div>
       </div>
     </section>
   `;
@@ -1165,7 +1228,7 @@ async function markFirstMonthPaid() {
   try {
     const payload = await api("/api/billing/first-month-paid", { method: "POST" });
     state.customer = payload.customer;
-    state.accountMessage = "First month marked paid. Any one-time referral commission is now earned.";
+    state.accountMessage = "First month marked paid. Any referral or partner commission has been updated.";
     renderContent();
   } catch (error) {
     state.accountMessage = error.message;
@@ -1181,16 +1244,11 @@ async function updatePaymentInfo(form) {
       method: "PATCH",
       body: JSON.stringify({
         billingName: formData.get("billingName"),
-        billingEmail: formData.get("billingEmail"),
-        cardNumber: formData.get("cardNumber"),
-        cardBrand: formData.get("cardBrand"),
-        expMonth: formData.get("expMonth"),
-        expYear: formData.get("expYear"),
-        billingZip: formData.get("billingZip")
+        billingEmail: formData.get("billingEmail")
       })
     });
     state.customer = payload.customer;
-    state.accountMessage = "Payment information updated.";
+    state.accountMessage = "Billing contact saved. Stripe will handle card entry once connected.";
     renderContent();
   } catch (error) {
     state.accountMessage = error.message;
@@ -1250,7 +1308,10 @@ async function inviteDriver(form) {
         name: formData.get("name"),
         email: formData.get("email"),
         role: formData.get("role"),
-        truckNumber: formData.get("truckNumber")
+        truckNumber: formData.get("truckNumber"),
+        payType: formData.get("payType"),
+        ratePerMile: formData.get("ratePerMile"),
+        weeklyRate: formData.get("weeklyRate")
       })
     });
     state.customer = payload.customer;
@@ -1507,7 +1568,7 @@ document.addEventListener("click", (event) => {
   if (openTripButton) setView("rateCons");
   if (copyReferralButton) {
     navigator.clipboard?.writeText(copyReferralButton.dataset.copyReferral);
-    state.accountMessage = "Affiliate link copied.";
+    state.accountMessage = "Referral link copied.";
     refreshAffiliate();
   }
   if (markPaidButton) markFirstMonthPaid();
@@ -1560,8 +1621,8 @@ document.addEventListener("input", (event) => {
 });
 
 document.addEventListener("change", (event) => {
-  if (event.target.id === "statusFilter") {
-    state.status = event.target.value;
+  if (event.target.id === "dateRangeFilter") {
+    state.dateRange = event.target.value;
     renderContent();
   }
   if (event.target.id === "reportYearFilter") {

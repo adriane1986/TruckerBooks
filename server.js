@@ -12,7 +12,12 @@ const openaiModel = process.env.OPENAI_MODEL || "gpt-5-mini";
 const openaiVisionModel = process.env.OPENAI_VISION_MODEL || "gpt-4o-mini";
 const ownerEmail = normalizeEmail(process.env.OWNER_EMAIL || "owner@truckerbooks.local");
 const ownerPassword = process.env.OWNER_PASSWORD || "";
+const ownerAccessCode = String(process.env.OWNER_ACCESS_CODE || "").trim();
+const stripeConfigured = Boolean(String(process.env.STRIPE_SECRET_KEY || "").trim());
+const plaidConfigured = Boolean(String(process.env.PLAID_CLIENT_ID || "").trim() && String(process.env.PLAID_SECRET || "").trim());
 const trialDays = 7;
+const sessionMaxAgeSeconds = 60 * 60 * 24 * 7;
+const minimumPasswordLength = 8;
 
 const sampleRecords = {
   trips: [
@@ -46,6 +51,7 @@ const complianceTypes = {
   dotPhysical: { id: "dotPhysical", name: "DOT Physical" },
   ucr: { id: "ucr", name: "UCR" },
   form2290: { id: "form2290", name: "2290" },
+  irp: { id: "irp", name: "IRP" },
   w9: { id: "w9", name: "W9" },
   noa: { id: "noa", name: "NOA" }
 };
@@ -55,6 +61,15 @@ const accountAccessRoles = {
   bookkeeper: "Bookkeeper/Accountant",
   dispatcher: "Dispatcher"
 };
+
+const partnerTiers = [
+  { id: "elite", name: "Elite", threshold: 25, commissionRate: 0.4 },
+  { id: "growth", name: "Growth", threshold: 10, commissionRate: 0.35 },
+  { id: "starter", name: "Starter", threshold: 0, commissionRate: 0.3 }
+];
+
+const partnerRecurringMonths = 12;
+const partnerSignupBonusAmount = 25;
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -83,6 +98,7 @@ function readDb() {
   db.sessions = db.sessions || {};
   db.ownerSessions = db.ownerSessions || {};
   db.partnerSessions = db.partnerSessions || {};
+  db.security = db.security || { loginAttempts: {} };
   return db;
 }
 
@@ -104,7 +120,8 @@ function publicUser(user) {
     documents: user.documents || [],
     complianceDocuments: user.complianceDocuments || [],
     complianceAlerts: complianceAlerts(user),
-    paymentInfo: user.paymentInfo || {},
+    paymentInfo: publicPaymentInfo(user.paymentInfo),
+    integrations: integrationStatus(),
     supportIssues: user.supportIssues || [],
     affiliateCode: user.affiliateCode,
     referredBy: user.referredBy || "",
@@ -114,7 +131,31 @@ function publicUser(user) {
   };
 }
 
+function integrationStatus() {
+  return {
+    stripe: stripeConfigured ? "Connected" : "Not connected",
+    plaid: plaidConfigured ? "Connected" : "Not connected",
+    documentStorage: "Private app storage",
+    https: "Required on Railway/custom domain"
+  };
+}
+
+function publicPaymentInfo(paymentInfo = {}) {
+  return {
+    billingName: paymentInfo.billingName || "",
+    billingEmail: paymentInfo.billingEmail || "",
+    provider: paymentInfo.provider || "Stripe",
+    providerStatus: stripeConfigured ? paymentInfo.providerStatus || "Ready to connect" : "Stripe not connected",
+    customerId: paymentInfo.customerId || "",
+    subscriptionId: paymentInfo.subscriptionId || "",
+    last4: paymentInfo.last4 || "",
+    cardBrand: paymentInfo.cardBrand || "",
+    updatedAt: paymentInfo.updatedAt || ""
+  };
+}
+
 function publicPartner(partner) {
+  const stats = partnerStats(partner);
   return {
     id: partner.id,
     name: partner.name,
@@ -124,10 +165,13 @@ function publicPartner(partner) {
     website: partner.website || "",
     socialHandle: partner.socialHandle || "",
     payoutPreference: partner.payoutPreference || "",
+    paymentInfo: partner.paymentInfo || {},
+    w9Status: partner.w9Status || "Needed before payout",
     affiliateCode: partner.affiliateCode,
     status: partner.status || "Active",
+    tier: stats.tier,
     createdAt: partner.createdAt || "",
-    stats: partnerStats(partner)
+    stats
   };
 }
 
@@ -149,9 +193,39 @@ function normalizeEmail(email = "") {
   return String(email).trim().toLowerCase();
 }
 
+function loginAttemptKey(type, email) {
+  return `${type}:${normalizeEmail(email)}`;
+}
+
+function isLoginLocked(db, type, email) {
+  const attempt = db.security?.loginAttempts?.[loginAttemptKey(type, email)];
+  return Boolean(attempt?.lockedUntil && new Date(attempt.lockedUntil) > new Date());
+}
+
+function recordLoginFailure(db, type, email) {
+  db.security = db.security || { loginAttempts: {} };
+  const key = loginAttemptKey(type, email);
+  const current = db.security.loginAttempts[key] || { count: 0 };
+  const count = current.count + 1;
+  db.security.loginAttempts[key] = {
+    count,
+    lastFailedAt: new Date().toISOString(),
+    lockedUntil: count >= 5 ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : current.lockedUntil || ""
+  };
+}
+
+function clearLoginFailures(db, type, email) {
+  if (db.security?.loginAttempts) delete db.security.loginAttempts[loginAttemptKey(type, email)];
+}
+
 function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
   const hash = crypto.pbkdf2Sync(String(password), salt, 120000, 64, "sha512").toString("hex");
   return `${salt}:${hash}`;
+}
+
+function isStrongPassword(password) {
+  const value = String(password || "");
+  return value.length >= minimumPasswordLength && /[A-Za-z]/.test(value) && /\d/.test(value);
 }
 
 function verifyPassword(password, stored) {
@@ -193,15 +267,21 @@ function parseCookies(req) {
   );
 }
 
-function setSession(res, db, userId) {
-  const token = crypto.randomBytes(32).toString("hex");
-  db.sessions[token] = { userId, createdAt: new Date().toISOString() };
-  res.setHeader("Set-Cookie", `tb_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800`);
+function cookieOptions(req, maxAge = sessionMaxAgeSeconds) {
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").toLowerCase();
+  const isSecure = forwardedProto === "https" || Boolean(req.socket.encrypted);
+  return `HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${isSecure ? "; Secure" : ""}`;
 }
 
-function clearSession(res, db, token) {
+function setSession(req, res, db, userId) {
+  const token = crypto.randomBytes(32).toString("hex");
+  db.sessions[token] = { userId, createdAt: new Date().toISOString() };
+  res.setHeader("Set-Cookie", `tb_session=${token}; ${cookieOptions(req)}`);
+}
+
+function clearSession(req, res, db, token) {
   if (token) delete db.sessions[token];
-  res.setHeader("Set-Cookie", "tb_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
+  res.setHeader("Set-Cookie", `tb_session=; ${cookieOptions(req, 0)}`);
 }
 
 function getCurrentUser(req, db) {
@@ -224,26 +304,26 @@ function getPartnerSession(req, db) {
   return { token, partner };
 }
 
-function setPartnerSession(res, db, partnerId) {
+function setPartnerSession(req, res, db, partnerId) {
   const token = crypto.randomBytes(32).toString("hex");
   db.partnerSessions[token] = { partnerId, createdAt: new Date().toISOString() };
-  res.setHeader("Set-Cookie", `tb_partner_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800`);
+  res.setHeader("Set-Cookie", `tb_partner_session=${token}; ${cookieOptions(req)}`);
 }
 
-function clearPartnerSession(res, db, token) {
+function clearPartnerSession(req, res, db, token) {
   if (token) delete db.partnerSessions[token];
-  res.setHeader("Set-Cookie", "tb_partner_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
+  res.setHeader("Set-Cookie", `tb_partner_session=; ${cookieOptions(req, 0)}`);
 }
 
-function setOwnerSession(res, db) {
+function setOwnerSession(req, res, db) {
   const token = crypto.randomBytes(32).toString("hex");
   db.ownerSessions[token] = { email: ownerEmail, createdAt: new Date().toISOString() };
-  res.setHeader("Set-Cookie", `tb_owner_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800`);
+  res.setHeader("Set-Cookie", `tb_owner_session=${token}; ${cookieOptions(req)}`);
 }
 
-function clearOwnerSession(res, db, token) {
+function clearOwnerSession(req, res, db, token) {
   if (token) delete db.ownerSessions[token];
-  res.setHeader("Set-Cookie", "tb_owner_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
+  res.setHeader("Set-Cookie", `tb_owner_session=; ${cookieOptions(req, 0)}`);
 }
 
 function requireOwner(req, res, db) {
@@ -256,7 +336,7 @@ function requireOwner(req, res, db) {
 }
 
 function sendJson(res, status, payload) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.writeHead(status, secureHeaders({ "Content-Type": "application/json; charset=utf-8" }));
   res.end(JSON.stringify(payload));
 }
 
@@ -270,6 +350,53 @@ function escapeHtml(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function secureHeaders(headers = {}) {
+  return {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    ...headers
+  };
+}
+
+function servePolicyPage(res, type) {
+  const isPrivacy = type === "privacy";
+  res.writeHead(200, secureHeaders({ "Content-Type": "text/html; charset=utf-8" }));
+  res.end(`<!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>${isPrivacy ? "Privacy Policy" : "Terms of Service"} - TruckerBooks</title>
+        <link rel="stylesheet" href="/styles.css" />
+      </head>
+      <body>
+        <main class="policy-page">
+          <section class="panel">
+            <div class="panel-header">
+              <h1>${isPrivacy ? "Privacy Policy" : "Terms of Service"}</h1>
+              <a class="ghost-button" href="/">Back to TruckerBooks</a>
+            </div>
+            <div class="panel-body policy-copy">
+              ${isPrivacy ? `
+                <p>TruckerBooks stores account details, uploaded trucking documents, scan results, support requests, and bookkeeping records so customers can manage their business dashboard.</p>
+                <p>Payment cards should be handled by Stripe once connected. Bank connections should be handled by Plaid once connected. TruckerBooks should not ask customers for bank login details or store full card numbers.</p>
+                <p>Uploaded files are private app documents and are only shared through account access, owner support access, or customer-created carrier packet links.</p>
+                <p>For privacy questions, contact info@thetruckerconsultant.com.</p>
+              ` : `
+                <p>TruckerBooks is provided to help trucking businesses organize documents, compliance renewals, expenses, rate confirmations, BOLs, reports, and account access.</p>
+                <p>Customers are responsible for reviewing AI scan results before relying on them for compliance, bookkeeping, taxes, billing, or broker packets.</p>
+                <p>Trial, subscription, bank, and payment features should be finalized through Stripe and Plaid before accepting production payments or live bank connections.</p>
+                <p>For support, contact info@thetruckerconsultant.com.</p>
+              `}
+            </div>
+          </section>
+        </main>
+      </body>
+    </html>`);
 }
 
 function getOpenAiKey() {
@@ -319,6 +446,7 @@ function inferComplianceType(type, fileName = "") {
   const cleanName = String(fileName || "").toLowerCase();
   if (/\bw-?9\b/.test(cleanName)) return "w9";
   if (/\bnoa\b|notice\s+of\s+assignment/.test(cleanName)) return "noa";
+  if (/\birp\b|international\s+registration\s+plan/.test(cleanName)) return "irp";
   return complianceTypes[cleanType] ? cleanType : "insurance";
 }
 
@@ -972,13 +1100,15 @@ function normalizeUser(user) {
 
 function normalizePartner(partner) {
   partner.id = partner.id || crypto.randomUUID();
-  partner.name = String(partner.name || "").trim() || "Affiliate Partner";
+  partner.name = String(partner.name || "").trim() || "Referral Partner";
   partner.businessName = String(partner.businessName || "").trim();
   partner.email = normalizeEmail(partner.email);
   partner.phone = String(partner.phone || "").trim();
   partner.website = String(partner.website || "").trim();
   partner.socialHandle = String(partner.socialHandle || "").trim();
   partner.payoutPreference = String(partner.payoutPreference || "").trim();
+  partner.paymentInfo = partner.paymentInfo && typeof partner.paymentInfo === "object" ? partner.paymentInfo : {};
+  partner.w9Status = partner.w9Status || "Needed before payout";
   partner.affiliateCode = partner.affiliateCode || crypto.randomBytes(5).toString("hex");
   partner.status = partner.status || "Active";
   partner.commissions = Array.isArray(partner.commissions) ? partner.commissions : [];
@@ -989,23 +1119,49 @@ function normalizePartner(partner) {
 
 function affiliateStats(user) {
   const referrals = user.commissions || [];
+  const activeReferrals = referrals.filter((item) => ["active_recurring", "earned", "bonus_pending"].includes(item.status));
+  const activeCustomerIds = new Set(activeReferrals.map((item) => item.referredUserId).filter(Boolean));
+  const tier = partnerTierForCustomerCount(activeCustomerIds.size);
+  const activeRecurring = referrals.filter((item) => item.commissionType === "recurring_12_months" && item.status === "active_recurring");
+  const pendingBonuses = referrals.filter((item) => item.commissionType === "signup_bonus_30_day" && item.status === "bonus_pending");
+  const earned = referrals.filter((item) => ["earned", "active_recurring"].includes(item.status));
   return {
-    referralCount: referrals.length,
-    paidCount: referrals.filter((item) => item.status === "earned").length,
+    tier,
+    referralCount: activeCustomerIds.size || referrals.length,
+    paidCount: activeCustomerIds.size,
     pendingCount: referrals.filter((item) => item.status === "pending").length,
-    earnedTotal: referrals.filter((item) => item.status === "earned").reduce((total, item) => total + item.amount, 0),
+    recurringCount: activeRecurring.length,
+    earnedTotal: earned.reduce((total, item) => total + Number(item.amount || 0), 0),
+    monthlyRecurringTotal: activeRecurring.reduce((total, item) => total + Number(item.amount || 0), 0),
+    pendingTotal: referrals.filter((item) => ["pending", "bonus_pending"].includes(item.status)).reduce((total, item) => total + Number(item.amount || 0), 0),
+    signupBonusPendingTotal: pendingBonuses.reduce((total, item) => total + Number(item.amount || 0), 0),
     referrals
   };
 }
 
+function partnerTierForCustomerCount(customerCount) {
+  return partnerTiers.find((tier) => customerCount >= tier.threshold) || partnerTiers[partnerTiers.length - 1];
+}
+
 function partnerStats(partner) {
   const referrals = partner.commissions || [];
+  const activeReferrals = referrals.filter((item) => ["active_recurring", "earned", "bonus_pending"].includes(item.status));
+  const activeCustomerIds = new Set(activeReferrals.map((item) => item.referredUserId).filter(Boolean));
+  const tier = partnerTierForCustomerCount(activeCustomerIds.size);
+  const recurringReferrals = referrals.filter((item) => item.commissionType === "recurring_12_months");
+  const activeRecurring = recurringReferrals.filter((item) => item.status === "active_recurring");
+  const pendingBonuses = referrals.filter((item) => item.commissionType === "signup_bonus_30_day" && item.status === "bonus_pending");
+  const earned = referrals.filter((item) => ["earned", "active_recurring"].includes(item.status));
   return {
-    referralCount: referrals.length,
-    paidCount: referrals.filter((item) => item.status === "earned").length,
+    tier,
+    referralCount: activeCustomerIds.size || referrals.length,
+    paidCount: activeCustomerIds.size,
     pendingCount: referrals.filter((item) => item.status === "pending").length,
-    earnedTotal: referrals.filter((item) => item.status === "earned").reduce((total, item) => total + item.amount, 0),
-    pendingTotal: referrals.filter((item) => item.status === "pending").reduce((total, item) => total + item.amount, 0),
+    recurringCount: activeRecurring.length,
+    earnedTotal: earned.reduce((total, item) => total + Number(item.amount || 0), 0),
+    monthlyRecurringTotal: activeRecurring.reduce((total, item) => total + Number(item.amount || 0), 0),
+    pendingTotal: referrals.filter((item) => ["pending", "bonus_pending"].includes(item.status)).reduce((total, item) => total + Number(item.amount || 0), 0),
+    signupBonusPendingTotal: pendingBonuses.reduce((total, item) => total + Number(item.amount || 0), 0),
     referrals
   };
 }
@@ -1022,27 +1178,76 @@ function findReferrer(db, referralCode) {
 
 function addReferralCommission(referrer, newUser) {
   referrer.account.commissions = Array.isArray(referrer.account.commissions) ? referrer.account.commissions : [];
+  const createdAt = new Date().toISOString();
+  const tier = referrer.type === "partner" ? partnerStats(referrer.account).tier : affiliateStats(referrer.account).tier;
+  const plan = currentPlan(newUser);
+  const monthlyCommission = Math.round(plan.monthlyPrice * tier.commissionRate * 100) / 100;
   referrer.account.commissions.push({
     id: crypto.randomUUID(),
     referredUserId: newUser.id,
     referredBusinessName: newUser.businessName,
     referredEmail: newUser.email,
-    amount: 10,
-    commissionType: "one_time_first_paid_month",
+    amount: monthlyCommission,
+    commissionRate: tier.commissionRate,
+    tierName: tier.name,
+    commissionType: "recurring_12_months",
+    status: "pending",
+    monthsTotal: partnerRecurringMonths,
+    monthsRemaining: partnerRecurringMonths,
+    monthlySubscriptionAmount: plan.monthlyPrice,
+    referrerType: referrer.type,
+    createdAt
+  });
+  referrer.account.commissions.push({
+    id: crypto.randomUUID(),
+    referredUserId: newUser.id,
+    referredBusinessName: newUser.businessName,
+    referredEmail: newUser.email,
+    amount: partnerSignupBonusAmount,
+    commissionType: "signup_bonus_30_day",
     status: "pending",
     referrerType: referrer.type,
-    createdAt: new Date().toISOString()
+    createdAt
   });
 }
 
 function earnReferralCommission(db, user) {
   if (!user.referredBy) return;
   const referrer = findReferrer(db, user.referredBy);
-  const commission = referrer?.account.commissions?.find((item) => item.referredUserId === user.id);
-  if (commission && commission.status !== "earned") {
-    commission.status = "earned";
-    commission.earnedAt = new Date().toISOString();
-  }
+  const commissions = referrer?.account.commissions?.filter((item) => item.referredUserId === user.id) || [];
+  const now = new Date().toISOString();
+  commissions.forEach((commission) => {
+    if (commission.commissionType === "recurring_12_months" && commission.status === "pending") {
+      commission.status = "active_recurring";
+      commission.startedAt = now;
+      commission.earnedAt = now;
+    }
+    if (commission.commissionType === "signup_bonus_30_day" && commission.status === "pending") {
+      commission.status = "bonus_pending";
+      commission.eligibleAt = addDaysIso(now, 30);
+    }
+    if (commission.commissionType === "one_time_first_paid_month" && commission.status !== "earned") {
+      commission.status = "earned";
+      commission.earnedAt = now;
+    }
+  });
+}
+
+function releaseEligibleBonuses(db) {
+  let changed = false;
+  const now = new Date();
+  [...(db.partners || []), ...(db.users || [])].forEach((account) => {
+    (account.commissions || []).forEach((commission) => {
+      if (commission.commissionType !== "signup_bonus_30_day" || commission.status !== "bonus_pending") return;
+      const eligibleAt = new Date(commission.eligibleAt || "");
+      if (!Number.isNaN(eligibleAt.getTime()) && eligibleAt <= now) {
+        commission.status = "earned";
+        commission.earnedAt = now.toISOString();
+        changed = true;
+      }
+    });
+  });
+  return changed;
 }
 
 function ownerCustomerSummary(user) {
@@ -1077,7 +1282,7 @@ function ownerCustomerDetail(user) {
     businessName: user.businessName,
     email: user.email,
     subscriptionTier: user.subscriptionTier,
-    paymentInfo: user.paymentInfo || {},
+    paymentInfo: publicPaymentInfo(user.paymentInfo),
     trucks: user.trucks || [],
     drivers: user.drivers || [],
     documents: (user.documents || []).map((item) => ({
@@ -1205,6 +1410,7 @@ function requireAdmin(user, res) {
 
 async function handleApi(req, res, pathname) {
   const db = readDb();
+  const bonusesReleased = releaseEligibleBonuses(db);
   const { token, user } = getCurrentUser(req, db);
 
   if (req.method === "GET" && pathname.match(/^\/api\/shared-compliance\/[^/]+\/[^/]+$/)) {
@@ -1215,10 +1421,10 @@ async function handleApi(req, res, pathname) {
     if (!document) return sendError(res, 404, "Shared document not found.");
     const filePath = path.join(uploadDir, document.storedName);
     if (!fs.existsSync(filePath)) return sendError(res, 404, "Uploaded file is missing.");
-    res.writeHead(200, {
+    res.writeHead(200, secureHeaders({
       "Content-Type": document.mimeType,
       "Content-Disposition": `attachment; filename="${document.fileName.replace(/"/g, "")}"`
-    });
+    }));
     return fs.createReadStream(filePath).pipe(res);
   }
 
@@ -1226,7 +1432,7 @@ async function handleApi(req, res, pathname) {
     const body = await readBody(req);
     const email = normalizeEmail(body.email);
     const password = String(body.password || "");
-    if (!email || !password || password.length < 4) return sendError(res, 400, "Enter an email and password with at least 4 characters.");
+    if (!email || !isStrongPassword(password)) return sendError(res, 400, "Enter an email and a password with at least 8 characters, including a letter and a number.");
     if (db.users.some((item) => item.email === email)) return sendError(res, 409, "An account already exists for that email.");
 
     const referrer = findReferrer(db, body.referralCode);
@@ -1256,7 +1462,7 @@ async function handleApi(req, res, pathname) {
     };
     db.users.push(newUser);
     if (referrer) addReferralCommission(referrer, newUser);
-    setSession(res, db, newUser.id);
+    setSession(req, res, db, newUser.id);
     writeDb(db);
     return sendJson(res, 201, { customer: publicUser(newUser), records: newUser.records });
   }
@@ -1264,15 +1470,21 @@ async function handleApi(req, res, pathname) {
   if (req.method === "POST" && pathname === "/api/login") {
     const body = await readBody(req);
     const email = normalizeEmail(body.email);
+    if (isLoginLocked(db, "customer", email)) return sendError(res, 429, "Too many sign in attempts. Please wait 15 minutes and try again.");
     const userMatch = db.users.find((item) => item.email === email);
-    if (!userMatch || !verifyPassword(body.password || "", userMatch.passwordHash)) return sendError(res, 401, "Email or password did not match an account.");
-    setSession(res, db, userMatch.id);
+    if (!userMatch || !verifyPassword(body.password || "", userMatch.passwordHash)) {
+      recordLoginFailure(db, "customer", email);
+      writeDb(db);
+      return sendError(res, 401, "Email or password did not match an account.");
+    }
+    clearLoginFailures(db, "customer", email);
+    setSession(req, res, db, userMatch.id);
     writeDb(db);
     return sendJson(res, 200, { customer: publicUser(userMatch), records: userMatch.records });
   }
 
   if (req.method === "POST" && pathname === "/api/logout") {
-    clearSession(res, db, token);
+    clearSession(req, res, db, token);
     writeDb(db);
     return sendJson(res, 200, { ok: true });
   }
@@ -1281,8 +1493,8 @@ async function handleApi(req, res, pathname) {
     const body = await readBody(req);
     const email = normalizeEmail(body.email);
     const password = String(body.password || "");
-    if (!email || !password || password.length < 4) return sendError(res, 400, "Enter an email and password with at least 4 characters.");
-    if (db.partners.some((item) => item.email === email)) return sendError(res, 409, "An affiliate partner already exists for that email.");
+    if (!email || !isStrongPassword(password)) return sendError(res, 400, "Enter an email and a password with at least 8 characters, including a letter and a number.");
+    if (db.partners.some((item) => item.email === email)) return sendError(res, 409, "A referral partner already exists for that email.");
     const partner = normalizePartner({
       id: crypto.randomUUID(),
       name: String(body.name || "").trim(),
@@ -1300,7 +1512,7 @@ async function handleApi(req, res, pathname) {
       updatedAt: new Date().toISOString()
     });
     db.partners.push(partner);
-    setPartnerSession(res, db, partner.id);
+    setPartnerSession(req, res, db, partner.id);
     writeDb(db);
     return sendJson(res, 201, { partner: publicPartner(partner) });
   }
@@ -1308,29 +1520,36 @@ async function handleApi(req, res, pathname) {
   if (req.method === "POST" && pathname === "/api/partners/login") {
     const body = await readBody(req);
     const email = normalizeEmail(body.email);
+    if (isLoginLocked(db, "partner", email)) return sendError(res, 429, "Too many sign in attempts. Please wait 15 minutes and try again.");
     const partner = db.partners.find((item) => item.email === email);
-    if (!partner || !verifyPassword(body.password || "", partner.passwordHash)) return sendError(res, 401, "Email or password did not match an affiliate partner.");
-    setPartnerSession(res, db, partner.id);
+    if (!partner || !verifyPassword(body.password || "", partner.passwordHash)) {
+      recordLoginFailure(db, "partner", email);
+      writeDb(db);
+      return sendError(res, 401, "Email or password did not match a referral partner.");
+    }
+    clearLoginFailures(db, "partner", email);
+    setPartnerSession(req, res, db, partner.id);
     writeDb(db);
     return sendJson(res, 200, { partner: publicPartner(partner) });
   }
 
   if (req.method === "POST" && pathname === "/api/partners/logout") {
     const partnerSession = getPartnerSession(req, db);
-    clearPartnerSession(res, db, partnerSession.token);
+    clearPartnerSession(req, res, db, partnerSession.token);
     writeDb(db);
     return sendJson(res, 200, { ok: true });
   }
 
   if (req.method === "GET" && pathname === "/api/partners/session") {
     const partnerSession = getPartnerSession(req, db);
-    if (!partnerSession.partner) return sendError(res, 401, "Affiliate partner sign in required.");
+    if (!partnerSession.partner) return sendError(res, 401, "Referral partner sign in required.");
+    if (bonusesReleased) writeDb(db);
     return sendJson(res, 200, { partner: publicPartner(partnerSession.partner) });
   }
 
   if (req.method === "PATCH" && pathname === "/api/partners/profile") {
     const partnerSession = getPartnerSession(req, db);
-    if (!partnerSession.partner) return sendError(res, 401, "Affiliate partner sign in required.");
+    if (!partnerSession.partner) return sendError(res, 401, "Referral partner sign in required.");
     const body = await readBody(req);
     partnerSession.partner.name = String(body.name || "").trim() || partnerSession.partner.name;
     partnerSession.partner.businessName = String(body.businessName || "").trim();
@@ -1338,6 +1557,14 @@ async function handleApi(req, res, pathname) {
     partnerSession.partner.website = String(body.website || "").trim();
     partnerSession.partner.socialHandle = String(body.socialHandle || "").trim();
     partnerSession.partner.payoutPreference = String(body.payoutPreference || "").trim();
+    partnerSession.partner.w9Status = String(body.w9Status || partnerSession.partner.w9Status || "Needed before payout").trim();
+    partnerSession.partner.paymentInfo = {
+      method: String(body.paymentMethod || "").trim(),
+      name: String(body.paymentName || "").trim(),
+      email: normalizeEmail(body.paymentEmail || ""),
+      notes: String(body.paymentNotes || "").trim(),
+      updatedAt: new Date().toISOString()
+    };
     partnerSession.partner.updatedAt = new Date().toISOString();
     writeDb(db);
     return sendJson(res, 200, { partner: publicPartner(partnerSession.partner) });
@@ -1347,17 +1574,21 @@ async function handleApi(req, res, pathname) {
     const body = await readBody(req);
     const email = normalizeEmail(body.email);
     if (!ownerPassword) return sendError(res, 503, "Owner login is not configured yet. Add OWNER_EMAIL and OWNER_PASSWORD in Railway.");
-    if (email !== ownerEmail || String(body.password || "") !== ownerPassword) {
-      return sendError(res, 401, "Owner email or password did not match.");
+    if (isLoginLocked(db, "owner", email)) return sendError(res, 429, "Too many owner sign in attempts. Please wait 15 minutes and try again.");
+    if (email !== ownerEmail || String(body.password || "") !== ownerPassword || (ownerAccessCode && String(body.accessCode || "").trim() !== ownerAccessCode)) {
+      recordLoginFailure(db, "owner", email);
+      writeDb(db);
+      return sendError(res, 401, "Owner email, password, or access code did not match.");
     }
-    setOwnerSession(res, db);
+    clearLoginFailures(db, "owner", email);
+    setOwnerSession(req, res, db);
     writeDb(db);
     return sendJson(res, 200, { owner: { email: ownerEmail } });
   }
 
   if (req.method === "POST" && pathname === "/api/owner/logout") {
     const ownerSession = getOwnerSession(req, db);
-    clearOwnerSession(res, db, ownerSession.token);
+    clearOwnerSession(req, res, db, ownerSession.token);
     writeDb(db);
     return sendJson(res, 200, { ok: true });
   }
@@ -1380,6 +1611,7 @@ async function handleApi(req, res, pathname) {
 
   if (req.method === "GET" && pathname === "/api/owner/partners") {
     if (!requireOwner(req, res, db)) return;
+    if (bonusesReleased) writeDb(db);
     const partners = db.partners.map((partner) => publicPartner(partner));
     return sendJson(res, 200, { partners });
   }
@@ -1524,29 +1756,20 @@ async function handleApi(req, res, pathname) {
     const body = await readBody(req);
     const billingName = String(body.billingName || "").trim();
     const billingEmail = normalizeEmail(body.billingEmail);
-    const cardBrand = String(body.cardBrand || "Other").trim() || "Other";
-    const cardDigits = String(body.cardNumber || "").replace(/\D/g, "");
-    const expMonth = String(body.expMonth || "").padStart(2, "0");
-    const expYear = String(body.expYear || "");
-    const billingZip = String(body.billingZip || "").trim();
     const previous = user.paymentInfo || {};
 
     if (!billingName) return sendError(res, 400, "Enter the billing name.");
     if (!billingEmail) return sendError(res, 400, "Enter the billing email.");
-    if (!/^(0[1-9]|1[0-2])$/.test(expMonth)) return sendError(res, 400, "Choose a valid expiration month.");
-    if (!/^20\d{2}$/.test(expYear)) return sendError(res, 400, "Choose a valid expiration year.");
-    if (!billingZip) return sendError(res, 400, "Enter the billing ZIP.");
-    if (!previous.last4 && cardDigits.length < 4) return sendError(res, 400, "Enter the card number.");
-    if (cardDigits && cardDigits.length < 12) return sendError(res, 400, "Enter a valid card number.");
 
     user.paymentInfo = {
       billingName,
       billingEmail,
-      cardBrand,
-      last4: cardDigits ? cardDigits.slice(-4) : previous.last4 || "",
-      expMonth,
-      expYear,
-      billingZip,
+      provider: "Stripe",
+      providerStatus: stripeConfigured ? previous.providerStatus || "Ready to connect Stripe Checkout" : "Stripe not connected",
+      customerId: previous.customerId || "",
+      subscriptionId: previous.subscriptionId || "",
+      last4: previous.last4 || "",
+      cardBrand: previous.cardBrand || "",
       updatedAt: new Date().toISOString()
     };
     user.updatedAt = new Date().toISOString();
@@ -1620,6 +1843,9 @@ async function handleApi(req, res, pathname) {
       roleLabel: accountAccessRoles[role],
       truckId,
       truckNumber: role === "driver" ? truckNumber : "",
+      payType: role === "driver" && ["per_mile", "weekly"].includes(body.payType) ? body.payType : "",
+      ratePerMile: role === "driver" ? Number(body.ratePerMile || 0) : 0,
+      weeklyRate: role === "driver" ? Number(body.weeklyRate || 0) : 0,
       status: "Access sent",
       inviteToken,
       inviteLink: `/account-access/${inviteToken}`,
@@ -1928,10 +2154,10 @@ async function handleApi(req, res, pathname) {
 
   if (req.method === "GET" && pathname === "/api/export") {
     const fileName = `${user.businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "truckerbooks"}-records.json`;
-    res.writeHead(200, {
+    res.writeHead(200, secureHeaders({
       "Content-Type": "application/json; charset=utf-8",
       "Content-Disposition": `attachment; filename="${fileName}"`
-    });
+    }));
     return res.end(JSON.stringify(user.records, null, 2));
   }
 
@@ -1939,21 +2165,28 @@ async function handleApi(req, res, pathname) {
 }
 
 function serveStatic(req, res, pathname) {
+  if (pathname === "/privacy") return servePolicyPage(res, "privacy");
+  if (pathname === "/terms") return servePolicyPage(res, "terms");
+  if (pathname.startsWith("/data/")) {
+    res.writeHead(403, secureHeaders({ "Content-Type": "text/plain; charset=utf-8" }));
+    res.end("Private app storage");
+    return;
+  }
   const requested = pathname === "/" ? "/index.html" : pathname === "/owner" ? "/owner.html" : pathname === "/partners" ? "/partners.html" : pathname;
   const filePath = path.normalize(path.join(rootDir, requested));
   if (!filePath.startsWith(rootDir)) {
-    res.writeHead(403);
+    res.writeHead(403, secureHeaders({ "Content-Type": "text/plain; charset=utf-8" }));
     res.end("Forbidden");
     return;
   }
   fs.readFile(filePath, (error, content) => {
     if (error) {
-      res.writeHead(404);
+      res.writeHead(404, secureHeaders({ "Content-Type": "text/plain; charset=utf-8" }));
       res.end("Not found");
       return;
     }
     const extension = path.extname(filePath).toLowerCase();
-    res.writeHead(200, { "Content-Type": mimeTypes[extension] || "application/octet-stream" });
+    res.writeHead(200, secureHeaders({ "Content-Type": mimeTypes[extension] || "application/octet-stream" }));
     res.end(content);
   });
 }
@@ -1962,7 +2195,7 @@ function serveComplianceShare(res, tokenValue) {
   const db = readDb();
   const found = findComplianceShare(db, tokenValue);
   if (!found) {
-    res.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
+    res.writeHead(404, secureHeaders({ "Content-Type": "text/html; charset=utf-8" }));
     res.end("<h1>Carrier packet not found</h1>");
     return;
   }
@@ -1972,7 +2205,7 @@ function serveComplianceShare(res, tokenValue) {
   const links = documents.map((document) => `
     <li><a href="/api/shared-compliance/${found.share.token}/${document.id}">${escapeHtml(complianceTypeName(document.type))}: ${escapeHtml(document.fileName)}</a></li>
   `).join("");
-  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  res.writeHead(200, secureHeaders({ "Content-Type": "text/html; charset=utf-8" }));
   res.end(`<!doctype html>
     <html lang="en">
       <head>

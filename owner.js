@@ -50,6 +50,10 @@ function formatDate(value) {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+function money(value) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value || 0);
+}
+
 function moneyStatus(customer) {
   if (customer.firstMonthPaid) return "First month paid";
   return "First month not marked paid";
@@ -65,6 +69,12 @@ function trialLabel(trial) {
 function uploadedByLabel(uploadedBy) {
   if (!uploadedBy) return "Admin";
   return uploadedBy.roleLabel || uploadedBy.name || uploadedBy.email || "Admin";
+}
+
+function driverPayLabel(driver) {
+  if (driver.payType === "per_mile" && Number(driver.ratePerMile)) return `${money(Number(driver.ratePerMile))}/mile`;
+  if (driver.payType === "weekly" && Number(driver.weeklyRate)) return `${money(Number(driver.weeklyRate))}/week`;
+  return "Pay not set";
 }
 
 function showOwnerApp() {
@@ -126,9 +136,9 @@ function renderPartnerList() {
     <article class="owner-customer">
       <strong>${escapeHtml(partner.businessName || partner.name)}</strong>
       <span>${escapeHtml(partner.email)}</span>
-      <small>${escapeHtml(partner.affiliateCode)} · ${partner.stats?.referralCount || 0} referrals · ${partner.stats?.paidCount || 0} paid</small>
+      <small>${escapeHtml(partner.affiliateCode)} · ${escapeHtml(partner.stats?.tier?.name || "Starter")} · ${partner.stats?.referralCount || 0} active customers · ${money(partner.stats?.monthlyRecurringTotal || 0)}/mo</small>
     </article>
-  `).join("") || `<p class="muted">No affiliate partners yet.</p>`;
+  `).join("") || `<p class="muted">No referral partners yet.</p>`;
 }
 
 function renderCustomerDetail() {
@@ -136,7 +146,7 @@ function renderCustomerDetail() {
   if (!customer) return;
   const accessRows = customer.drivers.map((driver) => `
     <tr>
-      <td><strong>${escapeHtml(driver.name)}</strong><br><span class="muted">${escapeHtml(driver.roleLabel || driver.role)}</span></td>
+      <td><strong>${escapeHtml(driver.name)}</strong><br><span class="muted">${escapeHtml(driver.roleLabel || driver.role)} · ${escapeHtml(driverPayLabel(driver))}</span></td>
       <td class="owner-wrap">${escapeHtml(driver.email)}</td>
       <td>${escapeHtml(driver.status || "Access sent")}</td>
       <td><button class="chip-button" type="button" data-resend-invite="${driver.id}">Resend Invite</button></td>
@@ -253,7 +263,8 @@ ownerLoginForm.addEventListener("submit", (event) => {
         method: "POST",
         body: JSON.stringify({
           email: formData.get("email"),
-          password: formData.get("password")
+          password: formData.get("password"),
+          accessCode: formData.get("accessCode")
         })
       });
       ownerLoginForm.reset();

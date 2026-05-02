@@ -87,23 +87,48 @@ function renderMetric(label, value, detail) {
 function renderPartnerDashboard() {
   const partner = partnerState.partner;
   const stats = partner.stats || {};
+  const tier = stats.tier || partner.tier || { name: "Starter", commissionRate: 0.3, threshold: 0 };
   const referrals = stats.referrals || [];
   partnerContent.innerHTML = `
     <div class="metric-grid">
-      ${renderMetric("Commission", "$10", "One-time first paid month")}
-      ${renderMetric("Earned", money(stats.earnedTotal || 0), `${stats.paidCount || 0} paid referrals`)}
-      ${renderMetric("Pending", money(stats.pendingTotal || 0), `${stats.pendingCount || 0} waiting on first payment`)}
+      ${renderMetric("Tier", tier.name, `${Math.round((tier.commissionRate || 0.3) * 100)}% recurring commission`)}
+      ${renderMetric("Monthly Recurring", money(stats.monthlyRecurringTotal || 0), "Projected monthly commission")}
+      ${renderMetric("Signup Bonus", money(stats.signupBonusPendingTotal || 0), "$25 after 30 days active")}
+      ${renderMetric("Customers", stats.referralCount || 0, "Growth at 10, Elite at 25")}
       ${renderMetric("Referral Code", partner.affiliateCode || "", "Unique partner link")}
     </div>
 
     <section class="panel">
-      <div class="panel-header"><h2>Affiliate Link</h2><span class="muted">Share this with potential customers</span></div>
+      <div class="panel-header"><h2>Partner Tiers</h2><span class="muted">Automatic upgrades based on active customers</span></div>
+      <div class="panel-body">
+        <div class="package-grid">
+          <article class="package-option ${tier.name === "Starter" ? "active" : ""}">
+            <strong>Starter</strong>
+            <span>30% commission</span>
+            <small>Starts immediately</small>
+          </article>
+          <article class="package-option ${tier.name === "Growth" ? "active" : ""}">
+            <strong>Growth</strong>
+            <span>35% commission</span>
+            <small>After 10 customers</small>
+          </article>
+          <article class="package-option ${tier.name === "Elite" ? "active" : ""}">
+            <strong>Elite</strong>
+            <span>40% commission</span>
+            <small>After 25 customers</small>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header"><h2>Referral Link</h2><span class="muted">Share this with potential customers</span></div>
       <div class="panel-body">
         <div class="copy-row">
           <input readonly value="${escapeHtml(partnerReferralLink())}" aria-label="Affiliate referral link" />
           <button class="primary-button" type="button" data-copy-link>Copy Link</button>
         </div>
-        <p class="muted">Commission is earned once the referred customer pays their first month. Commission is paid one time only for that referred customer.</p>
+        <p class="muted">Partners earn recurring commission for 12 months after a referred customer becomes active, plus a $25 signup bonus after that customer stays active for 30 days.</p>
       </div>
     </section>
 
@@ -115,10 +140,23 @@ function renderPartnerDashboard() {
           <label>Business or brand<input name="businessName" value="${escapeHtml(partner.businessName)}" /></label>
           <label>Phone<input name="phone" value="${escapeHtml(partner.phone)}" /></label>
           <label>Website or social<input name="website" value="${escapeHtml(partner.website || partner.socialHandle)}" /></label>
-          <label class="support-message-field">Payout preference<input name="payoutPreference" value="${escapeHtml(partner.payoutPreference)}" placeholder="PayPal, Zelle, ACH, check..." /></label>
+          <label>Payout method
+            <select name="paymentMethod">
+              ${["PayPal", "Zelle", "ACH", "Check", "Other"].map((method) => `<option value="${method}" ${partner.paymentInfo?.method === method ? "selected" : ""}>${method}</option>`).join("")}
+            </select>
+          </label>
+          <label>Payment name<input name="paymentName" value="${escapeHtml(partner.paymentInfo?.name || partner.name)}" placeholder="Name for payout" /></label>
+          <label>Payment email<input name="paymentEmail" type="email" value="${escapeHtml(partner.paymentInfo?.email || partner.email)}" placeholder="paypal@example.com" /></label>
+          <label>W-9 status
+            <select name="w9Status">
+              ${["Needed before payout", "Requested", "Received"].map((status) => `<option value="${status}" ${partner.w9Status === status ? "selected" : ""}>${status}</option>`).join("")}
+            </select>
+          </label>
+          <label class="support-message-field">Payout notes<input name="paymentNotes" value="${escapeHtml(partner.paymentInfo?.notes || partner.payoutPreference)}" placeholder="Zelle phone, check address, or payout notes" /></label>
           <div class="billing-actions">
             <button class="primary-button" type="submit">Update Profile</button>
-            <span class="muted">A W9 may be needed before payouts.</span>
+            <a class="chip-button" href="https://www.irs.gov/pub/irs-pdf/fw9.pdf" target="_blank" rel="noreferrer">Download W-9</a>
+            <span class="muted">A completed W-9 is needed before payouts.</span>
           </div>
         </form>
         ${partnerState.message ? `<p class="form-message">${escapeHtml(partnerState.message)}</p>` : ""}
@@ -128,17 +166,18 @@ function renderPartnerDashboard() {
     <section class="panel">
       <div class="panel-header"><h2>Referral Activity</h2><span class="muted">${referrals.length} referrals</span></div>
       <table class="data-table">
-        <thead><tr><th>Customer</th><th>Email</th><th>Commission</th><th>Status</th><th>Earned</th></tr></thead>
+        <thead><tr><th>Customer</th><th>Email</th><th>Type</th><th>Commission</th><th>Status</th><th>Date</th></tr></thead>
         <tbody>
           ${referrals.map((item) => `
             <tr>
               <td><strong>${escapeHtml(item.referredBusinessName)}</strong></td>
               <td class="owner-wrap">${escapeHtml(item.referredEmail)}</td>
+              <td>${item.commissionType === "signup_bonus_30_day" ? "Signup bonus" : item.commissionType === "recurring_12_months" ? "12-month recurring" : "Referral"}</td>
               <td>${money(item.amount)}</td>
-              <td><span class="status ${item.status === "earned" ? "Paid" : "Pending"}">${item.status === "earned" ? "Earned" : "Pending"}</span></td>
-              <td>${formatDate(item.earnedAt)}</td>
+              <td><span class="status ${["earned", "active_recurring"].includes(item.status) ? "Paid" : "Pending"}">${item.status === "active_recurring" ? "Active" : item.status === "bonus_pending" ? "30-day pending" : item.status === "earned" ? "Earned" : "Pending"}</span></td>
+              <td>${formatDate(item.earnedAt || item.eligibleAt || item.createdAt)}</td>
             </tr>
-          `).join("") || `<tr><td colspan="5">No referrals yet.</td></tr>`}
+          `).join("") || `<tr><td colspan="6">No referrals yet.</td></tr>`}
         </tbody>
       </table>
     </section>
@@ -160,7 +199,7 @@ document.addEventListener("click", (event) => {
   if (modeButton) setPartnerMode(modeButton.dataset.partnerMode);
   if (copyButton) {
     navigator.clipboard?.writeText(partnerReferralLink());
-    partnerState.message = "Affiliate link copied.";
+    partnerState.message = "Referral link copied.";
     renderPartnerDashboard();
   }
 });
@@ -209,7 +248,12 @@ document.addEventListener("submit", (event) => {
         businessName: formData.get("businessName"),
         phone: formData.get("phone"),
         website: formData.get("website"),
-        payoutPreference: formData.get("payoutPreference")
+        paymentMethod: formData.get("paymentMethod"),
+        paymentName: formData.get("paymentName"),
+        paymentEmail: formData.get("paymentEmail"),
+        paymentNotes: formData.get("paymentNotes"),
+        w9Status: formData.get("w9Status"),
+        payoutPreference: formData.get("paymentNotes")
       })
     });
     partnerState.partner = payload.partner;
