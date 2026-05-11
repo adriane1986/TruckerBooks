@@ -484,36 +484,8 @@ button {
   font-size: 0.9rem;
 }
 
-.ifta-summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.ifta-summary article {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px;
-  background: #f8fbfd;
-}
-
-.ifta-summary span,
-.ifta-entry-list span {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.inline-form.ifta-form {
-  grid-template-columns: minmax(140px, 0.6fr) minmax(100px, 0.35fr) minmax(140px, 0.5fr) minmax(0, 1fr) auto;
-}
-
 .compact-table {
   margin-top: 4px;
-}
-
-.ifta-entry-list {
-  margin-top: 12px;
 }
 
 .list {
@@ -1162,7 +1134,6 @@ label select {
   .inline-form,
   .inline-form.driver-form,
   .inline-form.document-form,
-  .inline-form.ifta-form,
   .billing-form,
   .support-form,
   .copy-row,
@@ -1196,10 +1167,6 @@ label select {
   .route-tracking-card {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .ifta-summary {
-    grid-template-columns: 1fr;
   }
 
   .data-table {

@@ -27,7 +27,6 @@ const sampleRecords = {
     { id: crypto.randomUUID(), date: "2026-04-12", description: "Dry van retail freight", origin: "Charlotte, NC", destination: "Columbus, OH", miles: 430, amount: 1985, status: "Pending" },
     { id: crypto.randomUUID(), date: "2026-04-23", description: "Machinery parts", origin: "Detroit, MI", destination: "Birmingham, AL", miles: 738, amount: 3320, status: "Scheduled" }
   ],
-  iftaMileage: [],
   expenses: [
     { id: crypto.randomUUID(), date: "2026-04-04", description: "Fuel - I-75 stop", amount: 612.44, category: "Fuel", status: "Paid" },
     { id: crypto.randomUUID(), date: "2026-04-08", description: "Truck insurance", amount: 890, category: "Insurance", status: "Paid" },
@@ -515,7 +514,7 @@ function applyStripeSessionToUser(db, user, session) {
 }
 
 function isAllowedCollection(collection) {
-  return ["trips", "expenses", "invoices", "maintenance", "iftaMileage"].includes(collection);
+  return ["trips", "expenses", "invoices", "maintenance"].includes(collection);
 }
 
 function complianceTypeName(type) {
@@ -1160,7 +1159,6 @@ function normalizeUser(user) {
   user.records.trips = Array.isArray(user.records.trips) ? user.records.trips : [];
   user.records.invoices = Array.isArray(user.records.invoices) ? user.records.invoices : [];
   user.records.maintenance = Array.isArray(user.records.maintenance) ? user.records.maintenance : [];
-  user.records.iftaMileage = Array.isArray(user.records.iftaMileage) ? user.records.iftaMileage : [];
   user.records.expenses = Array.isArray(user.records.expenses) ? user.records.expenses.map((expense) => ({
     ...expense,
     sourceReceipt: expense.sourceReceipt ? {
@@ -2029,37 +2027,6 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === "GET" && pathname === "/api/records") {
-    return sendJson(res, 200, { records: user.records });
-  }
-
-  if (req.method === "POST" && pathname === "/api/ifta-mileage") {
-    const body = await readBody(req);
-    const date = String(body.date || "").trim();
-    const stateCode = String(body.state || "").trim().toUpperCase();
-    const miles = Number(body.miles || 0);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return sendError(res, 400, "Enter the mileage date.");
-    if (!/^[A-Z]{2}$/.test(stateCode)) return sendError(res, 400, "Choose the state.");
-    if (!Number.isFinite(miles) || miles <= 0) return sendError(res, 400, "Enter miles greater than zero.");
-    const record = {
-      id: crypto.randomUUID(),
-      date,
-      state: stateCode,
-      miles,
-      note: String(body.note || "").trim(),
-      createdAt: new Date().toISOString()
-    };
-    user.records.iftaMileage = Array.isArray(user.records.iftaMileage) ? user.records.iftaMileage : [];
-    user.records.iftaMileage.push(record);
-    user.updatedAt = new Date().toISOString();
-    writeDb(db);
-    return sendJson(res, 201, { record, records: user.records });
-  }
-
-  if (req.method === "DELETE" && pathname.startsWith("/api/ifta-mileage/")) {
-    const id = pathname.split("/")[3];
-    user.records.iftaMileage = (user.records.iftaMileage || []).filter((record) => record.id !== id);
-    user.updatedAt = new Date().toISOString();
-    writeDb(db);
     return sendJson(res, 200, { records: user.records });
   }
 
