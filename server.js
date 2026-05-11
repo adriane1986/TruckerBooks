@@ -119,6 +119,7 @@ function publicUser(user) {
     subscription: subscriptionPlans[tier],
     trucks: user.trucks || [],
     drivers: user.drivers || [],
+    routeTracking: user.routeTracking || { enabled: false, currentLocation: null, history: [] },
     documents: user.documents || [],
     complianceDocuments: user.complianceDocuments || [],
     complianceAlerts: complianceAlerts(user),
@@ -1173,6 +1174,10 @@ function normalizeUser(user) {
   user.trialEndsAt = user.trialEndsAt || addDaysIso(user.trialStartedAt, trialDays);
   user.trialStatus = trialSummary(user).status;
   user.supportIssues = Array.isArray(user.supportIssues) ? user.supportIssues : [];
+  user.routeTracking = user.routeTracking && typeof user.routeTracking === "object" ? user.routeTracking : {};
+  user.routeTracking.enabled = Boolean(user.routeTracking.enabled);
+  user.routeTracking.currentLocation = user.routeTracking.currentLocation || null;
+  user.routeTracking.history = Array.isArray(user.routeTracking.history) ? user.routeTracking.history.slice(-100) : [];
   user.role = user.role || "admin";
   return user;
 }
@@ -1782,6 +1787,49 @@ async function handleApi(req, res, pathname) {
     return sendJson(res, 200, { customer: publicUser(user) });
   }
 
+  if (req.method === "POST" && pathname === "/api/route/location") {
+    const body = await readBody(req);
+    const latitude = Number(body.latitude);
+    const longitude = Number(body.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return sendError(res, 400, "GPS location was not available.");
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return sendError(res, 400, "GPS location is outside the valid range.");
+    const recordedAt = new Date().toISOString();
+    const location = {
+      latitude,
+      longitude,
+      accuracy: Number(body.accuracy || 0),
+      speed: Number(body.speed || 0),
+      heading: Number(body.heading || 0),
+      active: true,
+      sharedBy: uploadActor(user),
+      recordedAt
+    };
+    user.routeTracking = user.routeTracking && typeof user.routeTracking === "object" ? user.routeTracking : {};
+    user.routeTracking.enabled = true;
+    user.routeTracking.currentLocation = location;
+    user.routeTracking.history = Array.isArray(user.routeTracking.history) ? user.routeTracking.history : [];
+    user.routeTracking.history.push(location);
+    user.routeTracking.history = user.routeTracking.history.slice(-100);
+    user.updatedAt = recordedAt;
+    writeDb(db);
+    return sendJson(res, 200, { customer: publicUser(user) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/route/location/stop") {
+    user.routeTracking = user.routeTracking && typeof user.routeTracking === "object" ? user.routeTracking : {};
+    user.routeTracking.enabled = false;
+    if (user.routeTracking.currentLocation) {
+      user.routeTracking.currentLocation = {
+        ...user.routeTracking.currentLocation,
+        active: false,
+        stoppedAt: new Date().toISOString()
+      };
+    }
+    user.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 200, { customer: publicUser(user) });
+  }
+
   if (req.method === "POST" && pathname === "/api/support/issues") {
     const body = await readBody(req);
     const category = String(body.category || "Other").trim() || "Other";
@@ -1951,9 +1999,10 @@ async function handleApi(req, res, pathname) {
       roleLabel: accountAccessRoles[role],
       truckId,
       truckNumber: role === "driver" ? truckNumber : "",
-      payType: role === "driver" && ["per_mile", "weekly"].includes(body.payType) ? body.payType : "",
+      payType: role === "driver" && ["per_mile", "weekly", "percentage"].includes(body.payType) ? body.payType : "",
       ratePerMile: role === "driver" ? Number(body.ratePerMile || 0) : 0,
       weeklyRate: role === "driver" ? Number(body.weeklyRate || 0) : 0,
+      payPercentage: role === "driver" ? Number(body.payPercentage || 0) : 0,
       status: "Access sent",
       inviteToken,
       inviteLink: `/account-access/${inviteToken}`,

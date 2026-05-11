@@ -461,6 +461,29 @@ button {
     radial-gradient(circle at calc(100% - 14px) 8px, var(--nav) 0 8px, transparent 9px);
 }
 
+.route-tracking-card {
+  margin: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fff;
+}
+
+.route-tracking-card strong,
+.route-tracking-card span,
+.route-tracking-card a {
+  display: block;
+}
+
+.route-tracking-card span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .list {
   display: grid;
   gap: 10px;
@@ -1135,6 +1158,11 @@ label select {
 
   .panel {
     overflow-x: auto;
+  }
+
+  .route-tracking-card {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .data-table {

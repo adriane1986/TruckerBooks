@@ -65,6 +65,7 @@ const state = {
   scannerStatus: null,
   reportYear: String(new Date().getFullYear()),
   dateRange: "all",
+  gpsWatchId: null,
   accountMessage: ""
 };
 
@@ -173,6 +174,7 @@ async function restoreSession() {
 }
 
 async function signOut() {
+  stopGpsSharing(false);
   await api("/api/logout", { method: "POST" });
   state.customer = null;
   state.records = cloneStarterRecords();
@@ -275,6 +277,12 @@ function renderDashboard() {
   const nextAlert = state.complianceAlerts?.[0];
   const dashboardAlerts = state.complianceAlerts || [];
   const trial = state.customer?.trial;
+  const location = state.customer?.routeTracking?.currentLocation;
+  const isSharing = Boolean(state.gpsWatchId || location?.active);
+  const locationDetail = location?.latitude && location?.longitude
+    ? `${Number(location.latitude).toFixed(4)}, ${Number(location.longitude).toFixed(4)}`
+    : "No live location shared";
+  const locationTime = location?.recordedAt ? `Last update ${new Date(location.recordedAt).toLocaleString()}` : "Driver can activate GPS from their phone";
   content.innerHTML = `
     <div class="metric-grid">
       ${metric("Gross revenue", money(revenue), "Rate Cons counted as revenue", "file-text")}
@@ -285,12 +293,21 @@ function renderDashboard() {
     </div>
     <div class="dashboard-grid">
       <section class="panel">
-        <div class="panel-header"><h2>Active Route</h2><span class="status Scheduled">Scheduled</span></div>
+        <div class="panel-header"><h2>Active Route</h2><span class="status ${isSharing ? "Paid" : "Scheduled"}">${isSharing ? "GPS Active" : "Scheduled"}</span></div>
         <div class="route-map">
           <div class="route-line"></div>
           <div class="route-stop start"></div>
           <div class="route-stop end"></div>
           <div class="truck-visual" aria-label="Truck route visual"></div>
+        </div>
+        <div class="route-tracking-card">
+          <div>
+            <strong>Driver GPS Sharing</strong>
+            <span>${locationDetail}</span>
+            <span>${locationTime}</span>
+            ${location?.latitude && location?.longitude ? `<a href="https://www.google.com/maps?q=${location.latitude},${location.longitude}" target="_blank" rel="noopener">Open map</a>` : ""}
+          </div>
+          <button class="${isSharing ? "ghost-button" : "primary-button"}" type="button" data-gps-toggle="${isSharing ? "stop" : "start"}">${isSharing ? "Stop Sharing" : "Start GPS Sharing"}</button>
         </div>
       </section>
       <section class="panel">
@@ -575,8 +592,10 @@ function accountRoleLabel(role) {
 
 function driverPayLabel(driver) {
   const loadedMiles = (state.records.trips || []).reduce((total, trip) => total + Number(trip.miles || 0), 0);
+  const revenue = sum(state.records.trips || []);
   if (driver.payType === "per_mile" && Number(driver.ratePerMile)) return `${money(Number(driver.ratePerMile))} per mile · est. ${money(loadedMiles * Number(driver.ratePerMile))}`;
   if (driver.payType === "weekly" && Number(driver.weeklyRate)) return `${money(Number(driver.weeklyRate))} weekly rate`;
+  if (driver.payType === "percentage" && Number(driver.payPercentage)) return `${Number(driver.payPercentage)}% of revenue · est. ${money(revenue * (Number(driver.payPercentage) / 100))}`;
   return "Driver pay not set";
 }
 
@@ -984,9 +1003,11 @@ function renderAccount() {
               <option value="">Driver pay type</option>
               <option value="per_mile">Rate per mile</option>
               <option value="weekly">Set weekly rate</option>
+              <option value="percentage">Percentage of load</option>
             </select>
             <input name="ratePerMile" type="number" min="0" step="0.01" placeholder="Rate per mile" />
             <input name="weeklyRate" type="number" min="0" step="0.01" placeholder="Weekly rate" />
+            <input name="payPercentage" type="number" min="0" max="100" step="0.01" placeholder="Pay percentage" />
             <button class="primary-button" type="submit">Send Access</button>
           </form>
           <div class="list account-list">
@@ -1367,7 +1388,8 @@ async function inviteDriver(form) {
         truckNumber: formData.get("truckNumber"),
         payType: formData.get("payType"),
         ratePerMile: formData.get("ratePerMile"),
-        weeklyRate: formData.get("weeklyRate")
+        weeklyRate: formData.get("weeklyRate"),
+        payPercentage: formData.get("payPercentage")
       })
     });
     state.customer = payload.customer;
@@ -1598,6 +1620,64 @@ async function saveComplianceExpiration(form) {
   }
 }
 
+async function saveGpsLocation(position) {
+  try {
+    const payload = await api("/api/route/location", {
+      method: "POST",
+      body: JSON.stringify({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+        speed: position.coords.speed,
+        heading: position.coords.heading
+      })
+    });
+    state.customer = payload.customer;
+    state.accountMessage = "GPS location shared.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
+function startGpsSharing() {
+  if (!navigator.geolocation) {
+    state.accountMessage = "GPS is not available on this device.";
+    renderContent();
+    return;
+  }
+  if (state.gpsWatchId) return;
+  state.accountMessage = "Allow location access to start GPS sharing.";
+  renderContent();
+  state.gpsWatchId = navigator.geolocation.watchPosition(
+    saveGpsLocation,
+    (error) => {
+      state.gpsWatchId = null;
+      state.accountMessage = error.message || "Location permission was not allowed.";
+      renderContent();
+    },
+    { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
+  );
+}
+
+async function stopGpsSharing(updateServer = true) {
+  if (state.gpsWatchId) {
+    navigator.geolocation.clearWatch(state.gpsWatchId);
+    state.gpsWatchId = null;
+  }
+  if (!updateServer || !state.customer) return;
+  try {
+    const payload = await api("/api/route/location/stop", { method: "POST" });
+    state.customer = payload.customer;
+    state.accountMessage = "GPS sharing stopped.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
 document.addEventListener("click", (event) => {
   const navButton = event.target.closest("[data-view]");
   const shortcut = event.target.closest("[data-view-shortcut]");
@@ -1615,6 +1695,7 @@ document.addEventListener("click", (event) => {
   const copyReferralButton = event.target.closest("[data-copy-referral]");
   const markPaidButton = event.target.closest("[data-mark-first-paid]");
   const stripeCheckoutButton = event.target.closest("[data-stripe-checkout]");
+  const gpsToggleButton = event.target.closest("[data-gps-toggle]");
   if (navButton) setView(navButton.dataset.view);
   if (shortcut) setView(shortcut.dataset.viewShortcut);
   if (deleteButton) deleteEntry(deleteButton.dataset.delete);
@@ -1635,6 +1716,10 @@ document.addEventListener("click", (event) => {
   }
   if (markPaidButton) markFirstMonthPaid();
   if (stripeCheckoutButton) startStripeCheckout(stripeCheckoutButton.dataset.stripeCheckout);
+  if (gpsToggleButton) {
+    if (gpsToggleButton.dataset.gpsToggle === "start") startGpsSharing();
+    if (gpsToggleButton.dataset.gpsToggle === "stop") stopGpsSharing();
+  }
 });
 
 document.addEventListener("submit", (event) => {
