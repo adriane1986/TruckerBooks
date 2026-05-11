@@ -37,6 +37,7 @@ const sampleData = {
     { id: crypto.randomUUID(), date: "2026-04-12", description: "Dry van retail freight", origin: "Charlotte, NC", destination: "Columbus, OH", miles: 430, amount: 1985, status: "Pending" },
     { id: crypto.randomUUID(), date: "2026-04-23", description: "Machinery parts", origin: "Detroit, MI", destination: "Birmingham, AL", miles: 738, amount: 3320, status: "Scheduled" }
   ],
+  iftaMileage: [],
   expenses: [
     { id: crypto.randomUUID(), date: "2026-04-04", description: "Fuel - I-75 stop", amount: 612.44, category: "Fuel", status: "Paid" },
     { id: crypto.randomUUID(), date: "2026-04-08", description: "Truck insurance", amount: 890, category: "Insurance", status: "Paid" },
@@ -65,6 +66,8 @@ const state = {
   scannerStatus: null,
   reportYear: String(new Date().getFullYear()),
   dateRange: "all",
+  iftaStart: "2026-01-01",
+  iftaEnd: "2026-03-31",
   gpsWatchId: null,
   accountMessage: ""
 };
@@ -84,6 +87,12 @@ const accountAccessRoles = {
   bookkeeper: "Bookkeeper/Accountant",
   dispatcher: "Dispatcher"
 };
+
+const usStates = [
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA",
+  "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD",
+  "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"
+];
 
 const roleNavAccess = {
   admin: ["dashboard", "affiliate", "compliance", "expenses", "rateCons", "reports", "userManagement", "account", "support"],
@@ -216,6 +225,28 @@ function recordsForYear(items, year) {
   return items.filter((item) => String(item.date || "").slice(0, 4) === String(year));
 }
 
+function iftaRangeRows() {
+  const start = new Date(`${state.iftaStart}T00:00:00`);
+  const end = new Date(`${state.iftaEnd}T23:59:59`);
+  return (state.records.iftaMileage || []).filter((item) => {
+    const date = new Date(`${item.date}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return false;
+    return date >= start && date <= end;
+  });
+}
+
+function iftaStateTotals(rows = iftaRangeRows()) {
+  return rows.reduce((totals, item) => {
+    const stateCode = String(item.state || "").toUpperCase();
+    totals[stateCode] = (totals[stateCode] || 0) + Number(item.miles || 0);
+    return totals;
+  }, {});
+}
+
+function stateOptions(selected = "") {
+  return usStates.map((stateCode) => `<option value="${stateCode}" ${selected === stateCode ? "selected" : ""}>${stateCode}</option>`).join("");
+}
+
 function renderIcons(root = document) {
   root.querySelectorAll("[data-icon]").forEach((node) => {
     node.innerHTML = icons[node.dataset.icon] || "";
@@ -274,6 +305,9 @@ function renderDashboard() {
   const revenue = sum(state.records.trips);
   const expenses = sum(allExpenses());
   const miles = sum(state.records.trips, "miles");
+  const iftaRows = iftaRangeRows();
+  const iftaTotals = iftaStateTotals(iftaRows);
+  const iftaTotalMiles = sum(iftaRows, "miles");
   const nextAlert = state.complianceAlerts?.[0];
   const dashboardAlerts = state.complianceAlerts || [];
   const trial = state.customer?.trial;
@@ -319,6 +353,46 @@ function renderDashboard() {
         </div>
       </section>
     </div>
+    <section class="panel">
+      <div class="panel-header">
+        <h2>IFTA Mileage</h2>
+        <div class="filters">
+          <input id="iftaStartDate" type="date" value="${state.iftaStart}" aria-label="IFTA start date" />
+          <input id="iftaEndDate" type="date" value="${state.iftaEnd}" aria-label="IFTA end date" />
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="ifta-summary">
+          <article><span>Total miles</span><strong>${number(iftaTotalMiles)}</strong></article>
+          <article><span>States</span><strong>${Object.keys(iftaTotals).length}</strong></article>
+          <article><span>Period</span><strong>${formatDate(state.iftaStart)} - ${formatDate(state.iftaEnd)}</strong></article>
+        </div>
+        <form class="inline-form ifta-form" id="iftaMileageForm">
+          <input name="date" type="date" required value="${new Date().toISOString().slice(0, 10)}" />
+          <select name="state" required>${stateOptions("GA")}</select>
+          <input name="miles" type="number" min="0" step="0.1" required placeholder="Miles in state" />
+          <input name="note" type="text" placeholder="Route or trip note" />
+          <button class="primary-button" type="submit">Add Miles</button>
+        </form>
+        <table class="data-table compact-table">
+          <thead><tr><th>State</th><th>Miles</th><th>Entries</th><th></th></tr></thead>
+          <tbody>
+            ${Object.entries(iftaTotals).sort(([a], [b]) => a.localeCompare(b)).map(([stateCode, stateMiles]) => {
+              const entryCount = iftaRows.filter((item) => item.state === stateCode).length;
+              return `<tr><td><strong>${stateCode}</strong></td><td>${number(stateMiles)}</td><td>${entryCount}</td><td></td></tr>`;
+            }).join("") || `<tr><td colspan="4">No IFTA mileage has been added for this time period.</td></tr>`}
+          </tbody>
+        </table>
+        <div class="list ifta-entry-list">
+          ${iftaRows.slice().sort((a, b) => b.date.localeCompare(a.date)).map((item) => `
+            <article class="list-item">
+              <div><strong>${item.state} - ${number(item.miles)} miles</strong><span>${formatDate(item.date)}${item.note ? ` · ${item.note}` : ""}</span></div>
+              <button class="icon-button" type="button" data-delete-ifta="${item.id}" title="Delete IFTA mileage" aria-label="Delete IFTA mileage"><span data-icon="trash"></span></button>
+            </article>
+          `).join("")}
+        </div>
+      </div>
+    </section>
     <section class="panel">
       <div class="panel-header"><h2>Renewal Alerts</h2><button class="chip-button" type="button" data-view-shortcut="compliance">Compliance</button></div>
       <div class="panel-body">
@@ -1415,6 +1489,34 @@ async function removeDriver(id) {
   renderContent();
 }
 
+async function addIftaMileage(form) {
+  try {
+    const formData = new FormData(form);
+    const payload = await api("/api/ifta-mileage", {
+      method: "POST",
+      body: JSON.stringify({
+        date: formData.get("date"),
+        state: formData.get("state"),
+        miles: formData.get("miles"),
+        note: formData.get("note")
+      })
+    });
+    state.records = payload.records;
+    state.accountMessage = "IFTA mileage added.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
+async function removeIftaMileage(id) {
+  const payload = await api(`/api/ifta-mileage/${id}`, { method: "DELETE" });
+  state.records = payload.records;
+  state.accountMessage = "IFTA mileage removed.";
+  renderContent();
+}
+
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1686,6 +1788,7 @@ document.addEventListener("click", (event) => {
   const planButton = event.target.closest("[data-plan]");
   const deleteTruckButton = event.target.closest("[data-delete-truck]");
   const deleteDriverButton = event.target.closest("[data-delete-driver]");
+  const deleteIftaButton = event.target.closest("[data-delete-ifta]");
   const deleteDocumentButton = event.target.closest("[data-delete-document]");
   const deleteComplianceButton = event.target.closest("[data-delete-compliance]");
   const rescanComplianceButton = event.target.closest("[data-rescan-compliance]");
@@ -1703,6 +1806,7 @@ document.addEventListener("click", (event) => {
   if (planButton) updatePlan(planButton.dataset.plan);
   if (deleteTruckButton) removeTruck(deleteTruckButton.dataset.deleteTruck);
   if (deleteDriverButton) removeDriver(deleteDriverButton.dataset.deleteDriver);
+  if (deleteIftaButton) removeIftaMileage(deleteIftaButton.dataset.deleteIfta);
   if (deleteDocumentButton) removeDocument(deleteDocumentButton.dataset.deleteDocument);
   if (deleteComplianceButton) removeComplianceDocument(deleteComplianceButton.dataset.deleteCompliance);
   if (rescanComplianceButton) rescanComplianceDocument(rescanComplianceButton.dataset.rescanCompliance);
@@ -1730,6 +1834,10 @@ document.addEventListener("submit", (event) => {
   if (event.target.id === "driverForm") {
     event.preventDefault();
     inviteDriver(event.target);
+  }
+  if (event.target.id === "iftaMileageForm") {
+    event.preventDefault();
+    addIftaMileage(event.target);
   }
   if (event.target.id === "paymentForm") {
     event.preventDefault();
@@ -1769,6 +1877,14 @@ document.addEventListener("input", (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  if (event.target.id === "iftaStartDate") {
+    state.iftaStart = event.target.value || state.iftaStart;
+    renderContent();
+  }
+  if (event.target.id === "iftaEndDate") {
+    state.iftaEnd = event.target.value || state.iftaEnd;
+    renderContent();
+  }
   if (event.target.id === "dateRangeFilter") {
     state.dateRange = event.target.value;
     renderContent();
