@@ -65,6 +65,8 @@ const state = {
   scannerStatus: null,
   reportYear: String(new Date().getFullYear()),
   dateRange: "all",
+  chatOpen: false,
+  chatMessage: "",
   accountMessage: ""
 };
 
@@ -160,6 +162,7 @@ function showDashboard(account, records) {
   customerName.textContent = account.businessName;
   customerFile.textContent = `${account.businessName} - 2026`;
   setView("dashboard");
+  renderChatWidget();
   confirmStripeCheckoutFromUrl();
 }
 
@@ -179,6 +182,8 @@ async function signOut() {
   state.documents = [];
   state.complianceDocuments = [];
   state.complianceAlerts = [];
+  state.chatOpen = false;
+  renderChatWidget();
   appShell.classList.add("hidden");
   authScreen.classList.remove("hidden");
   authForm.reset();
@@ -650,6 +655,13 @@ function scanDetail(item) {
   return details.length ? details.join(" · ") : "AI scan complete";
 }
 
+function bolEmailHref(item) {
+  const downloadUrl = `${location.origin}/api/documents/${item.id}`;
+  const subject = encodeURIComponent(`BOL: ${item.fileName}`);
+  const body = encodeURIComponent(`Hello,\n\nHere is the BOL download link:\n\n${downloadUrl}\n\nThank you.`);
+  return `mailto:?subject=${subject}&body=${body}`;
+}
+
 function renderDocuments() {
   const documents = state.documents || [];
   const visibleDocuments = documents.filter((item) => {
@@ -715,6 +727,7 @@ function renderDocuments() {
               <td>
                 <div class="table-actions">
                   <a class="ghost-button" href="/api/documents/${item.id}">Download</a>
+                  ${item.type === "bol" ? `<a class="ghost-button" href="${bolEmailHref(item)}">Email</a>` : ""}
                   <button class="icon-button" type="button" data-delete-document="${item.id}" title="Delete document" aria-label="Delete document"><span data-icon="trash"></span></button>
                 </div>
               </td>
@@ -1143,6 +1156,43 @@ function renderContent() {
   if (state.view === "account") renderPaymentAccount();
   if (state.view === "support") renderSupport();
   renderIcons(content);
+  renderChatWidget();
+}
+
+function renderChatWidget() {
+  let widget = document.querySelector("#helpChatWidget");
+  if (!state.customer) {
+    widget?.remove();
+    return;
+  }
+  if (!widget) {
+    widget = document.createElement("aside");
+    widget.id = "helpChatWidget";
+    document.body.appendChild(widget);
+  }
+  widget.className = `chat-widget ${state.chatOpen ? "open" : ""}`;
+  widget.innerHTML = state.chatOpen ? `
+    <div class="chat-panel">
+      <div class="chat-header">
+        <div><strong>Need help?</strong><span>Send a question to support</span></div>
+        <button class="icon-button" type="button" data-chat-toggle aria-label="Close chat"><span data-icon="x"></span></button>
+      </div>
+      <form class="chat-form" id="chatForm">
+        <textarea name="message" rows="4" required placeholder="Type your question here...">${escapeAttribute(state.chatMessage)}</textarea>
+        <div class="billing-actions">
+          <button class="primary-button" type="submit">Send</button>
+          <a class="chip-button" href="mailto:info@thetruckerconsultant.com">Email Support</a>
+        </div>
+        ${state.accountMessage ? `<p class="form-message">${state.accountMessage}</p>` : ""}
+      </form>
+    </div>
+  ` : `
+    <button class="chat-button" type="button" data-chat-toggle>
+      <span data-icon="help-circle"></span>
+      Help
+    </button>
+  `;
+  renderIcons(widget);
 }
 
 function currentCollection() {
@@ -1323,6 +1373,33 @@ async function submitSupportIssue(form) {
   } catch (error) {
     state.accountMessage = error.message;
     renderContent();
+  }
+}
+
+async function submitChatQuestion(form) {
+  try {
+    const formData = new FormData(form);
+    const message = String(formData.get("message") || "").trim();
+    if (!message) throw new Error("Enter your question first.");
+    state.chatMessage = message;
+    const payload = await api("/api/support/issues", {
+      method: "POST",
+      body: JSON.stringify({
+        category: "Customer Chat",
+        subject: "Chat question",
+        message
+      })
+    });
+    if (state.customer) {
+      state.customer.supportIssues = payload.supportIssues;
+      state.accountMessage = "Message sent. Support can review it from the Owner/Admin dashboard.";
+    }
+    state.chatMessage = "";
+    state.chatOpen = false;
+    renderChatWidget();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderChatWidget();
   }
 }
 
@@ -1591,6 +1668,7 @@ async function saveComplianceExpiration(form) {
 }
 
 document.addEventListener("click", (event) => {
+  const chatToggle = event.target.closest("[data-chat-toggle]");
   const navButton = event.target.closest("[data-view]");
   const shortcut = event.target.closest("[data-view-shortcut]");
   const deleteButton = event.target.closest("[data-delete]");
@@ -1607,6 +1685,11 @@ document.addEventListener("click", (event) => {
   const copyReferralButton = event.target.closest("[data-copy-referral]");
   const markPaidButton = event.target.closest("[data-mark-first-paid]");
   const stripeCheckoutButton = event.target.closest("[data-stripe-checkout]");
+  if (chatToggle) {
+    state.chatOpen = !state.chatOpen;
+    renderChatWidget();
+    return;
+  }
   if (navButton) setView(navButton.dataset.view);
   if (shortcut) setView(shortcut.dataset.viewShortcut);
   if (deleteButton) deleteEntry(deleteButton.dataset.delete);
@@ -1630,6 +1713,11 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("submit", (event) => {
+  if (event.target.id === "chatForm") {
+    event.preventDefault();
+    submitChatQuestion(event.target);
+    return;
+  }
   if (event.target.id === "truckForm") {
     event.preventDefault();
     addTruck(event.target);
