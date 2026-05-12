@@ -16,7 +16,11 @@ const ownerAccessCode = String(process.env.OWNER_ACCESS_CODE || "").trim();
 const stripeSecretKey = String(process.env.STRIPE_SECRET_KEY || "").trim();
 const stripePublishableKey = String(process.env.STRIPE_PUBLISHABLE_KEY || "").trim();
 const stripeConfigured = Boolean(stripeSecretKey);
-const plaidConfigured = Boolean(String(process.env.PLAID_CLIENT_ID || "").trim() && String(process.env.PLAID_SECRET || "").trim());
+const plaidClientId = String(process.env.PLAID_CLIENT_ID || "").trim();
+const plaidSecret = String(process.env.PLAID_SECRET || "").trim();
+const plaidEnv = String(process.env.PLAID_ENV || "sandbox").trim().toLowerCase();
+const plaidProducts = String(process.env.PLAID_PRODUCTS || "transactions").split(",").map((item) => item.trim()).filter(Boolean);
+const plaidConfigured = Boolean(plaidClientId && plaidSecret);
 const trialDays = 7;
 const sessionMaxAgeSeconds = 60 * 60 * 24 * 7;
 const minimumPasswordLength = 8;
@@ -54,6 +58,7 @@ const complianceTypes = {
   ucr: { id: "ucr", name: "UCR" },
   form2290: { id: "form2290", name: "2290" },
   irp: { id: "irp", name: "IRP" },
+  mcs150: { id: "mcs150", name: "MCS-150 Biennial Update" },
   w9: { id: "w9", name: "W9" },
   noa: { id: "noa", name: "NOA" }
 };
@@ -154,6 +159,13 @@ function publicPaymentInfo(paymentInfo = {}) {
     subscriptionId: paymentInfo.subscriptionId || "",
     last4: paymentInfo.last4 || "",
     cardBrand: paymentInfo.cardBrand || "",
+    bankConnection: paymentInfo.bankConnection ? {
+      status: paymentInfo.bankConnection.status || "Connected",
+      institutionName: paymentInfo.bankConnection.institutionName || "",
+      accountNames: paymentInfo.bankConnection.accountNames || [],
+      accountMasks: paymentInfo.bankConnection.accountMasks || [],
+      connectedAt: paymentInfo.bankConnection.connectedAt || ""
+    } : null,
     updatedAt: paymentInfo.updatedAt || ""
   };
 }
@@ -244,6 +256,13 @@ function addDaysIso(dateValue, days) {
   if (Number.isNaN(date.getTime())) return new Date(Date.now() + days * 86400000).toISOString();
   date.setDate(date.getDate() + days);
   return date.toISOString();
+}
+
+function addMonthsIsoDate(dateValue, months) {
+  const date = new Date(`${dateValue}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return "";
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString().slice(0, 10);
 }
 
 function trialSummary(user) {
@@ -361,7 +380,7 @@ function secureHeaders(headers = {}) {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "strict-origin-when-cross-origin",
-    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "Permissions-Policy": "camera=(self), microphone=(), geolocation=(self)",
     ...headers
   };
 }
@@ -493,6 +512,28 @@ async function retrieveStripeCheckoutSession(sessionId) {
   return payload;
 }
 
+function plaidBaseUrl() {
+  if (plaidEnv === "production") return "https://production.plaid.com";
+  if (plaidEnv === "development") return "https://development.plaid.com";
+  return "https://sandbox.plaid.com";
+}
+
+async function plaidRequest(endpoint, payload) {
+  if (!plaidConfigured) throw new Error("Plaid is not connected yet. Add PLAID_CLIENT_ID, PLAID_SECRET, and PLAID_ENV in Railway.");
+  const response = await fetch(`${plaidBaseUrl()}${endpoint}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: plaidClientId,
+      secret: plaidSecret,
+      ...payload
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error_message || data.display_message || "Plaid request failed.");
+  return data;
+}
+
 function applyStripeSessionToUser(db, user, session) {
   if (!session || session.client_reference_id !== user.id) throw new Error("Stripe session does not match this account.");
   if (!["paid", "no_payment_required"].includes(session.payment_status) && session.status !== "complete") {
@@ -526,6 +567,7 @@ function inferComplianceType(type, fileName = "") {
   const cleanName = String(fileName || "").toLowerCase();
   if (/\bw-?9\b/.test(cleanName)) return "w9";
   if (/\bnoa\b|notice\s+of\s+assignment/.test(cleanName)) return "noa";
+  if (/\bmcs-?150\b|biennial/.test(cleanName)) return "mcs150";
   if (/\birp\b|international\s+registration\s+plan/.test(cleanName)) return "irp";
   return complianceTypes[cleanType] ? cleanType : "insurance";
 }
@@ -1899,6 +1941,45 @@ async function handleApi(req, res, pathname) {
     return sendJson(res, 200, { customer: publicUser(user) });
   }
 
+  if (req.method === "POST" && pathname === "/api/plaid/link-token") {
+    if (!requireAdmin(user, res)) return;
+    if (!plaidConfigured) return sendError(res, 503, "Plaid is not connected yet. Add PLAID_CLIENT_ID, PLAID_SECRET, and PLAID_ENV in Railway.");
+    const token = await plaidRequest("/link/token/create", {
+      client_name: "TruckerBooks",
+      language: "en",
+      country_codes: ["US"],
+      products: plaidProducts,
+      user: { client_user_id: user.id }
+    });
+    return sendJson(res, 200, { linkToken: token.link_token });
+  }
+
+  if (req.method === "POST" && pathname === "/api/plaid/exchange") {
+    if (!requireAdmin(user, res)) return;
+    const body = await readBody(req);
+    const publicToken = String(body.public_token || "").trim();
+    if (!publicToken) return sendError(res, 400, "Plaid did not return a bank connection token.");
+    const exchange = await plaidRequest("/item/public_token/exchange", { public_token: publicToken });
+    const metadata = body.metadata && typeof body.metadata === "object" ? body.metadata : {};
+    const accounts = Array.isArray(metadata.accounts) ? metadata.accounts : [];
+    user.paymentInfo = {
+      ...(user.paymentInfo || {}),
+      bankConnection: {
+        status: "Connected",
+        institutionName: metadata.institution?.name || "Bank connected",
+        accountNames: accounts.map((account) => account.name).filter(Boolean),
+        accountMasks: accounts.map((account) => account.mask).filter(Boolean),
+        plaidItemId: exchange.item_id || "",
+        plaidAccessToken: exchange.access_token,
+        connectedAt: new Date().toISOString()
+      },
+      updatedAt: new Date().toISOString()
+    };
+    user.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 200, { customer: publicUser(user) });
+  }
+
   if (req.method === "PATCH" && pathname === "/api/account/subscription") {
     if (!requireAdmin(user, res)) return;
     const body = await readBody(req);
@@ -2092,10 +2173,44 @@ async function handleApi(req, res, pathname) {
     });
   }
 
+  if (req.method === "POST" && pathname === "/api/compliance/mcs150") {
+    const body = await readBody(req);
+    const lastFiledDate = normalizeDate(String(body.lastFiledDate || ""));
+    if (!lastFiledDate) return sendError(res, 400, "Enter the MCS-150 last filed date.");
+    const expirationDate = addMonthsIsoDate(lastFiledDate, 24);
+    const existing = user.complianceDocuments.find((item) => item.type === "mcs150" && item.manualOnly);
+    const complianceDocument = existing || {
+      id: crypto.randomUUID(),
+      type: "mcs150",
+      fileName: "MCS-150 Biennial Update",
+      mimeType: "",
+      storedName: "",
+      size: 0,
+      manualOnly: true,
+      uploadedBy: uploadActor(user),
+      uploadedAt: new Date().toISOString()
+    };
+    complianceDocument.lastFiledDate = lastFiledDate;
+    complianceDocument.expirationDate = expirationDate;
+    complianceDocument.scanStatus = "Reminder saved";
+    complianceDocument.extracted = { expirationDate, lastFiledDate, dateDetection: "manual_24_month_cycle" };
+    complianceDocument.aiScan = complianceDocument.extracted;
+    complianceDocument.updatedAt = new Date().toISOString();
+    if (!existing) user.complianceDocuments.push(complianceDocument);
+    user.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 201, {
+      complianceDocument,
+      complianceDocuments: user.complianceDocuments,
+      complianceAlerts: complianceAlerts(user)
+    });
+  }
+
   if (req.method === "GET" && pathname.startsWith("/api/compliance/")) {
     const id = pathname.split("/")[3];
     const document = user.complianceDocuments.find((item) => item.id === id);
     if (!document) return sendError(res, 404, "Compliance document not found.");
+    if (document.manualOnly) return sendError(res, 400, "This compliance item is a reminder only and has no document to download.");
     const filePath = path.join(uploadDir, document.storedName);
     if (!fs.existsSync(filePath)) return sendError(res, 404, "Uploaded file is missing.");
     res.writeHead(200, {
@@ -2129,7 +2244,7 @@ async function handleApi(req, res, pathname) {
     const id = pathname.split("/")[3];
     const document = user.complianceDocuments.find((item) => item.id === id);
     user.complianceDocuments = user.complianceDocuments.filter((item) => item.id !== id);
-    if (document) {
+    if (document && document.storedName) {
       const filePath = path.join(uploadDir, document.storedName);
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     }
@@ -2164,6 +2279,7 @@ async function handleApi(req, res, pathname) {
     const id = pathname.split("/")[3];
     const document = user.complianceDocuments.find((item) => item.id === id);
     if (!document) return sendError(res, 404, "Compliance document not found.");
+    if (document.manualOnly) return sendError(res, 400, "This reminder does not have a document to rescan.");
     const filePath = path.join(uploadDir, document.storedName);
     if (!fs.existsSync(filePath)) return sendError(res, 404, "Uploaded file is missing.");
     const scan = await scanComplianceDocument(fs.readFileSync(filePath), document.mimeType, document.type);

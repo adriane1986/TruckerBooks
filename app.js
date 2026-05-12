@@ -75,6 +75,7 @@ const complianceTypes = {
   ucr: "UCR",
   form2290: "2290",
   irp: "IRP",
+  mcs150: "MCS-150",
   w9: "W9",
   noa: "NOA"
 };
@@ -918,6 +919,19 @@ function renderCompliance() {
     </section>
     <section class="panel">
       <div class="panel-header">
+        <h2>MCS-150 Biennial Update</h2>
+        <span class="muted">No paperwork upload needed; enter the last filed date</span>
+      </div>
+      <div class="panel-body">
+        <form class="inline-form document-form" id="mcs150Form">
+          <input name="lastFiledDate" type="date" required />
+          <span class="muted">Next due date will be calculated 24 months later.</span>
+          <button class="primary-button" type="submit">Save Reminder</button>
+        </form>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-header">
         <h2>Upload Compliance Documents</h2>
         <span class="muted">AI scans every upload for expiration dates and renewal clues</span>
       </div>
@@ -959,7 +973,7 @@ function renderCompliance() {
               <tr>
                 <td><input type="checkbox" data-compliance-select="${item.id}" aria-label="Select ${complianceLabel(item.type, item.fileName)} ${item.fileName}" /></td>
                 <td><span class="status Paid">${complianceLabel(item.type, item.fileName)}</span></td>
-                <td><strong>${item.fileName}</strong><br><span class="muted">${fileSize(item.size)}</span></td>
+                <td><strong>${item.fileName}</strong><br><span class="muted">${item.manualOnly ? "Reminder only" : fileSize(item.size)}</span></td>
                 <td>
                   <strong>${isCarrierPacketDocument(item) ? "No renewal needed" : item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong>
                   ${item.expirationDate || isCarrierPacketDocument(item) ? "" : `
@@ -972,8 +986,8 @@ function renderCompliance() {
                 <td><strong>${uploadedByLabel(item.uploadedBy)}</strong></td>
                 <td>
                   <div class="table-actions">
-                    <a class="ghost-button" href="/api/compliance/${item.id}">Download</a>
-                    <button class="ghost-button" type="button" data-rescan-compliance="${item.id}">Rescan</button>
+                    ${item.manualOnly ? "" : `<a class="ghost-button" href="/api/compliance/${item.id}">Download</a>`}
+                    ${item.manualOnly ? "" : `<button class="ghost-button" type="button" data-rescan-compliance="${item.id}">Rescan</button>`}
                     <button class="icon-button" type="button" data-delete-compliance="${item.id}" title="Delete compliance document" aria-label="Delete compliance document"><span data-icon="trash"></span></button>
                   </div>
                 </td>
@@ -1160,6 +1174,8 @@ function renderPaymentAccount() {
   const integrations = customer.integrations || {};
   const paymentStatus = payment.providerStatus || integrations.stripe || "Stripe not connected";
   const stripeConnected = integrations.stripe === "Connected";
+  const plaidReady = integrations.plaid === "Connected";
+  const bank = payment.bankConnection;
   content.innerHTML = `
     <div class="metric-grid">
       ${metric("Plan", plan.name, planPrice(plan), "credit-card")}
@@ -1201,12 +1217,15 @@ function renderPaymentAccount() {
     <section class="panel">
       <div class="panel-header">
         <h2>Bank Connection</h2>
-        <span class="muted">Plaid-ready for beta testing</span>
+        <span class="muted">Connect securely with Plaid</span>
       </div>
       <div class="panel-body">
         <div class="security-banner">
-          <strong>${integrations.plaid || "Plaid not connected"}</strong>
-          <span>When Plaid is added, users will connect their bank through Plaid Link. TruckerBooks will never ask for or save bank usernames or passwords.</span>
+          <strong>${bank?.status || integrations.plaid || "Plaid not connected"}</strong>
+          <span>${bank ? `${bank.institutionName || "Bank"} connected${bank.accountMasks?.length ? ` · ending ${bank.accountMasks.join(", ")}` : ""}` : "Users connect their bank through Plaid Link. TruckerBooks never asks for or saves bank usernames or passwords."}</span>
+        </div>
+        <div class="billing-actions">
+          <button class="primary-button" type="button" data-plaid-link ${plaidReady ? "" : "disabled"}>${bank ? "Reconnect Bank" : "Connect Bank Account"}</button>
         </div>
       </div>
     </section>
@@ -1427,6 +1446,41 @@ async function startStripeCheckout(interval) {
   }
 }
 
+async function startPlaidLink() {
+  try {
+    if (!window.Plaid) throw new Error("Plaid Link did not load yet. Refresh the app and try again.");
+    state.accountMessage = "Opening Plaid...";
+    renderContent();
+    const payload = await api("/api/plaid/link-token", { method: "POST" });
+    const handler = window.Plaid.create({
+      token: payload.linkToken,
+      onSuccess: async (public_token, metadata) => {
+        try {
+          const exchange = await api("/api/plaid/exchange", {
+            method: "POST",
+            body: JSON.stringify({ public_token, metadata })
+          });
+          state.customer = exchange.customer;
+          state.accountMessage = "Bank account connected with Plaid.";
+          renderContent();
+        } catch (error) {
+          state.accountMessage = error.message;
+          renderContent();
+        }
+      },
+      onExit: (error) => {
+        if (error) state.accountMessage = error.display_message || error.error_message || "Plaid connection was not completed.";
+        else state.accountMessage = "Plaid connection was closed.";
+        renderContent();
+      }
+    });
+    handler.open();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
 async function confirmStripeCheckoutFromUrl() {
   const params = new URLSearchParams(location.search);
   const sessionId = params.get("session_id");
@@ -1632,6 +1686,28 @@ async function uploadComplianceDocument(form) {
   }
 }
 
+async function saveMcs150Reminder(form) {
+  try {
+    const formData = new FormData(form);
+    const payload = await api("/api/compliance/mcs150", {
+      method: "POST",
+      body: JSON.stringify({ lastFiledDate: formData.get("lastFiledDate") })
+    });
+    state.complianceDocuments = payload.complianceDocuments;
+    state.complianceAlerts = payload.complianceAlerts;
+    if (state.customer) {
+      state.customer.complianceDocuments = payload.complianceDocuments;
+      state.customer.complianceAlerts = payload.complianceAlerts;
+    }
+    state.accountMessage = `MCS-150 reminder saved. Next due date is ${formatDate(payload.complianceDocument.expirationDate)}.`;
+    form.reset();
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
 async function removeDocument(id) {
   const payload = await api(`/api/documents/${id}`, { method: "DELETE" });
   state.documents = payload.documents;
@@ -1809,6 +1885,7 @@ document.addEventListener("click", (event) => {
   const copyReferralButton = event.target.closest("[data-copy-referral]");
   const markPaidButton = event.target.closest("[data-mark-first-paid]");
   const stripeCheckoutButton = event.target.closest("[data-stripe-checkout]");
+  const plaidLinkButton = event.target.closest("[data-plaid-link]");
   const gpsToggleButton = event.target.closest("[data-gps-toggle]");
   if (navButton) setView(navButton.dataset.view);
   if (shortcut) setView(shortcut.dataset.viewShortcut);
@@ -1830,6 +1907,7 @@ document.addEventListener("click", (event) => {
   }
   if (markPaidButton) markFirstMonthPaid();
   if (stripeCheckoutButton) startStripeCheckout(stripeCheckoutButton.dataset.stripeCheckout);
+  if (plaidLinkButton) startPlaidLink();
   if (gpsToggleButton) {
     if (gpsToggleButton.dataset.gpsToggle === "start") startGpsSharing();
     if (gpsToggleButton.dataset.gpsToggle === "stop") stopGpsSharing();
@@ -1864,6 +1942,10 @@ document.addEventListener("submit", (event) => {
   if (event.target.id === "complianceForm") {
     event.preventDefault();
     uploadComplianceDocument(event.target);
+  }
+  if (event.target.id === "mcs150Form") {
+    event.preventDefault();
+    saveMcs150Reminder(event.target);
   }
   if (event.target.matches("[data-expiration-form]")) {
     event.preventDefault();
