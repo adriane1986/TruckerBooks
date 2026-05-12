@@ -705,7 +705,10 @@ function parseGenericDocumentText(text) {
 function categorizeExpense(text) {
   const clean = text.toLowerCase();
   if (/(fuel|diesel|gas|pilot|flying j|love'?s|ta travel|petro|shell|bp|chevron|exxon|ta-petro)/i.test(clean)) return "Fuel";
-  if (/(toll|scale|weigh|parking|lumper|permit|ifta|ucr|2290)/i.test(clean)) return "Road costs";
+  if (/(ifta|ucr|2290|permit|irp|registration|tax)/i.test(clean)) return "Permits and taxes";
+  if (/(factoring|bank fee|wire fee|ach fee|transaction fee|service charge)/i.test(clean)) return "Factoring and bank fees";
+  if (/(office|admin|phone|internet|software|subscription|supplies)/i.test(clean)) return "Office and admin";
+  if (/(toll|scale|weigh|parking|lumper)/i.test(clean)) return "Road costs";
   if (/(repair|service|oil|tire|brake|maintenance|mechanic|parts)/i.test(clean)) return "Maintenance";
   if (/(insurance|policy|premium)/i.test(clean)) return "Insurance";
   return "General";

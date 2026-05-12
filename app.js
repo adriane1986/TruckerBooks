@@ -216,6 +216,58 @@ function recordsForYear(items, year) {
   return items.filter((item) => String(item.date || "").slice(0, 4) === String(year));
 }
 
+function monthName(index) {
+  return new Date(2026, index, 1).toLocaleString("en-US", { month: "short" });
+}
+
+function monthlyProfitRows(year, records = state.records) {
+  return Array.from({ length: 12 }, (_, month) => {
+    const key = `${year}-${String(month + 1).padStart(2, "0")}`;
+    const trips = (records.trips || []).filter((item) => String(item.date || "").startsWith(key));
+    const expenses = [
+      ...(records.expenses || []).filter((item) => String(item.date || "").startsWith(key)),
+      ...(records.maintenance || []).filter((item) => String(item.date || "").startsWith(key))
+    ];
+    const revenue = sum(trips);
+    const cost = sum(expenses);
+    const miles = sum(trips, "miles");
+    return {
+      month: monthName(month),
+      revenue,
+      expenses: cost,
+      profit: revenue - cost,
+      miles,
+      costPerMile: cost / Math.max(miles, 1)
+    };
+  });
+}
+
+function expenseCategoryTotals(expenses) {
+  return expenses.reduce((totals, item) => {
+    const category = item.category || "General";
+    totals[category] = (totals[category] || 0) + Number(item.amount || 0);
+    return totals;
+  }, {});
+}
+
+function moneyInsights({ trips, expenses, maintenance }) {
+  const expenseRows = [...expenses, ...maintenance.map((item) => ({ ...item, category: item.category || "Maintenance" }))];
+  const revenue = sum(trips);
+  const totalExpenses = sum(expenseRows);
+  const miles = sum(trips, "miles");
+  const costPerMile = totalExpenses / Math.max(miles, 1);
+  const revenuePerMile = revenue / Math.max(miles, 1);
+  const categories = Object.entries(expenseCategoryTotals(expenseRows)).sort((a, b) => b[1] - a[1]);
+  const monthlyLosses = monthlyProfitRows(state.reportYear || String(new Date().getFullYear()), { trips, expenses, maintenance }).filter((item) => item.profit < 0);
+  const insights = [];
+  if (categories[0]) insights.push(`${categories[0][0]} is the largest cost category at ${money(categories[0][1])}. Review receipts in that category first.`);
+  if (costPerMile > 0) insights.push(`Cost per mile is ${money(costPerMile)} while revenue per mile is ${money(revenuePerMile)}.`);
+  if (revenue && totalExpenses / revenue > 0.65) insights.push(`Expenses are using ${Math.round((totalExpenses / revenue) * 100)}% of revenue, which may be squeezing profit.`);
+  if (monthlyLosses.length) insights.push(`${monthlyLosses.length} month${monthlyLosses.length === 1 ? "" : "s"} show a loss in the selected year.`);
+  if (!insights.length) insights.push("No major loss pattern is visible yet. Add more Rate Cons and receipts for a stronger summary.");
+  return insights.slice(0, 4);
+}
+
 function renderIcons(root = document) {
   root.querySelectorAll("[data-icon]").forEach((node) => {
     node.innerHTML = icons[node.dataset.icon] || "";
@@ -274,9 +326,11 @@ function renderDashboard() {
   const revenue = sum(state.records.trips);
   const expenses = sum(allExpenses());
   const miles = sum(state.records.trips, "miles");
+  const costPerMile = expenses / Math.max(miles, 1);
   const nextAlert = state.complianceAlerts?.[0];
   const dashboardAlerts = state.complianceAlerts || [];
   const trial = state.customer?.trial;
+  const insights = moneyInsights({ trips: state.records.trips || [], expenses: state.records.expenses || [], maintenance: state.records.maintenance || [] });
   const location = state.customer?.routeTracking?.currentLocation;
   const isSharing = Boolean(state.gpsWatchId || location?.active);
   const locationDetail = location?.latitude && location?.longitude
@@ -288,6 +342,7 @@ function renderDashboard() {
       ${metric("Gross revenue", money(revenue), "Rate Cons counted as revenue", "file-text")}
       ${metric("Net profit", money(netProfit()), "After tracked deductions", "bar-chart")}
       ${metric("Loaded miles", number(miles), `${money(revenue / Math.max(miles, 1))} per mile`, "route")}
+      ${metric("Cost per mile", money(costPerMile), "Expenses divided by loaded miles", "receipt")}
       ${metric("Trial", trialLabel(trial), trialDetail(trial), "credit-card")}
       ${metric("Compliance", state.complianceAlerts?.length || 0, nextAlert ? `${nextAlert.label} due ${formatDate(nextAlert.date)}` : "No urgent renewals", "shield")}
     </div>
@@ -319,6 +374,14 @@ function renderDashboard() {
         </div>
       </section>
     </div>
+    <section class="panel">
+      <div class="panel-header"><h2>AI Money Summary</h2><span class="muted">Where the business may be losing money</span></div>
+      <div class="panel-body">
+        <div class="insight-list">
+          ${insights.map((item) => `<article><strong>${item}</strong></article>`).join("")}
+        </div>
+      </div>
+    </section>
     <section class="panel">
       <div class="panel-header"><h2>Renewal Alerts</h2><button class="chip-button" type="button" data-view-shortcut="compliance">Compliance</button></div>
       <div class="panel-body">
@@ -393,7 +456,15 @@ function renderTableView(collection, title, columns) {
 
 function renderExpenses() {
   const rows = filtered(state.records.expenses);
+  const visibleTotals = expenseCategoryTotals(rows);
+  const topTaxCategories = Object.entries(visibleTotals).sort((a, b) => b[1] - a[1]);
   content.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Tracked expenses", money(sum(rows)), `${rows.length} records in this date range`, "receipt")}
+      ${metric("Tax categories", topTaxCategories.length, "Grouped for bookkeeping", "bar-chart")}
+      ${metric("Fuel total", money(visibleTotals.Fuel || 0), "Fuel receipts and fuel reports", "route")}
+      ${metric("Road costs", money(visibleTotals["Road costs"] || 0), "Tolls, scales, permits, parking", "file-text")}
+    </div>
     <section class="panel">
       <div class="panel-header">
         <h2>Upload Receipt</h2>
@@ -407,6 +478,9 @@ function renderExpenses() {
             <option value="Road costs">Road costs</option>
             <option value="Maintenance">Maintenance</option>
             <option value="Insurance">Insurance</option>
+            <option value="Permits and taxes">Permits and taxes</option>
+            <option value="Factoring and bank fees">Factoring and bank fees</option>
+            <option value="Office and admin">Office and admin</option>
             <option value="General">General</option>
           </select>
           <div class="upload-choice">
@@ -452,6 +526,19 @@ function renderExpenses() {
           `).join("") || `<tr><td colspan="6">No expenses match this view.</td></tr>`}
         </tbody>
       </table>
+    </section>
+    <section class="panel">
+      <div class="panel-header"><h2>Tax Category Tracking</h2><span class="muted">Totals from the current date range</span></div>
+      <div class="panel-body">
+        <div class="bar-list">
+          ${topTaxCategories.map(([label, value]) => `
+            <div class="bar-row">
+              <header><strong>${label}</strong><span>${money(value)}</span></header>
+              <div class="bar-track"><div class="bar-fill" style="width:${Math.round((value / Math.max(topTaxCategories[0]?.[1] || 1, 1)) * 100)}%"></div></div>
+            </div>
+          `).join("") || `<p class="muted">No expenses match this date range yet.</p>`}
+        </div>
+      </div>
     </section>
   `;
 }
@@ -503,9 +590,12 @@ function renderReports() {
   const trips = recordsForYear(state.records.trips, state.reportYear);
   const expenseRows = recordsForYear(state.records.expenses, state.reportYear);
   const maintenanceRows = recordsForYear(state.records.maintenance, state.reportYear);
-  const expensesForYear = [...expenseRows, ...maintenanceRows];
+  const expensesForYear = [...expenseRows, ...maintenanceRows.map((item) => ({ ...item, category: item.category || "Maintenance" }))];
   const revenue = sum(trips);
   const expenses = sum(expensesForYear);
+  const miles = sum(trips, "miles");
+  const monthlyRows = monthlyProfitRows(state.reportYear);
+  const insights = moneyInsights({ trips, expenses: expenseRows, maintenance: maintenanceRows });
   const yearlySummary = years.map((year) => {
     const yearRevenue = sum(recordsForYear(state.records.trips, year));
     const yearExpenses = sum([
@@ -514,12 +604,10 @@ function renderReports() {
     ]);
     return { year, revenue: yearRevenue, expenses: yearExpenses, profit: yearRevenue - yearExpenses };
   });
-  const categories = [
-    { label: "Fuel", value: sum(expenseRows.filter((item) => item.category === "Fuel")) },
-    { label: "Insurance", value: sum(expenseRows.filter((item) => item.category === "Insurance")) },
-    { label: "Maintenance", value: sum(maintenanceRows) + sum(expenseRows.filter((item) => item.category === "Maintenance")) },
-    { label: "Road costs", value: sum(expenseRows.filter((item) => item.category === "Road costs")) }
-  ];
+  const categoryTotals = expenseCategoryTotals(expensesForYear);
+  const categories = Object.entries(categoryTotals)
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
   const maxCategory = Math.max(...categories.map((item) => item.value), 1);
 
   content.innerHTML = `
@@ -537,9 +625,18 @@ function renderReports() {
       ${metric("Revenue", money(revenue), `${trips.length} trips in ${state.reportYear}`, "file-text")}
       ${metric("Deductible costs", money(expenses), `${expensesForYear.length} expenses in ${state.reportYear}`, "receipt")}
       ${metric("Estimated taxable", money(Math.max(revenue - expenses, 0)), "Before other adjustments", "bar-chart")}
+      ${metric("Cost per mile", money(expenses / Math.max(miles, 1)), `${number(miles)} loaded miles`, "route")}
     </div>
     <section class="panel">
-      <div class="panel-header"><h2>Expense Breakdown</h2><span class="muted">${state.reportYear}</span></div>
+      <div class="panel-header"><h2>AI Profit Summary</h2><span class="muted">Loss patterns from this report year</span></div>
+      <div class="panel-body">
+        <div class="insight-list">
+          ${insights.map((item) => `<article><strong>${item}</strong></article>`).join("")}
+        </div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-header"><h2>Tax Category Breakdown</h2><span class="muted">${state.reportYear}</span></div>
       <div class="panel-body">
         <div class="bar-list">
           ${categories.map((item) => `
@@ -547,9 +644,26 @@ function renderReports() {
               <header><strong>${item.label}</strong><span>${money(item.value)}</span></header>
               <div class="bar-track"><div class="bar-fill" style="width:${Math.round((item.value / maxCategory) * 100)}%"></div></div>
             </div>
-          `).join("")}
+          `).join("") || `<p class="muted">No tax categories have expenses for this year.</p>`}
         </div>
       </div>
+    </section>
+    <section class="panel">
+      <div class="panel-header"><h2>Monthly Profit Report</h2><span class="muted">${state.reportYear}</span></div>
+      <table class="data-table">
+        <thead><tr><th>Month</th><th>Revenue</th><th>Expenses</th><th>Net Profit</th><th>Cost/Mile</th></tr></thead>
+        <tbody>
+          ${monthlyRows.map((item) => `
+            <tr>
+              <td><strong>${item.month}</strong></td>
+              <td>${money(item.revenue)}</td>
+              <td>${money(item.expenses)}</td>
+              <td><strong>${money(item.profit)}</strong></td>
+              <td>${money(item.costPerMile)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
     </section>
     <section class="panel">
       <div class="panel-header"><h2>Five-Year Summary</h2><span class="muted">Current year plus previous four</span></div>
