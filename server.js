@@ -1583,12 +1583,12 @@ function upcomingIftaDeadlines() {
   const today = new Date();
   const year = today.getFullYear();
   const deadlines = [
-    { label: "October IFTA Taxes", date: lastDayOfMonth(year - 1, 9) },
-    { label: "January IFTA Taxes", date: lastDayOfMonth(year, 0) },
-    { label: "April IFTA Taxes", date: lastDayOfMonth(year, 3) },
-    { label: "July IFTA Taxes", date: lastDayOfMonth(year, 6) },
-    { label: "October IFTA Taxes", date: lastDayOfMonth(year, 9) },
-    { label: "January IFTA Taxes", date: lastDayOfMonth(year + 1, 0) }
+    { label: "Q3 IFTA Taxes - October 31 Deadline", date: lastDayOfMonth(year - 1, 9) },
+    { label: "Q4 IFTA Taxes - January 31 Deadline", date: lastDayOfMonth(year, 0) },
+    { label: "Q1 IFTA Taxes - April 30 Deadline", date: lastDayOfMonth(year, 3) },
+    { label: "Q2 IFTA Taxes - July 31 Deadline", date: lastDayOfMonth(year, 6) },
+    { label: "Q3 IFTA Taxes - October 31 Deadline", date: lastDayOfMonth(year, 9) },
+    { label: "Q4 IFTA Taxes - January 31 Deadline", date: lastDayOfMonth(year + 1, 0) }
   ];
   return deadlines.filter((item) => {
     const days = daysUntil(item.date);

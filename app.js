@@ -942,7 +942,7 @@ function renderCompliance() {
     <div class="metric-grid">
       ${metric("Compliance files", documents.length, "Insurance, DOT, UCR, 2290, W9, NOA", "shield")}
       ${metric("Renewal alerts", alerts.length, "Includes IFTA deadlines", "receipt")}
-      ${metric("IFTA due months", "Jan Apr Jul Oct", "By the last day of month", "bar-chart")}
+      ${metric("IFTA due dates", "Q1 Apr 30", "Q2 Jul 31 / Q3 Oct 31 / Q4 Jan 31", "bar-chart")}
       ${metric("Next due", alerts[0] ? formatDate(alerts[0].date) : "Clear", alerts[0]?.label || "No urgent renewals", "file-text")}
     </div>
     <section class="panel">
