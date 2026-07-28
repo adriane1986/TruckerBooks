@@ -196,6 +196,38 @@ function number(value) {
   return new Intl.NumberFormat("en-US").format(value || 0);
 }
 
+function moneyWithCents(value) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value || 0);
+}
+
+function numericInputValue(value) {
+  const amount = Number(value || 0);
+  return Number.isFinite(amount) ? amount.toFixed(2).replace(/\.00$/, "") : "0";
+}
+
+function calculatorValue(name) {
+  const input = document.querySelector(`[data-cpm-input="${name}"]`);
+  return Number(input?.value || 0) || 0;
+}
+
+function updateCostPerMileCalculator() {
+  const miles = calculatorValue("miles");
+  const revenue = calculatorValue("revenue");
+  const costs = ["fuel", "maintenance", "insurance", "permits", "driverPay", "other"].reduce((total, name) => total + calculatorValue(name), 0);
+  const costPerMile = miles > 0 ? costs / miles : 0;
+  const revenuePerMile = miles > 0 ? revenue / miles : 0;
+  const profit = revenue - costs;
+  const profitPerMile = miles > 0 ? profit / miles : 0;
+  const setText = (selector, value) => {
+    const node = document.querySelector(selector);
+    if (node) node.textContent = value;
+  };
+  setText("#cpmTotalCosts", moneyWithCents(costs));
+  setText("#cpmCostPerMile", moneyWithCents(costPerMile));
+  setText("#cpmRevenuePerMile", moneyWithCents(revenuePerMile));
+  setText("#cpmProfitPerMile", moneyWithCents(profitPerMile));
+}
+
 function sum(items, field = "amount") {
   return items.reduce((total, item) => total + Number(item[field] || 0), 0);
 }
@@ -637,6 +669,20 @@ function renderReports() {
     .map(([label, value]) => ({ label, value }))
     .sort((a, b) => b.value - a.value);
   const maxCategory = Math.max(...categories.map((item) => item.value), 1);
+  const calculatorDefaults = {
+    miles,
+    revenue,
+    fuel: categoryTotals.Fuel || 0,
+    maintenance: categoryTotals.Maintenance || 0,
+    insurance: categoryTotals.Insurance || 0,
+    permits: categoryTotals["Permits and taxes"] || 0,
+    driverPay: 0,
+    other: Math.max(expenses - ((categoryTotals.Fuel || 0) + (categoryTotals.Maintenance || 0) + (categoryTotals.Insurance || 0) + (categoryTotals["Permits and taxes"] || 0)), 0)
+  };
+  const calculatorCosts = calculatorDefaults.fuel + calculatorDefaults.maintenance + calculatorDefaults.insurance + calculatorDefaults.permits + calculatorDefaults.driverPay + calculatorDefaults.other;
+  const calculatorRevenuePerMile = calculatorDefaults.miles > 0 ? calculatorDefaults.revenue / calculatorDefaults.miles : 0;
+  const calculatorCostPerMile = calculatorDefaults.miles > 0 ? calculatorCosts / calculatorDefaults.miles : 0;
+  const calculatorProfitPerMile = calculatorDefaults.miles > 0 ? (calculatorDefaults.revenue - calculatorCosts) / calculatorDefaults.miles : 0;
 
   content.innerHTML = `
     <section class="panel">
@@ -655,6 +701,27 @@ function renderReports() {
       ${metric("Estimated taxable", money(Math.max(revenue - expenses, 0)), "Before other adjustments", "bar-chart")}
       ${metric("Cost per mile", money(expenses / Math.max(miles, 1)), `${number(miles)} loaded miles`, "route")}
     </div>
+    <section class="panel">
+      <div class="panel-header"><h2>Cost Per Mile Calculator</h2><span class="muted">Enter miles and costs to estimate operating cost</span></div>
+      <div class="panel-body">
+        <div class="calculator-grid">
+          <label>Loaded miles<input data-cpm-input="miles" type="number" min="0" step="1" value="${numericInputValue(calculatorDefaults.miles)}" /></label>
+          <label>Revenue<input data-cpm-input="revenue" type="number" min="0" step="0.01" value="${numericInputValue(calculatorDefaults.revenue)}" /></label>
+          <label>Fuel<input data-cpm-input="fuel" type="number" min="0" step="0.01" value="${numericInputValue(calculatorDefaults.fuel)}" /></label>
+          <label>Maintenance<input data-cpm-input="maintenance" type="number" min="0" step="0.01" value="${numericInputValue(calculatorDefaults.maintenance)}" /></label>
+          <label>Insurance<input data-cpm-input="insurance" type="number" min="0" step="0.01" value="${numericInputValue(calculatorDefaults.insurance)}" /></label>
+          <label>Permits and taxes<input data-cpm-input="permits" type="number" min="0" step="0.01" value="${numericInputValue(calculatorDefaults.permits)}" /></label>
+          <label>Driver pay<input data-cpm-input="driverPay" type="number" min="0" step="0.01" value="${numericInputValue(calculatorDefaults.driverPay)}" /></label>
+          <label>Other costs<input data-cpm-input="other" type="number" min="0" step="0.01" value="${numericInputValue(calculatorDefaults.other)}" /></label>
+        </div>
+        <div class="calculator-results">
+          <article><span>Total costs</span><strong id="cpmTotalCosts">${moneyWithCents(calculatorCosts)}</strong></article>
+          <article><span>Cost per mile</span><strong id="cpmCostPerMile">${moneyWithCents(calculatorCostPerMile)}</strong></article>
+          <article><span>Revenue per mile</span><strong id="cpmRevenuePerMile">${moneyWithCents(calculatorRevenuePerMile)}</strong></article>
+          <article><span>Profit per mile</span><strong id="cpmProfitPerMile">${moneyWithCents(calculatorProfitPerMile)}</strong></article>
+        </div>
+      </div>
+    </section>
     <section class="panel">
       <div class="panel-header"><h2>AI Profit Summary</h2><span class="muted">Loss patterns from this report year</span></div>
       <div class="panel-body">
@@ -1999,6 +2066,7 @@ document.addEventListener("input", (event) => {
     state.query = event.target.value;
     renderContent();
   }
+  if (event.target.matches("[data-cpm-input]")) updateCostPerMileCalculator();
 });
 
 document.addEventListener("change", (event) => {
@@ -2010,6 +2078,7 @@ document.addEventListener("change", (event) => {
     state.reportYear = event.target.value;
     renderContent();
   }
+  if (event.target.matches("[data-cpm-input]")) updateCostPerMileCalculator();
   if (event.target.id === "entryType") toggleTripFields();
 });
 
