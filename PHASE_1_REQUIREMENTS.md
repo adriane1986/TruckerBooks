@@ -164,6 +164,9 @@ company's information.
 roles.
 
 - [ ] Build company, customer, driver, truck, and trailer profiles.
+- [ ] Add truck-level maintenance reminders for each truck.
+
+Note: Maintenance reminders should be tracked at the truck level so each unit can have its own service schedule, due dates, mileage reminders, and overdue alerts.
 - [ ] Build load creation, assignment, status tracking, and completion workflows.
 - [ ] Build a simple dispatch board with driver, truck, trailer, pickup, and
 delivery information.
@@ -174,11 +177,17 @@ delivery information.
 Note: The app currently counts rate confirmations as expected income, but full invoicing and payment tracking still need to be added.
 - [ ] Build driver settlement calculations for per-mile and percentage pay.
 - [ ] Build income, expense, and recurring-expense records.
+- [ ] Add a separate cash-flow forecasting dashboard.
+
+Note: Bookkeeping is planned, but cash-flow forecasting should be its own dashboard for expected income, upcoming bills, payroll, subscriptions, and projected cash position.
 - [ ] Build profitability reporting by load, truck, driver, and customer.
 - [ ] Add a dedicated profit dashboard for profit per load and profit per truck.
 
 Note: The app already records load income and expenses, but Phase 1 should clearly specify a dedicated profit dashboard so customers can see which loads and trucks are making or losing money.
 - [ ] Build compliance expiration reminders and notification settings.
+- [ ] Add a dedicated compliance calendar for compliance deadlines, due dates, and renewal reminders.
+
+Note: Compliance deadlines and reminders are a core TruckerBooks feature and should be visible in both the Compliance section and dashboard alerts.
 - [ ] Build audit logs for important financial and operational changes.
 - AI Document Processing
 Objective: Turn uploaded documents into structured operational and financial data.
@@ -190,6 +199,9 @@ selection.
 
 - [ ] Support rate confirmations, bills of lading, proofs of delivery, fuel receipts,
 and expense receipts.
+- [ ] Add a complete Driver Qualification file module for each driver.
+
+Note: Document storage is included, but Phase 1 should specify a full DQ-file module with driver-specific document categories, expiration tracking, missing-document alerts, and secure storage.
 
 TruckerBooks Phase 1 To-Do List | 6
 
