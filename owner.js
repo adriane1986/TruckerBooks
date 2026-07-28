@@ -136,7 +136,7 @@ function renderPartnerList() {
     <article class="owner-customer">
       <strong>${escapeHtml(partner.businessName || partner.name)}</strong>
       <span>${escapeHtml(partner.email)}</span>
-      <small>${escapeHtml(partner.affiliateCode)} · ${escapeHtml(partner.stats?.tier?.name || "Starter")} · ${partner.stats?.referralCount || 0} active customers · ${money(partner.stats?.monthlyRecurringTotal || 0)}/mo</small>
+      <small>${escapeHtml(partner.affiliateCode)} · ${partner.stats?.referralCount || 0} referrals · ${partner.stats?.pendingRewardCount || 0} pending free-month rewards</small>
     </article>
   `).join("") || `<p class="muted">No referral partners yet.</p>`;
 }

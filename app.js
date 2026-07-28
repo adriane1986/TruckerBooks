@@ -1106,48 +1106,46 @@ function renderCompliance() {
 
 function renderAffiliate() {
   const stats = state.customer?.affiliateStats || { referrals: [], earnedTotal: 0, pendingCount: 0, paidCount: 0 };
-  const tier = stats.tier || { name: "Starter", commissionRate: 0.3 };
-  const commissionPercent = Math.round((tier.commissionRate || 0.3) * 100);
   const referralLink = `${location.origin}/?ref=${state.customer?.affiliateCode || ""}`;
   content.innerHTML = `
     <div class="metric-grid">
-      ${metric("Tier", tier.name, `${commissionPercent}% recurring commission`, "receipt")}
-      ${metric("Monthly Recurring", money(stats.monthlyRecurringTotal || 0), "Projected monthly commission", "bar-chart")}
-      ${metric("Signup Bonus", money(stats.signupBonusPendingTotal || 0), "$25 after 30 days active", "users")}
+      ${metric("Reward", stats.rewardLabel || "One free month", "For fleets with 1-20 trucks", "receipt")}
+      ${metric("Customer Discount", stats.discountLabel || "10% off the first 3 months", "Applied to referred customers", "bar-chart")}
+      ${metric("Pending Rewards", stats.pendingRewardCount || 0, stats.eligibilityLabel || "Paid after 60 active days", "users")}
       ${metric("Referral code", state.customer?.affiliateCode || "None", "Unique to this customer", "share")}
     </div>
     <section class="panel">
-      <div class="panel-header"><h2>Referral Tiers</h2><span class="muted">Automatic upgrades based on active customers</span></div>
+      <div class="panel-header"><h2>Referral Program</h2><span class="muted">For fleets with 1-20 trucks</span></div>
       <div class="panel-body">
         <div class="package-grid">
-          <article class="package-option ${tier.name === "Starter" ? "active" : ""}"><strong>Starter</strong><span>30% commission</span><em>Starts immediately</em></article>
-          <article class="package-option ${tier.name === "Growth" ? "active" : ""}"><strong>Growth</strong><span>35% commission</span><em>After 10 customers</em></article>
-          <article class="package-option ${tier.name === "Elite" ? "active" : ""}"><strong>Elite</strong><span>40% commission</span><em>After 25 customers</em></article>
+          <article class="package-option active"><strong>Referrer</strong><span>One free month</span><em>Earned after 60 active days</em></article>
+          <article class="package-option active"><strong>New customer</strong><span>10% discount</span><em>First three months</em></article>
+          <article class="package-option active"><strong>Fleet size</strong><span>1-20 trucks</span><em>Silver, Gold, or Platinum</em></article>
         </div>
       </div>
     </section>
     <section class="panel">
-      <div class="panel-header"><h2>Referral Link</h2><span class="muted">${commissionPercent}% recurring commission for 12 months</span></div>
+      <div class="panel-header"><h2>Referral Link</h2><span class="muted">One free month after 60 active days</span></div>
       <div class="panel-body">
         <div class="copy-row">
           <input value="${referralLink}" readonly aria-label="Affiliate referral link" />
           <button class="primary-button" type="button" data-copy-referral="${referralLink}">Copy Link</button>
         </div>
-        <p class="muted">When a new customer signs up with this link and becomes active, this account earns ${commissionPercent}% recurring commission for 12 months plus a $25 signup bonus after 30 active days.</p>
+        <p class="muted">When a fleet with 1-20 trucks signs up with this link, they receive 10% off the first three months. This account receives one free month after the new customer remains active for at least 60 days.</p>
       </div>
     </section>
     <section class="panel">
       <div class="panel-header"><h2>Referral Activity</h2><span class="muted">${stats.referrals?.length || 0} referrals</span></div>
       <table class="data-table">
-        <thead><tr><th>Customer</th><th>Email</th><th>Type</th><th>Commission</th><th>Status</th></tr></thead>
+        <thead><tr><th>Customer</th><th>Email</th><th>Reward</th><th>Eligibility</th><th>Status</th></tr></thead>
         <tbody>
           ${(stats.referrals || []).map((item) => `
             <tr>
               <td><strong>${item.referredBusinessName}</strong></td>
               <td>${item.referredEmail}</td>
-              <td>${item.commissionType === "signup_bonus_30_day" ? "Signup bonus" : item.commissionType === "recurring_12_months" ? "12-month recurring" : "Referral"}</td>
-              <td>${money(item.amount)}</td>
-              <td><span class="status ${["earned", "active_recurring"].includes(item.status) ? "Paid" : "Pending"}">${item.status === "active_recurring" ? "Active" : item.status === "bonus_pending" ? "30-day pending" : item.status === "earned" ? "Earned" : "Pending"}</span></td>
+              <td>${item.rewardLabel || (item.rewardType === "free_month" ? "One free month" : item.commissionType === "signup_bonus_30_day" ? "Signup bonus" : item.commissionType === "recurring_12_months" ? "Legacy recurring" : "Referral")}</td>
+              <td>${item.requiredActiveDays ? `${item.requiredActiveDays} active days` : item.eligibleAt ? "Eligibility pending" : "Pending activation"}</td>
+              <td><span class="status ${item.status === "earned" ? "Paid" : "Pending"}">${item.status === "reward_pending_60_days" ? "60-day pending" : item.status === "earned" ? "Earned" : item.status === "active_recurring" ? "Legacy active" : "Pending"}</span></td>
             </tr>
           `).join("") || `<tr><td colspan="5">No referrals yet.</td></tr>`}
         </tbody>
@@ -1192,7 +1190,7 @@ function renderAccount() {
       </div>
     </section>
     <section class="panel">
-      <div class="panel-header"><h2>Billing Status</h2><span class="muted">Used for affiliate commission tracking</span></div>
+      <div class="panel-header"><h2>Billing Status</h2><span class="muted">Used for referral reward eligibility</span></div>
       <div class="panel-body">
         <div class="list-item">
           <div>
@@ -1201,6 +1199,14 @@ function renderAccount() {
           </div>
           <button class="primary-button" type="button" data-mark-first-paid ${customer.firstMonthPaid ? "disabled" : ""}>Mark First Month Paid</button>
         </div>
+        ${customer.referralDiscount ? `
+          <div class="list-item">
+            <div>
+              <strong>Referral discount</strong>
+              <span>${customer.referralDiscount.percent}% off the first ${customer.referralDiscount.monthsTotal} months · ${customer.referralDiscount.monthsRemaining} months remaining</span>
+            </div>
+          </div>
+        ` : ""}
       </div>
     </section>
     <div class="dashboard-grid">
@@ -1508,7 +1514,7 @@ async function markFirstMonthPaid() {
   try {
     const payload = await api("/api/billing/first-month-paid", { method: "POST" });
     state.customer = payload.customer;
-    state.accountMessage = "First month marked paid. Any referral or partner commission has been updated.";
+    state.accountMessage = "First month marked paid. Any referral reward eligibility has been updated.";
     renderContent();
   } catch (error) {
     state.accountMessage = error.message;

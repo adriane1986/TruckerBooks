@@ -87,49 +87,47 @@ function renderMetric(label, value, detail) {
 function renderPartnerDashboard() {
   const partner = partnerState.partner;
   const stats = partner.stats || {};
-  const tier = stats.tier || partner.tier || { name: "Starter", commissionRate: 0.3, threshold: 0 };
-  const commissionPercent = Math.round((tier.commissionRate || 0.3) * 100);
   const referrals = stats.referrals || [];
   partnerContent.innerHTML = `
     <div class="metric-grid">
-      ${renderMetric("Tier", tier.name, `${commissionPercent}% recurring commission`)}
-      ${renderMetric("Monthly Recurring", money(stats.monthlyRecurringTotal || 0), "Projected monthly commission")}
-      ${renderMetric("Signup Bonus", money(stats.signupBonusPendingTotal || 0), "$25 after 30 days active")}
-      ${renderMetric("Customers", stats.referralCount || 0, "Growth at 10 customers, Elite at 25")}
+      ${renderMetric("Reward", stats.rewardLabel || "One free month", "For fleets with 1-20 trucks")}
+      ${renderMetric("Customer Discount", stats.discountLabel || "10% off the first 3 months", "Applied to referred customers")}
+      ${renderMetric("Pending Rewards", stats.pendingRewardCount || 0, stats.eligibilityLabel || "Paid after 60 active days")}
+      ${renderMetric("Customers", stats.referralCount || 0, "Referred active customers")}
       ${renderMetric("Referral Code", partner.affiliateCode || "", "Unique partner link")}
     </div>
 
     <section class="panel">
-      <div class="panel-header"><h2>Partner Tiers</h2><span class="muted">Automatic upgrades based on active customers</span></div>
+      <div class="panel-header"><h2>Referral Program</h2><span class="muted">For fleets with 1-20 trucks</span></div>
       <div class="panel-body">
         <div class="package-grid">
-          <article class="package-option ${tier.name === "Starter" ? "active" : ""}">
-            <strong>Starter</strong>
-            <span>30% commission</span>
-            <small>Starts immediately</small>
+          <article class="package-option active">
+            <strong>Referrer</strong>
+            <span>One free month</span>
+            <small>Earned after 60 active days</small>
           </article>
-          <article class="package-option ${tier.name === "Growth" ? "active" : ""}">
-            <strong>Growth</strong>
-            <span>35% commission</span>
-            <small>After 10 customers</small>
+          <article class="package-option active">
+            <strong>New customer</strong>
+            <span>10% discount</span>
+            <small>First three months</small>
           </article>
-          <article class="package-option ${tier.name === "Elite" ? "active" : ""}">
-            <strong>Elite</strong>
-            <span>40% commission</span>
-            <small>After 25 customers</small>
+          <article class="package-option active">
+            <strong>Fleet size</strong>
+            <span>1-20 trucks</span>
+            <small>Silver, Gold, or Platinum</small>
           </article>
         </div>
       </div>
     </section>
 
     <section class="panel">
-      <div class="panel-header"><h2>Referral Link</h2><span class="muted">${commissionPercent}% recurring commission for 12 months</span></div>
+      <div class="panel-header"><h2>Referral Link</h2><span class="muted">One free month after 60 active days</span></div>
       <div class="panel-body">
         <div class="copy-row">
           <input readonly value="${escapeHtml(partnerReferralLink())}" aria-label="Affiliate referral link" />
           <button class="primary-button" type="button" data-copy-link>Copy Link</button>
         </div>
-        <p class="muted">Partners earn ${commissionPercent}% recurring commission for 12 months after a referred customer becomes active, plus a $25 signup bonus after that customer stays active for 30 days.</p>
+        <p class="muted">When a fleet with 1-20 trucks signs up with this link, they receive 10% off the first three months. The referrer receives one free month after the new customer remains active for at least 60 days.</p>
       </div>
     </section>
 
@@ -167,15 +165,15 @@ function renderPartnerDashboard() {
     <section class="panel">
       <div class="panel-header"><h2>Referral Activity</h2><span class="muted">${referrals.length} referrals</span></div>
       <table class="data-table">
-        <thead><tr><th>Customer</th><th>Email</th><th>Type</th><th>Commission</th><th>Status</th><th>Date</th></tr></thead>
+        <thead><tr><th>Customer</th><th>Email</th><th>Reward</th><th>Eligibility</th><th>Status</th><th>Date</th></tr></thead>
         <tbody>
           ${referrals.map((item) => `
             <tr>
               <td><strong>${escapeHtml(item.referredBusinessName)}</strong></td>
               <td class="owner-wrap">${escapeHtml(item.referredEmail)}</td>
-              <td>${item.commissionType === "signup_bonus_30_day" ? "Signup bonus" : item.commissionType === "recurring_12_months" ? "12-month recurring" : "Referral"}</td>
-              <td>${money(item.amount)}</td>
-              <td><span class="status ${["earned", "active_recurring"].includes(item.status) ? "Paid" : "Pending"}">${item.status === "active_recurring" ? "Active" : item.status === "bonus_pending" ? "30-day pending" : item.status === "earned" ? "Earned" : "Pending"}</span></td>
+              <td>${escapeHtml(item.rewardLabel || (item.rewardType === "free_month" ? "One free month" : item.commissionType === "signup_bonus_30_day" ? "Signup bonus" : item.commissionType === "recurring_12_months" ? "Legacy recurring" : "Referral"))}</td>
+              <td>${item.requiredActiveDays ? `${item.requiredActiveDays} active days` : item.eligibleAt ? "Eligibility pending" : "Pending activation"}</td>
+              <td><span class="status ${item.status === "earned" ? "Paid" : "Pending"}">${item.status === "reward_pending_60_days" ? "60-day pending" : item.status === "earned" ? "Earned" : item.status === "active_recurring" ? "Legacy active" : "Pending"}</span></td>
               <td>${formatDate(item.earnedAt || item.eligibleAt || item.createdAt)}</td>
             </tr>
           `).join("") || `<tr><td colspan="6">No referrals yet.</td></tr>`}

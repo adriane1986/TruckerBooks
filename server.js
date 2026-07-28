@@ -69,14 +69,13 @@ const accountAccessRoles = {
   dispatcher: "Dispatcher"
 };
 
-const partnerTiers = [
-  { id: "elite", name: "Elite", threshold: 25, commissionRate: 0.4 },
-  { id: "growth", name: "Growth", threshold: 10, commissionRate: 0.35 },
-  { id: "starter", name: "Starter", threshold: 0, commissionRate: 0.3 }
-];
-
-const partnerRecurringMonths = 12;
-const partnerSignupBonusAmount = 25;
+const referralProgram = {
+  maxTrucks: 20,
+  newCustomerDiscountPercent: 10,
+  newCustomerDiscountMonths: 3,
+  rewardEligibleDays: 60,
+  referrerReward: "One free month"
+};
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -139,6 +138,7 @@ function publicUser(user) {
     supportIssues: user.supportIssues || [],
     affiliateCode: user.affiliateCode,
     referredBy: user.referredBy || "",
+    referralDiscount: referralDiscountSummary(user),
     firstMonthPaid: Boolean(user.firstMonthPaid),
     trial: trialSummary(user),
     affiliateStats: affiliateStats(user)
@@ -191,7 +191,6 @@ function publicPartner(partner) {
     w9Status: partner.w9Status || "Needed before payout",
     affiliateCode: partner.affiliateCode,
     status: partner.status || "Active",
-    tier: stats.tier,
     createdAt: partner.createdAt || "",
     stats
   };
@@ -482,6 +481,19 @@ async function stripeRequest(pathname, params) {
   return payload;
 }
 
+async function createReferralStripeCoupon(user) {
+  const discount = referralDiscountSummary(user);
+  if (!discount || discount.percent <= 0 || discount.monthsRemaining <= 0) return null;
+  return stripeRequest("/coupons", {
+    duration: "repeating",
+    duration_in_months: String(Math.min(discount.monthsRemaining, discount.monthsTotal)),
+    percent_off: String(discount.percent),
+    name: `TruckerBooks referral - ${discount.percent}% off ${discount.monthsTotal} months`,
+    "metadata[userId]": user.id,
+    "metadata[referralDiscount]": "true"
+  });
+}
+
 async function createStripeCheckoutSession(req, user, interval = "month") {
   const plan = currentPlan(user);
   const isAnnual = interval === "year";
@@ -504,6 +516,15 @@ async function createStripeCheckoutSession(req, user, interval = "month") {
     "subscription_data[metadata][userId]": user.id,
     "subscription_data[metadata][plan]": plan.id
   };
+  const referralDiscount = referralDiscountSummary(user);
+  if (!isAnnual && referralDiscount) {
+    const coupon = await createReferralStripeCoupon(user);
+    if (coupon?.id) {
+      params["discounts[0][coupon]"] = coupon.id;
+      params["metadata[referralDiscount]"] = `${referralDiscount.percent}% off ${referralDiscount.monthsTotal} months`;
+      params["subscription_data[metadata][referralDiscount]"] = `${referralDiscount.percent}% off ${referralDiscount.monthsTotal} months`;
+    }
+  }
   if (!user.firstMonthPaid) params["subscription_data[trial_period_days]"] = String(trialDays);
   return stripeRequest("/checkout/sessions", params);
 }
@@ -1312,6 +1333,7 @@ function normalizeUser(user) {
   user.referredBy = user.referredBy || "";
   user.firstMonthPaid = Boolean(user.firstMonthPaid);
   user.commissions = Array.isArray(user.commissions) ? user.commissions : [];
+  user.referralDiscount = user.referralDiscount && typeof user.referralDiscount === "object" ? user.referralDiscount : null;
   user.paymentInfo = user.paymentInfo && typeof user.paymentInfo === "object" ? user.paymentInfo : {};
   user.trialStartedAt = user.trialStartedAt || user.createdAt || new Date().toISOString();
   user.trialEndsAt = user.trialEndsAt || addDaysIso(user.trialStartedAt, trialDays);
@@ -1346,49 +1368,48 @@ function normalizePartner(partner) {
 
 function affiliateStats(user) {
   const referrals = user.commissions || [];
-  const activeReferrals = referrals.filter((item) => ["active_recurring", "earned", "bonus_pending"].includes(item.status));
+  const activeReferrals = referrals.filter((item) => ["reward_pending_60_days", "earned", "active_recurring", "bonus_pending"].includes(item.status));
   const activeCustomerIds = new Set(activeReferrals.map((item) => item.referredUserId).filter(Boolean));
-  const tier = partnerTierForCustomerCount(activeCustomerIds.size);
-  const activeRecurring = referrals.filter((item) => item.commissionType === "recurring_12_months" && item.status === "active_recurring");
-  const pendingBonuses = referrals.filter((item) => item.commissionType === "signup_bonus_30_day" && item.status === "bonus_pending");
-  const earned = referrals.filter((item) => ["earned", "active_recurring"].includes(item.status));
+  const pendingRewards = referrals.filter((item) => item.rewardType === "free_month" && item.status === "reward_pending_60_days");
+  const earnedRewards = referrals.filter((item) => item.rewardType === "free_month" && item.status === "earned");
+  const legacyEarned = referrals.filter((item) => ["earned", "active_recurring"].includes(item.status) && item.rewardType !== "free_month");
   return {
-    tier,
     referralCount: activeCustomerIds.size || referrals.length,
     paidCount: activeCustomerIds.size,
-    pendingCount: referrals.filter((item) => item.status === "pending").length,
-    recurringCount: activeRecurring.length,
-    earnedTotal: earned.reduce((total, item) => total + Number(item.amount || 0), 0),
-    monthlyRecurringTotal: activeRecurring.reduce((total, item) => total + Number(item.amount || 0), 0),
-    pendingTotal: referrals.filter((item) => ["pending", "bonus_pending"].includes(item.status)).reduce((total, item) => total + Number(item.amount || 0), 0),
-    signupBonusPendingTotal: pendingBonuses.reduce((total, item) => total + Number(item.amount || 0), 0),
+    pendingCount: referrals.filter((item) => ["pending", "reward_pending_60_days"].includes(item.status)).length,
+    earnedRewardCount: earnedRewards.length,
+    pendingRewardCount: pendingRewards.length,
+    rewardLabel: referralProgram.referrerReward,
+    discountLabel: `${referralProgram.newCustomerDiscountPercent}% off the first ${referralProgram.newCustomerDiscountMonths} months`,
+    eligibilityLabel: `Paid after ${referralProgram.rewardEligibleDays} active days`,
+    earnedTotal: legacyEarned.reduce((total, item) => total + Number(item.amount || 0), 0),
+    monthlyRecurringTotal: 0,
+    pendingTotal: 0,
+    signupBonusPendingTotal: 0,
     referrals
   };
 }
 
-function partnerTierForCustomerCount(customerCount) {
-  return partnerTiers.find((tier) => customerCount >= tier.threshold) || partnerTiers[partnerTiers.length - 1];
-}
-
 function partnerStats(partner) {
   const referrals = partner.commissions || [];
-  const activeReferrals = referrals.filter((item) => ["active_recurring", "earned", "bonus_pending"].includes(item.status));
+  const activeReferrals = referrals.filter((item) => ["reward_pending_60_days", "earned", "active_recurring", "bonus_pending"].includes(item.status));
   const activeCustomerIds = new Set(activeReferrals.map((item) => item.referredUserId).filter(Boolean));
-  const tier = partnerTierForCustomerCount(activeCustomerIds.size);
-  const recurringReferrals = referrals.filter((item) => item.commissionType === "recurring_12_months");
-  const activeRecurring = recurringReferrals.filter((item) => item.status === "active_recurring");
-  const pendingBonuses = referrals.filter((item) => item.commissionType === "signup_bonus_30_day" && item.status === "bonus_pending");
-  const earned = referrals.filter((item) => ["earned", "active_recurring"].includes(item.status));
+  const pendingRewards = referrals.filter((item) => item.rewardType === "free_month" && item.status === "reward_pending_60_days");
+  const earnedRewards = referrals.filter((item) => item.rewardType === "free_month" && item.status === "earned");
+  const legacyEarned = referrals.filter((item) => ["earned", "active_recurring"].includes(item.status) && item.rewardType !== "free_month");
   return {
-    tier,
     referralCount: activeCustomerIds.size || referrals.length,
     paidCount: activeCustomerIds.size,
-    pendingCount: referrals.filter((item) => item.status === "pending").length,
-    recurringCount: activeRecurring.length,
-    earnedTotal: earned.reduce((total, item) => total + Number(item.amount || 0), 0),
-    monthlyRecurringTotal: activeRecurring.reduce((total, item) => total + Number(item.amount || 0), 0),
-    pendingTotal: referrals.filter((item) => ["pending", "bonus_pending"].includes(item.status)).reduce((total, item) => total + Number(item.amount || 0), 0),
-    signupBonusPendingTotal: pendingBonuses.reduce((total, item) => total + Number(item.amount || 0), 0),
+    pendingCount: referrals.filter((item) => ["pending", "reward_pending_60_days"].includes(item.status)).length,
+    earnedRewardCount: earnedRewards.length,
+    pendingRewardCount: pendingRewards.length,
+    rewardLabel: referralProgram.referrerReward,
+    discountLabel: `${referralProgram.newCustomerDiscountPercent}% off the first ${referralProgram.newCustomerDiscountMonths} months`,
+    eligibilityLabel: `Paid after ${referralProgram.rewardEligibleDays} active days`,
+    earnedTotal: legacyEarned.reduce((total, item) => total + Number(item.amount || 0), 0),
+    monthlyRecurringTotal: 0,
+    pendingTotal: 0,
+    signupBonusPendingTotal: 0,
     referrals
   };
 }
@@ -1403,39 +1424,56 @@ function findReferrer(db, referralCode) {
   return null;
 }
 
+function referralDiscountSummary(user) {
+  const discount = user.referralDiscount;
+  if (!discount || discount.status === "expired") return null;
+  return {
+    percent: Number(discount.percent || referralProgram.newCustomerDiscountPercent),
+    monthsTotal: Number(discount.monthsTotal || referralProgram.newCustomerDiscountMonths),
+    monthsRemaining: Number(discount.monthsRemaining || referralProgram.newCustomerDiscountMonths),
+    status: discount.status || "active"
+  };
+}
+
+function isReferralEligibleFleet(user) {
+  const plan = currentPlan(user);
+  return plan.minTrucks >= 1 && plan.maxTrucks <= referralProgram.maxTrucks;
+}
+
+function isActiveReferralCustomer(user) {
+  if (!user) return false;
+  return Boolean(user.firstMonthPaid) && !["Cancelled", "Inactive"].includes(user.accountStatus || "Active");
+}
+
 function addReferralCommission(referrer, newUser) {
   referrer.account.commissions = Array.isArray(referrer.account.commissions) ? referrer.account.commissions : [];
   const createdAt = new Date().toISOString();
-  const tier = referrer.type === "partner" ? partnerStats(referrer.account).tier : affiliateStats(referrer.account).tier;
   const plan = currentPlan(newUser);
-  const monthlyCommission = Math.round(plan.monthlyPrice * tier.commissionRate * 100) / 100;
+  if (!isReferralEligibleFleet(newUser)) return;
   referrer.account.commissions.push({
     id: crypto.randomUUID(),
     referredUserId: newUser.id,
     referredBusinessName: newUser.businessName,
     referredEmail: newUser.email,
-    amount: monthlyCommission,
-    commissionRate: tier.commissionRate,
-    tierName: tier.name,
-    commissionType: "recurring_12_months",
+    amount: 0,
+    rewardType: "free_month",
+    rewardLabel: referralProgram.referrerReward,
+    commissionType: "free_month_after_60_days",
     status: "pending",
-    monthsTotal: partnerRecurringMonths,
-    monthsRemaining: partnerRecurringMonths,
     monthlySubscriptionAmount: plan.monthlyPrice,
+    newCustomerDiscountPercent: referralProgram.newCustomerDiscountPercent,
+    newCustomerDiscountMonths: referralProgram.newCustomerDiscountMonths,
+    requiredActiveDays: referralProgram.rewardEligibleDays,
     referrerType: referrer.type,
     createdAt
   });
-  referrer.account.commissions.push({
-    id: crypto.randomUUID(),
-    referredUserId: newUser.id,
-    referredBusinessName: newUser.businessName,
-    referredEmail: newUser.email,
-    amount: partnerSignupBonusAmount,
-    commissionType: "signup_bonus_30_day",
-    status: "pending",
-    referrerType: referrer.type,
+  newUser.referralDiscount = {
+    percent: referralProgram.newCustomerDiscountPercent,
+    monthsTotal: referralProgram.newCustomerDiscountMonths,
+    monthsRemaining: referralProgram.newCustomerDiscountMonths,
+    status: "active",
     createdAt
-  });
+  };
 }
 
 function earnReferralCommission(db, user) {
@@ -1444,6 +1482,11 @@ function earnReferralCommission(db, user) {
   const commissions = referrer?.account.commissions?.filter((item) => item.referredUserId === user.id) || [];
   const now = new Date().toISOString();
   commissions.forEach((commission) => {
+    if (commission.rewardType === "free_month" && commission.status === "pending") {
+      commission.status = "reward_pending_60_days";
+      commission.startedAt = now;
+      commission.eligibleAt = addDaysIso(now, referralProgram.rewardEligibleDays);
+    }
     if (commission.commissionType === "recurring_12_months" && commission.status === "pending") {
       commission.status = "active_recurring";
       commission.startedAt = now;
@@ -1465,6 +1508,16 @@ function releaseEligibleBonuses(db) {
   const now = new Date();
   [...(db.partners || []), ...(db.users || [])].forEach((account) => {
     (account.commissions || []).forEach((commission) => {
+      if (commission.rewardType === "free_month" && commission.status === "reward_pending_60_days") {
+        const eligibleAt = new Date(commission.eligibleAt || "");
+        const referredUser = (db.users || []).find((user) => user.id === commission.referredUserId);
+        if (!Number.isNaN(eligibleAt.getTime()) && eligibleAt <= now && isActiveReferralCustomer(referredUser)) {
+          commission.status = "earned";
+          commission.earnedAt = now.toISOString();
+          changed = true;
+        }
+        return;
+      }
       if (commission.commissionType !== "signup_bonus_30_day" || commission.status !== "bonus_pending") return;
       const eligibleAt = new Date(commission.eligibleAt || "");
       if (!Number.isNaN(eligibleAt.getTime()) && eligibleAt <= now) {
