@@ -88,13 +88,14 @@ function renderPartnerDashboard() {
   const partner = partnerState.partner;
   const stats = partner.stats || {};
   const tier = stats.tier || partner.tier || { name: "Starter", commissionRate: 0.3, threshold: 0 };
+  const commissionPercent = Math.round((tier.commissionRate || 0.3) * 100);
   const referrals = stats.referrals || [];
   partnerContent.innerHTML = `
     <div class="metric-grid">
-      ${renderMetric("Tier", tier.name, `${Math.round((tier.commissionRate || 0.3) * 100)}% recurring commission`)}
+      ${renderMetric("Tier", tier.name, `${commissionPercent}% recurring commission`)}
       ${renderMetric("Monthly Recurring", money(stats.monthlyRecurringTotal || 0), "Projected monthly commission")}
       ${renderMetric("Signup Bonus", money(stats.signupBonusPendingTotal || 0), "$25 after 30 days active")}
-      ${renderMetric("Customers", stats.referralCount || 0, "Growth at 10, Elite at 25")}
+      ${renderMetric("Customers", stats.referralCount || 0, "Growth at 10 customers, Elite at 25")}
       ${renderMetric("Referral Code", partner.affiliateCode || "", "Unique partner link")}
     </div>
 
@@ -122,13 +123,13 @@ function renderPartnerDashboard() {
     </section>
 
     <section class="panel">
-      <div class="panel-header"><h2>Referral Link</h2><span class="muted">Share this with potential customers</span></div>
+      <div class="panel-header"><h2>Referral Link</h2><span class="muted">${commissionPercent}% recurring commission for 12 months</span></div>
       <div class="panel-body">
         <div class="copy-row">
           <input readonly value="${escapeHtml(partnerReferralLink())}" aria-label="Affiliate referral link" />
           <button class="primary-button" type="button" data-copy-link>Copy Link</button>
         </div>
-        <p class="muted">Partners earn recurring commission for 12 months after a referred customer becomes active, plus a $25 signup bonus after that customer stays active for 30 days.</p>
+        <p class="muted">Partners earn ${commissionPercent}% recurring commission for 12 months after a referred customer becomes active, plus a $25 signup bonus after that customer stays active for 30 days.</p>
       </div>
     </section>
 

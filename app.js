@@ -1107,10 +1107,11 @@ function renderCompliance() {
 function renderAffiliate() {
   const stats = state.customer?.affiliateStats || { referrals: [], earnedTotal: 0, pendingCount: 0, paidCount: 0 };
   const tier = stats.tier || { name: "Starter", commissionRate: 0.3 };
+  const commissionPercent = Math.round((tier.commissionRate || 0.3) * 100);
   const referralLink = `${location.origin}/?ref=${state.customer?.affiliateCode || ""}`;
   content.innerHTML = `
     <div class="metric-grid">
-      ${metric("Tier", tier.name, `${Math.round((tier.commissionRate || 0.3) * 100)}% recurring commission`, "receipt")}
+      ${metric("Tier", tier.name, `${commissionPercent}% recurring commission`, "receipt")}
       ${metric("Monthly Recurring", money(stats.monthlyRecurringTotal || 0), "Projected monthly commission", "bar-chart")}
       ${metric("Signup Bonus", money(stats.signupBonusPendingTotal || 0), "$25 after 30 days active", "users")}
       ${metric("Referral code", state.customer?.affiliateCode || "None", "Unique to this customer", "share")}
@@ -1126,13 +1127,13 @@ function renderAffiliate() {
       </div>
     </section>
     <section class="panel">
-      <div class="panel-header"><h2>Referral Link</h2><span class="muted">30% recurring commission for 12 months</span></div>
+      <div class="panel-header"><h2>Referral Link</h2><span class="muted">${commissionPercent}% recurring commission for 12 months</span></div>
       <div class="panel-body">
         <div class="copy-row">
           <input value="${referralLink}" readonly aria-label="Affiliate referral link" />
           <button class="primary-button" type="button" data-copy-referral="${referralLink}">Copy Link</button>
         </div>
-        <p class="muted">When a new customer signs up with this link and becomes active, this account earns recurring commission for 12 months plus a $25 signup bonus after 30 active days.</p>
+        <p class="muted">When a new customer signs up with this link and becomes active, this account earns ${commissionPercent}% recurring commission for 12 months plus a $25 signup bonus after 30 active days.</p>
       </div>
     </section>
     <section class="panel">

@@ -29,7 +29,9 @@ http://localhost:3000
 - Admin-created driver access invites
 - Affiliate Program tab
 - Unique affiliate link generated for each customer
-- One-time $10 commission tracking when a referred customer pays the first month
+- Customer and partner referral programs with 30%, 35%, and 40% recurring commission tiers
+- 12-month recurring commission tracking after a referred customer becomes active
+- $25 signup bonus tracking after a referred customer stays active for 30 days
 - Compliance tab for Insurance, DOT Physical, UCR, and 2290 uploads
 - Compliance AI scanning for expiration dates
 - Renewal alerts for expiring compliance documents
