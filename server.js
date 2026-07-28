@@ -55,6 +55,7 @@ const subscriptionPlans = {
 const complianceTypes = {
   insurance: { id: "insurance", name: "Insurance" },
   dotPhysical: { id: "dotPhysical", name: "DOT Physical" },
+  clearinghouseMvr: { id: "clearinghouseMvr", name: "Clearinghouse MVR" },
   ucr: { id: "ucr", name: "UCR" },
   form2290: { id: "form2290", name: "2290" },
   irp: { id: "irp", name: "IRP" },
@@ -701,6 +702,15 @@ function chooseBestComplianceDate({ type, expirationDate, dates = [], dateCandid
     if (years.length) return `${years.at(-1)}-06-30`;
   }
 
+  if (type === "clearinghouseMvr") {
+    const runWords = /(mvr|clearinghouse|query|report|run|ran|completed|check|checked|date|result)/i;
+    const runDate = labeled
+      .filter((item) => runWords.test(item.label))
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .at(-1)?.date || [...dates.map(normalizeDate).filter(Boolean)].sort().at(-1);
+    if (runDate) return addMonthsIsoDate(runDate, 12);
+  }
+
   const cleanDates = [
     ...dates.map(normalizeDate),
     ...labeled.filter((item) => !issueWords.test(item.label)).map((item) => item.date)
@@ -950,7 +960,7 @@ async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
       }
     };
   }
-  const scan = await runAiScanner(buffer, mimeType, "This is a Compliance upload. Prioritize renewal, expiration, valid-through, policy end, coverage end, Policy Exp., DOT physical expiration, UCR, and 2290 tax period dates.", openaiVisionModel);
+  const scan = await runAiScanner(buffer, mimeType, "This is a Compliance upload. Prioritize renewal, expiration, valid-through, policy end, coverage end, Policy Exp., DOT physical expiration, UCR, 2290 tax period, and Clearinghouse MVR report/run dates. Clearinghouse MVR should be run every 12 months, so use the report/run/completed/query date plus 12 months as the renewal date when no expiration is printed.", openaiVisionModel);
   const local = parseComplianceText(scan.text);
   const generic = scan.extracted || {};
   const aiExpiration = normalizeDate(generic.expirationDate || "");
@@ -1088,7 +1098,8 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
     "dateCandidates must be an array of objects like {date: 'YYYY-MM-DD', label: 'nearby text label or context'} for every visible date.",
     "Dates must be ISO YYYY-MM-DD. Amount must be a number.",
     "For compliance documents, expirationDate should be the renewal/expiration date.",
-    "For Insurance, DOT Physical, UCR, or 2290 documents, prioritize labels like Expiration Date, Expires, Valid Until, Policy Exp., Policy Period end date, Coverage End Date, Medical Card Expires, UCR year end, and Form 2290 tax period ending date.",
+    "For Insurance, DOT Physical, UCR, 2290, or Clearinghouse MVR documents, prioritize labels like Expiration Date, Expires, Valid Until, Policy Exp., Policy Period end date, Coverage End Date, Medical Card Expires, UCR year end, Form 2290 tax period ending date, MVR report date, Clearinghouse query date, ran date, completed date, and check date.",
+    "Clearinghouse MVR should be run every 12 months. If no expiration date is printed, set expirationDate to 12 months after the report/run/completed/query date.",
     "For ACORD insurance certificates, read Policy Exp., the insurance table columns labeled EFF and EXP, or policy period end. Use the Policy Exp. or EXP date, not the EFF date.",
     "If no explicit expiration label exists but there is a date range, use the later/end date as expirationDate.",
     "If multiple dates appear, choose the most likely future renewal/expiration/end date, not the issue date.",
@@ -1184,7 +1195,8 @@ async function runOpenAiExpirationOnlyScanner(buffer, mimeType, extractedText, c
   const typeName = complianceTypeName(complianceType);
   const prompt = [
     `This is a ${typeName} compliance document for a trucking business.`,
-    "Find the document expiration, renewal, valid-through, coverage end, policy end, DOT physical expiration, UCR year end, or 2290 tax period ending date.",
+    "Find the document expiration, renewal, valid-through, coverage end, policy end, DOT physical expiration, UCR year end, 2290 tax period ending date, or Clearinghouse MVR report/run date.",
+    "Clearinghouse MVR should be run every 12 months. If this is a Clearinghouse MVR document and no expiration date is printed, return a renewal date 12 months after the report/run/completed/query date.",
     "For ACORD certificates of liability insurance, read Policy Exp., the table columns labeled EFF and EXP, or policy period end. Use the Policy Exp. or EXP date as the expiration date.",
     "Insurance certificates often show dates in compact MM/DD/YYYY boxes near policy numbers. Use the later date in the EFF/EXP pair.",
     "Return JSON only with this exact shape:",
