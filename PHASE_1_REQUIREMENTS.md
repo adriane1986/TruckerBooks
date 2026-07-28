@@ -412,6 +412,12 @@ follow-up sequence.
 
 - [ ] Create a simple customer return-on-investment calculator.
 - [ ] Launch a referral program for customers and industry partners.
+
+Referral program rules for fleets with 1-20 trucks:
+
+- Referrer receives one free month.
+- New customer receives 10% off the first three months.
+- Reward is paid only after the new customer remains active for at least 60 days.
 - [ ] Attend selected trucking events only when target customers or partners will
 be present.
 
