@@ -259,13 +259,27 @@ Task Owner Due
 - [ ] Encrypt data in transit and at rest.
 - [ ] Keep API keys and secrets out of browser code, mobile apps, and public
 repositories.
+- [ ] Keep all credentials, API keys, secrets, and integration tokens in environment variables or a managed secrets system.
+- [ ] Document all required Railway environment variables.
+
+Note: The deployment guide should list each required Railway variable, what it is used for, whether it is required or optional, and where the owner obtains the value.
+- [ ] Never commit .env files, passwords, tokens, API keys, secrets, or customer data to the repository.
 
 - [ ] Implement least-privilege permissions and access reviews.
+- [ ] Use PostgreSQL for persistent application data.
+
+Note: Customer accounts, records, billing status, support issues, scan results, and app configuration should be stored in PostgreSQL instead of local JSON files before production launch.
+- [ ] Create reversible database migrations for all schema changes.
+
+Note: Every database migration should include a safe forward change and a rollback path so production data changes can be managed, reviewed, and reversed when needed.
 - [ ] Create secure backup, restore, and disaster-recovery procedures.
 - [ ] Create security incident, breach response, and customer notification
 procedures.
 
 - [ ] Implement application logging, uptime monitoring, and error alerting.
+- [ ] Include health-check endpoints for Railway deployments.
+
+Note: The app should expose a lightweight endpoint such as `/health` or `/api/health` so Railway can confirm the service is running and monitoring tools can detect outages.
 - [ ] Complete vulnerability scanning and an independent penetration test before
 broad launch.
 
@@ -283,6 +297,9 @@ Objective: Prove the software is accurate, stable, and safe enough for financial
 
 Task Owner Due
 
+- [ ] Add automated tests for each Phase 1 feature.
+
+Note: Each feature should have automated coverage for the core success path, important edge cases, permissions, and failure states before it is considered complete.
 - [ ] Create test plans for every user role and major workflow.
 - [ ] Test sign-up, permissions, password reset, and customer data separation.
 - [ ] Test load entry, assignment, status changes, completion, and invoicing.
