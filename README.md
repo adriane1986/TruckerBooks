@@ -20,11 +20,12 @@ http://localhost:3000
 - Customer sign-in and sign-out
 - Password hashing on the server
 - Private customer dashboards
-- Silver, Gold, and Platinum subscription packages
+- Owner-Operator, Small Fleet, Growth, and Growth Plus subscription packages
 - Truck limits by package:
-  - Silver: 1 to 5 trucks
-  - Gold: 6 to 10 trucks
-  - Platinum: 11 to 20 trucks
+  - Owner-Operator: 1 truck at $49/month or $490/year
+  - Small Fleet: 2 to 5 trucks at $139/month or $1,390/year
+  - Growth: 6 to 10 trucks at $269/month or $2,690/year
+  - Growth Plus: 11 to 20 trucks at $269/month plus $20 for each truck over 10; annual billing includes two months free
 - Admin-managed truck slots
 - Admin-created driver access invites
 - Affiliate Program tab
@@ -32,7 +33,7 @@ http://localhost:3000
 - Referral program for fleets with 1 to 20 trucks
 - Referrer reward tracking for one free month after a referred customer stays active for 60 days
 - New customer referral discount tracking for 10% off the first three months
-- Compliance tab for Insurance, DOT Physical, UCR, and 2290 uploads
+- Compliance tab for Insurance, DOT Physical, Clearinghouse MVR, UCR, and 2290 uploads
 - Compliance AI scanning for expiration dates
 - Renewal alerts for expiring compliance documents
 - IFTA deadline alerts for January, April, July, and October filings due by the last day of the month

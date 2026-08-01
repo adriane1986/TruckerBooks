@@ -114,7 +114,7 @@ function renderPartnerDashboard() {
           <article class="package-option active">
             <strong>Fleet size</strong>
             <span>1-20 trucks</span>
-            <small>Silver, Gold, or Platinum</small>
+            <small>Owner-Operator, Small Fleet, Growth, or Growth Plus</small>
           </article>
         </div>
       </div>

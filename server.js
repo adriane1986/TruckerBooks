@@ -47,9 +47,10 @@ const sampleRecords = {
 };
 
 const subscriptionPlans = {
-  silver: { id: "silver", name: "Silver Package", minTrucks: 1, maxTrucks: 5, monthlyPrice: 49, annualPrice: 499 },
-  gold: { id: "gold", name: "Gold Package", minTrucks: 6, maxTrucks: 10, monthlyPrice: 99, annualPrice: 999 },
-  platinum: { id: "platinum", name: "Platinum Package", minTrucks: 11, maxTrucks: 20, monthlyPrice: 179, annualPrice: 1799 }
+  silver: { id: "silver", name: "Owner-Operator", minTrucks: 1, maxTrucks: 1, monthlyPrice: 49, annualPrice: 490 },
+  gold: { id: "gold", name: "Small Fleet", minTrucks: 2, maxTrucks: 5, monthlyPrice: 139, annualPrice: 1390 },
+  platinum: { id: "platinum", name: "Growth", minTrucks: 6, maxTrucks: 10, monthlyPrice: 269, annualPrice: 2690 },
+  growthPlus: { id: "growthPlus", name: "Growth Plus", minTrucks: 11, maxTrucks: 20, monthlyPrice: 289, annualPrice: 2890, baseMonthlyPrice: 269, perTruckOver: 10, perTruckPrice: 20, annualDiscountMonths: 2 }
 };
 
 const complianceTypes = {
@@ -121,13 +122,14 @@ function normalizeAndSaveDb() {
 
 function publicUser(user) {
   const tier = subscriptionPlans[user.subscriptionTier] ? user.subscriptionTier : "silver";
+  const plan = currentPlan({ ...user, subscriptionTier: tier });
   return {
     id: user.id,
     businessName: user.businessName,
     email: user.email,
     role: user.role || "admin",
     subscriptionTier: tier,
-    subscription: subscriptionPlans[tier],
+    subscription: plan,
     trucks: user.trucks || [],
     drivers: user.drivers || [],
     routeTracking: user.routeTracking || { enabled: false, currentLocation: null, history: [] },
@@ -1688,8 +1690,23 @@ function complianceAlerts(user) {
   return [...documentAlerts, ...iftaAlerts].sort((a, b) => a.daysUntil - b.daysUntil);
 }
 
+function pricedPlan(plan, user = {}) {
+  const truckCount = Array.isArray(user.trucks) ? user.trucks.length : 0;
+  if (plan.id !== "growthPlus") return { ...plan };
+  const billableTrucks = Math.min(Math.max(truckCount || plan.minTrucks, plan.minTrucks), plan.maxTrucks);
+  const monthlyPrice = plan.baseMonthlyPrice + Math.max(billableTrucks - plan.perTruckOver, 0) * plan.perTruckPrice;
+  return {
+    ...plan,
+    billableTrucks,
+    monthlyPrice,
+    annualPrice: monthlyPrice * (12 - plan.annualDiscountMonths),
+    priceNote: "$269 + $20 for each truck over 10",
+    annualNote: "Two months free annually"
+  };
+}
+
 function currentPlan(user) {
-  return subscriptionPlans[user.subscriptionTier] || subscriptionPlans.silver;
+  return pricedPlan(subscriptionPlans[user.subscriptionTier] || subscriptionPlans.silver, user);
 }
 
 function requireAdmin(user, res) {
@@ -2143,7 +2160,7 @@ async function handleApi(req, res, pathname) {
   if (req.method === "PATCH" && pathname === "/api/account/subscription") {
     if (!requireAdmin(user, res)) return;
     const body = await readBody(req);
-    if (!subscriptionPlans[body.subscriptionTier]) return sendError(res, 400, "Choose Silver, Gold, or Platinum.");
+    if (!subscriptionPlans[body.subscriptionTier]) return sendError(res, 400, "Choose Owner-Operator, Small Fleet, Growth, or Growth Plus.");
     const nextPlan = subscriptionPlans[body.subscriptionTier];
     if (user.trucks.length > nextPlan.maxTrucks) {
       return sendError(res, 400, `Remove trucks before changing to ${nextPlan.name}. It allows up to ${nextPlan.maxTrucks}.`);

@@ -95,9 +95,10 @@ const roleNavAccess = {
 };
 
 const subscriptionPlans = {
-  silver: { id: "silver", name: "Silver Package", minTrucks: 1, maxTrucks: 5, monthlyPrice: 49, annualPrice: 499 },
-  gold: { id: "gold", name: "Gold Package", minTrucks: 6, maxTrucks: 10, monthlyPrice: 99, annualPrice: 999 },
-  platinum: { id: "platinum", name: "Platinum Package", minTrucks: 11, maxTrucks: 20, monthlyPrice: 179, annualPrice: 1799 }
+  silver: { id: "silver", name: "Owner-Operator", minTrucks: 1, maxTrucks: 1, monthlyPrice: 49, annualPrice: 490 },
+  gold: { id: "gold", name: "Small Fleet", minTrucks: 2, maxTrucks: 5, monthlyPrice: 139, annualPrice: 1390 },
+  platinum: { id: "platinum", name: "Growth", minTrucks: 6, maxTrucks: 10, monthlyPrice: 269, annualPrice: 2690 },
+  growthPlus: { id: "growthPlus", name: "Growth Plus", minTrucks: 11, maxTrucks: 20, monthlyPrice: 289, annualPrice: 2890, priceNote: "$269 + $20 for each truck over 10", annualNote: "Two months free annually" }
 };
 
 const authScreen = document.querySelector("#authScreen");
@@ -838,7 +839,16 @@ function escapeAttribute(value) {
 }
 
 function planPrice(plan) {
+  if (plan.priceNote || plan.annualNote) {
+    const notes = [plan.annualNote, plan.priceNote].filter(Boolean).join(" · ");
+    return `$${plan.monthlyPrice}/month or $${number(plan.annualPrice)}/year · ${notes}`;
+  }
   return `$${plan.monthlyPrice}/month or $${number(plan.annualPrice)}/year`;
+}
+
+function fleetSizeLabel(plan) {
+  if (plan.minTrucks === plan.maxTrucks) return `${plan.minTrucks} truck`;
+  return `${plan.minTrucks}-${plan.maxTrucks} trucks`;
 }
 
 function trialLabel(trial) {
@@ -1121,7 +1131,7 @@ function renderAffiliate() {
         <div class="package-grid">
           <article class="package-option active"><strong>Referrer</strong><span>One free month</span><em>Earned after 60 active days</em></article>
           <article class="package-option active"><strong>New customer</strong><span>10% discount</span><em>First three months</em></article>
-          <article class="package-option active"><strong>Fleet size</strong><span>1-20 trucks</span><em>Silver, Gold, or Platinum</em></article>
+          <article class="package-option active"><strong>Fleet size</strong><span>1-20 trucks</span><em>Owner-Operator, Small Fleet, Growth, or Growth Plus</em></article>
         </div>
       </div>
     </section>
@@ -1182,7 +1192,7 @@ function renderAccount() {
           ${Object.values(subscriptionPlans).map((item) => `
             <button class="package-option ${item.id === plan.id ? "active" : ""}" type="button" data-plan="${item.id}">
               <strong>${item.name}</strong>
-              <span>${item.minTrucks}-${item.maxTrucks} trucks</span>
+              <span>${fleetSizeLabel(item)}</span>
               <em>${planPrice(item)}</em>
             </button>
           `).join("")}

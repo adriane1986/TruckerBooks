@@ -18,9 +18,10 @@ const partnerCount = document.querySelector("#partnerCount");
 const ownerDetail = document.querySelector("#ownerDetail");
 
 const plans = {
-  silver: "Silver Package",
-  gold: "Gold Package",
-  platinum: "Platinum Package"
+  silver: "Owner-Operator",
+  gold: "Small Fleet",
+  platinum: "Growth",
+  growthPlus: "Growth Plus"
 };
 
 async function ownerApi(path, options = {}) {
