@@ -21,17 +21,48 @@
 
         <form class="auth-form" id="authForm">
           <label class="signup-only">
-            Business name
+            Company name
             <input name="businessName" type="text" placeholder="Osborne Trucking LLC" />
+          </label>
+          <label class="signup-only">
+            DOT number
+            <input name="dotNumber" type="text" inputmode="numeric" placeholder="1234567" />
+          </label>
+          <label class="signup-only">
+            Company phone
+            <input name="companyPhone" type="tel" placeholder="(555) 555-0123" />
+          </label>
+          <label class="signup-only">
+            Company address
+            <input name="companyAddress" type="text" placeholder="123 Freight Lane, Dallas, TX 75201" />
+          </label>
+          <label class="signup-only">
+            First administrator name
+            <input name="adminName" type="text" placeholder="Adriane Osborne" />
+          </label>
+          <label class="signup-only">
+            First administrator role
+            <select name="adminRole">
+              <option value="owner">Owner</option>
+              <option value="admin">Administrator</option>
+            </select>
           </label>
           <label>
             Email
-            <input name="email" type="email" required placeholder="driver@example.com" />
+            <input name="email" type="email" required placeholder="admin@example.com" />
           </label>
           <label>
             Password
-            <input name="password" type="password" required minlength="8" placeholder="At least 8 characters with a number" />
+            <span class="password-field">
+              <input name="password" id="authPassword" type="password" required minlength="12" autocomplete="current-password" placeholder="At least 12 characters or a passphrase" />
+              <button class="ghost-button password-toggle" type="button" id="togglePassword" aria-controls="authPassword" aria-pressed="false">Show</button>
+            </span>
           </label>
+          <label class="owner-checkbox signin-only">
+            <input name="rememberMe" type="checkbox" value="yes" />
+            Remember me
+          </label>
+          <button class="ghost-button signin-only" type="button" id="forgotPasswordBtn">Forgot password?</button>
           <label class="signup-only">
             Subscription package
             <select name="subscriptionTier">
@@ -41,8 +72,27 @@
               <option value="growthPlus">Growth Plus - 11 to 20 trucks - $269/mo + $20/truck over 10 - two months free annually</option>
             </select>
           </label>
+          <label class="signup-only owner-checkbox">
+            <input name="acceptedPolicies" type="checkbox" value="yes" />
+            I accept the Terms of Service and Privacy Policy.
+          </label>
           <input name="referralCode" type="hidden" id="referralCode" />
           <p class="auth-error" id="authError" role="alert"></p>
+          <div class="mfa-challenge hidden" id="mfaChallenge">
+            <label>
+              MFA code
+              <input name="mfaCode" id="mfaCode" inputmode="numeric" autocomplete="one-time-code" placeholder="Authenticator, email, or recovery code" />
+            </label>
+            <label>
+              Method
+              <select name="mfaMethod" id="mfaMethod">
+                <option value="authenticator">Authenticator app</option>
+                <option value="email">Email code</option>
+                <option value="recovery">Recovery code</option>
+              </select>
+            </label>
+            <button class="primary-button" type="button" id="verifyMfaBtn">Verify MFA</button>
+          </div>
           <button class="primary-button auth-submit" type="submit" id="authSubmit">Sign In</button>
         </form>
       </div>
@@ -78,6 +128,10 @@
             <button class="ghost-button" id="logoutBtn" type="button">
               <span data-icon="log-out"></span>
               Sign Out
+            </button>
+            <button class="ghost-button" id="logoutAllBtn" type="button">
+              <span data-icon="shield-check"></span>
+              Sign Out Everywhere
             </button>
             <button class="icon-button" id="exportBtn" type="button" title="Export records" aria-label="Export records">
               <span data-icon="download"></span>

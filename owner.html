@@ -27,6 +27,13 @@
           </label>
           <button class="primary-button auth-submit" type="submit">Sign In</button>
           <p class="auth-error" id="ownerAuthError"></p>
+          <div class="mfa-challenge hidden" id="ownerMfaChallenge">
+            <label>
+              MFA code
+              <input name="ownerMfaCode" id="ownerMfaCode" inputmode="numeric" autocomplete="one-time-code" placeholder="Email verification code" />
+            </label>
+            <button class="primary-button" type="button" id="ownerVerifyMfaBtn">Verify MFA</button>
+          </div>
         </form>
         <div class="policy-links auth-policy-links">
           <a href="/privacy" target="_blank" rel="noreferrer">Privacy</a>

@@ -113,6 +113,28 @@ button {
   margin-top: 4px;
 }
 
+.password-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.password-toggle {
+  min-height: 44px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.mfa-challenge {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f6faf9;
+}
+
 .auth-error {
   min-height: 20px;
   margin: 0;
@@ -747,6 +769,71 @@ button {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(155px, 0.75fr) minmax(155px, 0.75fr) auto;
 }
 
+.permission-editor {
+  grid-column: 1 / -1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fbfd;
+  display: grid;
+  gap: 10px;
+}
+
+.permission-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.permission-check {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 0.86rem;
+}
+
+.permission-check input {
+  width: auto;
+}
+
+.compact-field {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.driver-mobile {
+  display: grid;
+  gap: 14px;
+  max-width: 760px;
+}
+
+.driver-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.account-access-table-wrap {
+  overflow-x: auto;
+}
+
+.account-access-table {
+  min-width: 1180px;
+}
+
+.account-access-table .table-actions {
+  min-width: 260px;
+  flex-wrap: wrap;
+}
+
 .inline-form.document-form {
   grid-template-columns: minmax(150px, 0.45fr) minmax(0, 1fr) auto;
 }
@@ -1125,7 +1212,8 @@ label select {
   .dashboard-grid,
   .report-grid,
   .package-grid,
-  .owner-grid {
+  .owner-grid,
+  .permission-grid {
     grid-template-columns: 1fr 1fr;
   }
 }
@@ -1151,7 +1239,8 @@ label select {
   .billing-form,
   .support-form,
   .copy-row,
-  .form-grid {
+  .form-grid,
+  .permission-grid {
     grid-template-columns: 1fr;
   }
 

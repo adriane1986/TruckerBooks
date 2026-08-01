@@ -11,8 +11,9 @@ const dbPath = path.join(dataDir, "truckerbooks-db.json");
 const openaiModel = process.env.OPENAI_MODEL || "gpt-5-mini";
 const openaiVisionModel = process.env.OPENAI_VISION_MODEL || "gpt-4o-mini";
 const ownerEmail = normalizeEmail(process.env.OWNER_EMAIL || "owner@truckerbooks.local");
-const ownerPassword = process.env.OWNER_PASSWORD || "";
+const ownerPasswordHash = String(process.env.OWNER_PASSWORD_HASH || "").trim();
 const ownerAccessCode = String(process.env.OWNER_ACCESS_CODE || "").trim();
+const supportUsers = parseSupportUsers(process.env.SUPPORT_USERS || "");
 const stripeSecretKey = String(process.env.STRIPE_SECRET_KEY || "").trim();
 const stripePublishableKey = String(process.env.STRIPE_PUBLISHABLE_KEY || "").trim();
 const stripeConfigured = Boolean(stripeSecretKey);
@@ -22,8 +23,30 @@ const plaidEnv = String(process.env.PLAID_ENV || "sandbox").trim().toLowerCase()
 const plaidProducts = String(process.env.PLAID_PRODUCTS || "transactions").split(",").map((item) => item.trim()).filter(Boolean);
 const plaidConfigured = Boolean(plaidClientId && plaidSecret);
 const trialDays = 7;
-const sessionMaxAgeSeconds = 60 * 60 * 24 * 7;
-const minimumPasswordLength = 8;
+const sessionMaxAgeSeconds = 60 * 60 * 8;
+const rememberedSessionMaxAgeSeconds = 60 * 60 * 24 * 30;
+const minimumPasswordLength = 12;
+const passwordResetMaxAgeMinutes = 30;
+const mfaChallengeMaxAgeMinutes = 10;
+const mfaEmailCodeMaxAgeMinutes = 10;
+const blockedPasswords = new Set([
+  "password",
+  "password1",
+  "password12",
+  "password123",
+  "123456789012",
+  "1234567890",
+  "12345678",
+  "qwerty123456",
+  "qwertyuiop",
+  "letmein1234",
+  "adminadmin",
+  "welcome123",
+  "truckerbooks",
+  "trucking123",
+  "company1234"
+]);
+const base32Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
 const sampleRecords = {
   trips: [
@@ -68,7 +91,54 @@ const complianceTypes = {
 const accountAccessRoles = {
   driver: "Driver",
   bookkeeper: "Bookkeeper/Accountant",
-  dispatcher: "Dispatcher"
+  dispatcher: "Dispatcher",
+  payrollManager: "Payroll Manager",
+  complianceManager: "Compliance Manager",
+  readOnly: "Read-Only User"
+};
+
+const companyAdminRoles = {
+  owner: "Company Owner",
+  admin: "Company Administrator"
+};
+
+const internalRoles = {
+  support: "TruckerBooks Support",
+  superAdmin: "TruckerBooks Super Admin"
+};
+
+const permissionCatalog = {
+  viewLoads: "View loads",
+  createLoads: "Create loads",
+  editLoads: "Edit loads",
+  assignDrivers: "Assign drivers",
+  viewFinancialInformation: "View financial information",
+  createInvoices: "Create invoices",
+  approveExpenses: "Approve expenses",
+  processSettlements: "Process settlements",
+  viewPayroll: "View payroll",
+  manageCompanyUsers: "Manage company users",
+  manageIntegrations: "Manage integrations",
+  changeSubscription: "Change subscription",
+  exportReports: "Export reports",
+  deleteDocuments: "Delete documents",
+  viewDriverQualificationFiles: "View driver qualification files"
+};
+
+const allPermissionKeys = Object.keys(permissionCatalog);
+const driverPermissionKeys = ["viewLoads", "createLoads", "approveExpenses", "viewPayroll", "viewDriverQualificationFiles"];
+
+const roleDefaultPermissions = {
+  owner: allPermissionKeys,
+  admin: allPermissionKeys,
+  driver: driverPermissionKeys,
+  dispatcher: ["viewLoads", "createLoads", "editLoads", "assignDrivers"],
+  bookkeeper: ["viewFinancialInformation", "createInvoices", "approveExpenses", "exportReports"],
+  payrollManager: ["viewFinancialInformation", "processSettlements", "viewPayroll", "exportReports"],
+  complianceManager: ["viewDriverQualificationFiles", "deleteDocuments", "exportReports"],
+  readOnly: ["viewLoads", "viewFinancialInformation", "viewPayroll", "viewDriverQualificationFiles", "exportReports"],
+  support: ["viewLoads", "viewDriverQualificationFiles", "exportReports"],
+  superAdmin: allPermissionKeys
 };
 
 const referralProgram = {
@@ -103,8 +173,10 @@ function readDb() {
   const db = JSON.parse(fs.readFileSync(dbPath, "utf8"));
   db.users = (db.users || []).map(normalizeUser);
   db.partners = (db.partners || []).map(normalizePartner);
+  db.auditLogs = Array.isArray(db.auditLogs) ? db.auditLogs : [];
   db.sessions = db.sessions || {};
   db.ownerSessions = db.ownerSessions || {};
+  db.supportSessions = db.supportSessions || {};
   db.partnerSessions = db.partnerSessions || {};
   db.security = db.security || { loginAttempts: {} };
   return db;
@@ -112,6 +184,263 @@ function readDb() {
 
 function writeDb(db) {
   fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
+}
+
+function requestIp(req) {
+  return String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+}
+
+function requestDevice(req) {
+  return String(req.headers["user-agent"] || "").slice(0, 240);
+}
+
+function auditLog(db, req, { company = null, user = null, action, status = "success", affectedRecord = null, details = "" }) {
+  db.auditLogs = Array.isArray(db.auditLogs) ? db.auditLogs : [];
+  db.auditLogs.unshift({
+    id: crypto.randomUUID(),
+    companyId: company ? companyIdFor(company) : "",
+    companyName: company?.businessName || "",
+    userId: user?.id || "",
+    userName: user?.name || user?.adminName || user?.email || "",
+    userEmail: user?.email || "",
+    userRole: user?.role || user?.adminRole || "",
+    action,
+    status,
+    dateTime: new Date().toISOString(),
+    ipAddress: requestIp(req),
+    device: requestDevice(req),
+    affectedRecord,
+    details
+  });
+  db.auditLogs = db.auditLogs.slice(0, 5000);
+}
+
+function auditRecord(type, record = {}) {
+  if (!record) return { type };
+  return {
+    type,
+    id: record.id || "",
+    label: record.label || record.name || record.businessName || record.fileName || record.subject || record.email || ""
+  };
+}
+
+function parseSupportUsers(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item) => ({
+          id: String(item.id || item.email || crypto.randomUUID()).trim(),
+          name: String(item.name || item.email || "TruckerBooks Support").trim(),
+          email: normalizeEmail(item.email),
+          passwordHash: String(item.passwordHash || "").trim(),
+          role: String(item.role || "support").trim() || "support"
+        }))
+        .filter((item) => item.email && item.passwordHash);
+    }
+  } catch {
+    // Fall back to SUPPORT_USERS=email|hash|name;email2|hash2|name2
+  }
+  return raw.split(";")
+    .map((entry) => entry.split("|"))
+    .map(([email, passwordHash, name]) => ({
+      id: normalizeEmail(email),
+      name: String(name || email || "TruckerBooks Support").trim(),
+      email: normalizeEmail(email),
+      passwordHash: String(passwordHash || "").trim(),
+      role: "support"
+    }))
+    .filter((item) => item.email && item.passwordHash);
+}
+
+function publicSupportUser(user = {}) {
+  return {
+    id: user.id || user.email || "",
+    name: user.name || user.email || "TruckerBooks Support",
+    email: user.email || "",
+    role: user.role || "support",
+    roleLabel: internalRoles[user.role] || "TruckerBooks Support"
+  };
+}
+
+function supportAccessSummary(grant = {}) {
+  return {
+    id: grant.id || "",
+    status: grant.status || "Approved",
+    reason: grant.reason || "",
+    restrictSensitiveData: grant.restrictSensitiveData !== false,
+    approvedBy: grant.approvedBy || {},
+    requestedBy: grant.requestedBy || {},
+    revokedBy: grant.revokedBy || null,
+    approvedAt: grant.approvedAt || "",
+    expiresAt: grant.expiresAt || "",
+    revokedAt: grant.revokedAt || "",
+    createdAt: grant.createdAt || ""
+  };
+}
+
+function supportGrantIsActive(grant = {}) {
+  if (!grant || grant.status !== "Approved") return false;
+  if (grant.revokedAt) return false;
+  return Boolean(grant.expiresAt && new Date(grant.expiresAt) > new Date());
+}
+
+function activeSupportGrant(company) {
+  return (company.supportAccessGrants || []).find(supportGrantIsActive) || null;
+}
+
+function supportGrantDurationHours(value) {
+  const hours = Number(value || 24);
+  if (!Number.isFinite(hours)) return 24;
+  return Math.max(1, Math.min(Math.round(hours), 72));
+}
+
+function normalizePermissions(role, requestedPermissions) {
+  const defaults = roleDefaultPermissions[role] || roleDefaultPermissions.driver;
+  if (role === "driver") return [...driverPermissionKeys];
+  if (!Array.isArray(requestedPermissions)) return [...defaults];
+  const allowed = new Set(allPermissionKeys);
+  const cleaned = requestedPermissions.filter((permission) => allowed.has(permission));
+  return [...new Set(cleaned)];
+}
+
+function permissionsForUser(user) {
+  const role = user.role || "admin";
+  if (role === "admin") return normalizePermissions(user.adminRole || "owner", user.permissions);
+  return normalizePermissions(role, user.permissions);
+}
+
+function hasPermission(user, permission) {
+  return permissionsForUser(user).includes(permission);
+}
+
+function requirePermission(user, res, permission, message = "You do not have permission to complete that action.") {
+  if (!hasPermission(user, permission)) {
+    sendError(res, 403, message);
+    return false;
+  }
+  return true;
+}
+
+function companyIdFor(user) {
+  return String(user.companyId || user.id || "").trim();
+}
+
+function stampCompanyScope(user, record = {}) {
+  return { ...record, companyId: companyIdFor(user) };
+}
+
+function scopeCompanyCollection(user, collection = []) {
+  const companyId = companyIdFor(user);
+  return (Array.isArray(collection) ? collection : [])
+    .filter((record) => !record.companyId || record.companyId === companyId)
+    .map((record) => ({ ...record, companyId }));
+}
+
+function findCompanyRecord(user, collection = [], id) {
+  const companyId = companyIdFor(user);
+  return (Array.isArray(collection) ? collection : []).find((record) => record.id === id && record.companyId === companyId);
+}
+
+function inviteExpiresAt(days = 7) {
+  const requestedDays = Number(days || 7);
+  const safeDays = Number.isFinite(requestedDays) && requestedDays > 0 && requestedDays <= 30 ? requestedDays : 7;
+  return new Date(Date.now() + safeDays * 86400000).toISOString();
+}
+
+function findAccountInvite(db, token) {
+  const tokenValue = String(token || "").trim();
+  if (!tokenValue) return null;
+  for (const company of db.users || []) {
+    const invite = (company.drivers || []).find((item) => item.inviteToken === tokenValue && item.companyId === companyIdFor(company));
+    if (invite) return { company, invite };
+  }
+  return null;
+}
+
+function inviteIsAcceptable(invite) {
+  if (!invite || invite.status === "Cancelled") return false;
+  if (invite.inviteUsedAt && !invite.forcePasswordReset) return false;
+  return !invite.inviteExpiresAt || new Date(invite.inviteExpiresAt) > new Date();
+}
+
+function addAccessHistory(userRecord, action, actor = {}, details = "") {
+  userRecord.accessHistory = Array.isArray(userRecord.accessHistory) ? userRecord.accessHistory : [];
+  userRecord.accessHistory.unshift({
+    id: crypto.randomUUID(),
+    action,
+    details,
+    actorId: actor.id || "",
+    actorName: actor.name || actor.email || "System",
+    actorEmail: actor.email || "",
+    createdAt: new Date().toISOString()
+  });
+  userRecord.accessHistory = userRecord.accessHistory.slice(0, 100);
+}
+
+function userHasAttachedActivity(company, userRecord) {
+  const id = userRecord.id;
+  return [
+    ...(company.records?.trips || []),
+    ...(company.records?.invoices || []),
+    ...(company.records?.expenses || []),
+    ...(company.records?.maintenance || []),
+    ...(company.records?.settlements || []),
+    ...(company.records?.detentionDelays || []),
+    ...(company.documents || []),
+    ...(company.complianceDocuments || [])
+  ].some((record) => record.driverId === id || record.assignedDriverId === id || record.uploadedBy?.id === id || record.createdByDriverId === id);
+}
+
+function isDriverActor(actor) {
+  return Boolean(actor && actor.role === "driver");
+}
+
+function recordBelongsToDriver(record = {}, driver = {}) {
+  return record.driverId === driver.id
+    || (driver.truckId && record.truckId === driver.truckId)
+    || (driver.truckNumber && String(record.truckNumber || "").toLowerCase() === String(driver.truckNumber).toLowerCase())
+    || record.assignedDriverId === driver.id
+    || record.uploadedBy?.id === driver.id;
+}
+
+function driverScopedRecords(company, driver) {
+  const records = company.records || cloneStarterRecords();
+  return {
+    trips: (records.trips || []).filter((record) => recordBelongsToDriver(record, driver)),
+    expenses: (records.expenses || []).filter((record) => recordBelongsToDriver(record, driver) || record.createdByDriverId === driver.id),
+    invoices: [],
+    maintenance: [],
+    settlements: [{
+      id: `settlement-${driver.id}`,
+      driverId: driver.id,
+      driverName: driver.name,
+      payType: driver.payType || "",
+      ratePerMile: driver.ratePerMile || 0,
+      weeklyRate: driver.weeklyRate || 0,
+      payPercentage: driver.payPercentage || 0,
+      status: "Available to driver only"
+    }]
+  };
+}
+
+function driverScopedDocuments(company, driver) {
+  return (company.documents || []).filter((document) => recordBelongsToDriver(document, driver) || document.createdTripId && driverScopedRecords(company, driver).trips.some((trip) => trip.id === document.createdTripId));
+}
+
+function driverScopedCompliance(company, driver) {
+  return (company.complianceDocuments || []).filter((document) => document.driverId === driver.id || document.uploadedBy?.id === driver.id);
+}
+
+function driverCanAccessApi(req, pathname) {
+  if (req.method === "GET" && ["/api/session", "/api/account", "/api/records", "/api/documents", "/api/compliance"].includes(pathname)) return true;
+  if (req.method === "PATCH" && pathname === "/api/driver/profile") return true;
+  if (req.method === "POST" && ["/api/driver/detention-delay", "/api/route/location", "/api/route/location/stop", "/api/support/issues", "/api/documents", "/api/expenses/receipt"].includes(pathname)) return true;
+  if (req.method === "GET" && pathname.startsWith("/api/documents/")) return true;
+  if (req.method === "GET" && pathname.startsWith("/api/compliance/")) return true;
+  return false;
 }
 
 function normalizeAndSaveDb() {
@@ -123,15 +452,52 @@ function normalizeAndSaveDb() {
 function publicUser(user) {
   const tier = subscriptionPlans[user.subscriptionTier] ? user.subscriptionTier : "silver";
   const plan = currentPlan({ ...user, subscriptionTier: tier });
+  const activeGrant = activeSupportGrant(user);
   return {
     id: user.id,
+    companyId: companyIdFor(user),
     businessName: user.businessName,
+    dotNumber: user.dotNumber || "",
+    companyPhone: user.companyPhone || "",
+    companyAddress: user.companyAddress || "",
+    adminName: user.adminName || "",
+    adminRole: user.adminRole || "owner",
+    adminRoleLabel: companyAdminRoles[user.adminRole] || "Company Owner",
     email: user.email,
+    emailVerified: user.emailVerified !== false,
     role: user.role || "admin",
+    roleLabel: (user.role || "admin") === "admin" ? companyAdminRoles[user.adminRole] || "Company Administrator" : accountAccessRoles[user.role] || "User",
+    permissions: permissionsForUser(user),
+    permissionCatalog,
+    mfa: publicMfaStatus(user),
     subscriptionTier: tier,
     subscription: plan,
     trucks: user.trucks || [],
-    drivers: user.drivers || [],
+    drivers: (user.drivers || []).map((driver) => ({
+      id: driver.id,
+      companyId: driver.companyId,
+      name: driver.name,
+      email: driver.email,
+      role: driver.role,
+      roleLabel: driver.roleLabel,
+      permissions: driver.permissions || [],
+      truckId: driver.truckId || "",
+      truckNumber: driver.truckNumber || "",
+      payType: driver.payType || "",
+      ratePerMile: driver.ratePerMile || 0,
+      weeklyRate: driver.weeklyRate || 0,
+      payPercentage: driver.payPercentage || 0,
+      status: driver.status || "Access sent",
+      inviteLink: driver.inviteLink || "",
+      inviteExpiresAt: driver.inviteExpiresAt || "",
+      inviteUsedAt: driver.inviteUsedAt || "",
+      emailVerified: Boolean(driver.emailVerified),
+      mfa: driver.mfa || { enabled: false },
+      lastLoginAt: driver.lastLoginAt || "",
+      addedBy: driver.addedBy || null,
+      addedAt: driver.addedAt || driver.createdAt || "",
+      createdAt: driver.createdAt || ""
+    })),
     routeTracking: user.routeTracking || { enabled: false, currentLocation: null, history: [] },
     documents: user.documents || [],
     complianceDocuments: user.complianceDocuments || [],
@@ -139,12 +505,59 @@ function publicUser(user) {
     paymentInfo: publicPaymentInfo(user.paymentInfo),
     integrations: integrationStatus(),
     supportIssues: user.supportIssues || [],
+    supportAccessGrants: (user.supportAccessGrants || []).map(supportAccessSummary),
+    activeSupportAccess: activeGrant ? supportAccessSummary(activeGrant) : null,
     affiliateCode: user.affiliateCode,
     referredBy: user.referredBy || "",
     referralDiscount: referralDiscountSummary(user),
     firstMonthPaid: Boolean(user.firstMonthPaid),
     trial: trialSummary(user),
     affiliateStats: affiliateStats(user)
+  };
+}
+
+function publicDriverUser(company, driver) {
+  const truck = (company.trucks || []).find((item) => item.id === driver.truckId) || null;
+  const complianceDocuments = driverScopedCompliance(company, driver);
+  return {
+    id: driver.id,
+    companyId: companyIdFor(company),
+    businessName: company.businessName,
+    companyPhone: company.companyPhone || "",
+    email: driver.email,
+    emailVerified: Boolean(driver.emailVerified),
+    role: "driver",
+    roleLabel: "Driver",
+    permissions: normalizePermissions("driver", driver.permissions),
+    permissionCatalog,
+    driverProfile: {
+      id: driver.id,
+      name: driver.name,
+      email: driver.email,
+      phone: driver.phone || "",
+      emergencyContact: driver.emergencyContact || "",
+      truckId: driver.truckId || "",
+      truckNumber: driver.truckNumber || truck?.unitNumber || ""
+    },
+    trucks: truck ? [{ id: truck.id, unitNumber: truck.unitNumber, status: truck.status }] : [],
+    drivers: [],
+    routeTracking: company.routeTracking || { enabled: false, currentLocation: null, history: [] },
+    documents: driverScopedDocuments(company, driver),
+    complianceDocuments,
+    complianceAlerts: complianceDocuments
+      .filter((item) => item.expirationDate)
+      .map((item) => ({
+        id: item.id,
+        label: `${complianceTypeName(item.type)} renewal`,
+        date: item.expirationDate,
+        daysUntil: daysUntil(item.expirationDate),
+        source: "driver"
+      }))
+      .filter((item) => item.daysUntil !== null && item.daysUntil <= 45),
+    paymentInfo: {},
+    integrations: {},
+    supportIssues: [],
+    trial: null
   };
 }
 
@@ -202,10 +615,11 @@ function publicPartner(partner) {
 function uploadActor(user) {
   return {
     id: user.id,
+    companyId: companyIdFor(user),
     name: user.businessName || "Account Admin",
     email: user.email || "",
     role: user.role || "admin",
-    roleLabel: (user.role || "admin") === "admin" ? "Admin" : accountAccessRoles[user.role] || "User"
+    roleLabel: (user.role || "admin") === "admin" ? companyAdminRoles[user.adminRole] || "Company Administrator" : accountAccessRoles[user.role] || "User"
   };
 }
 
@@ -242,6 +656,142 @@ function clearLoginFailures(db, type, email) {
   if (db.security?.loginAttempts) delete db.security.loginAttempts[loginAttemptKey(type, email)];
 }
 
+function createPasswordReset(user) {
+  const createdAt = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + passwordResetMaxAgeMinutes * 60 * 1000).toISOString();
+  user.passwordReset = {
+    token: crypto.randomBytes(32).toString("hex"),
+    createdAt,
+    expiresAt,
+    usedAt: ""
+  };
+  return user.passwordReset;
+}
+
+function findPasswordResetUser(db, tokenValue) {
+  if (!tokenValue) return null;
+  return db.users.find((item) => {
+    const reset = item.passwordReset;
+    return reset?.token === tokenValue && !reset.usedAt && new Date(reset.expiresAt) > new Date();
+  }) || null;
+}
+
+function recordPasswordChanged(user, req, source = "reset_link") {
+  const changedAt = new Date().toISOString();
+  user.passwordChangedAt = changedAt;
+  user.securityNotifications = Array.isArray(user.securityNotifications) ? user.securityNotifications : [];
+  user.securityNotifications.push({
+    id: crypto.randomUUID(),
+    type: "password_changed",
+    email: user.email,
+    source,
+    message: "Your TruckerBooks password was changed.",
+    ip: String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim(),
+    createdAt: changedAt
+  });
+  user.securityNotifications = user.securityNotifications.slice(-25);
+}
+
+function randomBase32(length = 32) {
+  const bytes = crypto.randomBytes(length);
+  return Array.from(bytes, (byte) => base32Alphabet[byte % base32Alphabet.length]).join("");
+}
+
+function base32ToBuffer(value) {
+  const clean = String(value || "").replace(/=+$/g, "").replace(/\s+/g, "").toUpperCase();
+  let bits = "";
+  for (const char of clean) {
+    const index = base32Alphabet.indexOf(char);
+    if (index < 0) continue;
+    bits += index.toString(2).padStart(5, "0");
+  }
+  const bytes = [];
+  for (let index = 0; index + 8 <= bits.length; index += 8) bytes.push(parseInt(bits.slice(index, index + 8), 2));
+  return Buffer.from(bytes);
+}
+
+function totpCode(secret, timeStep = Math.floor(Date.now() / 30000)) {
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(timeStep));
+  const hmac = crypto.createHmac("sha1", base32ToBuffer(secret)).update(counter).digest();
+  const offset = hmac[hmac.length - 1] & 0xf;
+  const binary = ((hmac[offset] & 0x7f) << 24) | (hmac[offset + 1] << 16) | (hmac[offset + 2] << 8) | hmac[offset + 3];
+  return String(binary % 1000000).padStart(6, "0");
+}
+
+function verifyTotp(secret, code) {
+  const value = String(code || "").replace(/\D/g, "");
+  const step = Math.floor(Date.now() / 30000);
+  return value.length === 6 && [-1, 0, 1].some((skew) => crypto.timingSafeEqual(Buffer.from(totpCode(secret, step + skew)), Buffer.from(value)));
+}
+
+function hashRecoveryCode(code) {
+  return crypto.createHash("sha256").update(String(code || "").trim().toUpperCase()).digest("hex");
+}
+
+function generateRecoveryCodes(count = 10) {
+  return Array.from({ length: count }, () => `${crypto.randomBytes(3).toString("hex")}-${crypto.randomBytes(3).toString("hex")}`.toUpperCase());
+}
+
+function publicMfaStatus(user) {
+  const mfa = user.mfa || {};
+  return {
+    required: mfaRequiredForUser(user),
+    enabled: Boolean(mfa.enabled),
+    authenticatorEnabled: Boolean(mfa.authenticator?.enabled),
+    emailEnabled: mfa.emailEnabled !== false,
+    recoveryCodesRemaining: Array.isArray(mfa.recoveryCodes) ? mfa.recoveryCodes.filter((item) => !item.usedAt).length : 0
+  };
+}
+
+function mfaRequiredForUser(user) {
+  if ((user.role || "admin") === "admin") return true;
+  if (["owner", "admin"].includes(user.adminRole)) return true;
+  if (["bookkeeper", "payrollManager", "complianceManager"].includes(user.role)) return true;
+  if (user.paymentInfo?.bankConnection || user.paymentInfo?.last4) return true;
+  return false;
+}
+
+function ensureMfa(user) {
+  user.mfa = user.mfa && typeof user.mfa === "object" ? user.mfa : {};
+  user.mfa.required = mfaRequiredForUser(user);
+  user.mfa.emailEnabled = user.mfa.emailEnabled !== false;
+  user.mfa.recoveryCodes = Array.isArray(user.mfa.recoveryCodes) ? user.mfa.recoveryCodes : [];
+  user.mfa.authenticator = user.mfa.authenticator && typeof user.mfa.authenticator === "object" ? user.mfa.authenticator : { enabled: false, secret: "" };
+  return user.mfa;
+}
+
+function createMfaChallenge(db, type, subjectId, methods = ["authenticator", "email", "recovery"]) {
+  db.security = db.security || { loginAttempts: {}, mfaChallenges: {} };
+  db.security.mfaChallenges = db.security.mfaChallenges || {};
+  const challengeId = crypto.randomBytes(24).toString("hex");
+  const emailCode = String(crypto.randomInt(100000, 1000000));
+  db.security.mfaChallenges[challengeId] = {
+    type,
+    subjectId,
+    methods,
+    emailCodeHash: hashRecoveryCode(emailCode),
+    emailCodeExpiresAt: new Date(Date.now() + mfaEmailCodeMaxAgeMinutes * 60 * 1000).toISOString(),
+    expiresAt: new Date(Date.now() + mfaChallengeMaxAgeMinutes * 60 * 1000).toISOString(),
+    createdAt: new Date().toISOString()
+  };
+  return { challengeId, emailCode };
+}
+
+function getMfaChallenge(db, challengeId, type) {
+  const challenge = db.security?.mfaChallenges?.[challengeId];
+  if (!challenge || challenge.type !== type || new Date(challenge.expiresAt) <= new Date()) return null;
+  return challenge;
+}
+
+function useRecoveryCode(user, code) {
+  const hash = hashRecoveryCode(code);
+  const match = (user.mfa?.recoveryCodes || []).find((item) => item.hash === hash && !item.usedAt);
+  if (!match) return false;
+  match.usedAt = new Date().toISOString();
+  return true;
+}
+
 function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
   const hash = crypto.pbkdf2Sync(String(password), salt, 120000, 64, "sha512").toString("hex");
   return `${salt}:${hash}`;
@@ -249,7 +799,17 @@ function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
 
 function isStrongPassword(password) {
   const value = String(password || "");
-  return value.length >= minimumPasswordLength && /[A-Za-z]/.test(value) && /\d/.test(value);
+  return !passwordValidationError(value);
+}
+
+function passwordValidationError(password) {
+  const value = String(password || "");
+  const normalized = value.toLowerCase().replace(/\s+/g, "");
+  if (value.length < minimumPasswordLength) return `Use at least ${minimumPasswordLength} characters. Long passphrases are supported.`;
+  if (value.length > 256) return "Use a password or passphrase of 256 characters or fewer.";
+  if (blockedPasswords.has(normalized)) return "Choose a less common password or passphrase.";
+  if (/^(.)\1{11,}$/.test(value)) return "Choose a less common password or passphrase.";
+  return "";
 }
 
 function verifyPassword(password, stored) {
@@ -304,10 +864,15 @@ function cookieOptions(req, maxAge = sessionMaxAgeSeconds) {
   return `HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${isSecure ? "; Secure" : ""}`;
 }
 
-function setSession(req, res, db, userId) {
+function sessionExpiresAt(maxAgeSeconds) {
+  return new Date(Date.now() + maxAgeSeconds * 1000).toISOString();
+}
+
+function setSession(req, res, db, userId, rememberMe = false, driverId = "") {
   const token = crypto.randomBytes(32).toString("hex");
-  db.sessions[token] = { userId, createdAt: new Date().toISOString() };
-  res.setHeader("Set-Cookie", `tb_session=${token}; ${cookieOptions(req)}`);
+  const maxAge = rememberMe ? rememberedSessionMaxAgeSeconds : sessionMaxAgeSeconds;
+  db.sessions[token] = { userId, driverId, createdAt: new Date().toISOString(), expiresAt: sessionExpiresAt(maxAge), rememberMe };
+  res.setHeader("Set-Cookie", `tb_session=${token}; ${cookieOptions(req, maxAge)}`);
 }
 
 function clearSession(req, res, db, token) {
@@ -318,14 +883,26 @@ function clearSession(req, res, db, token) {
 function getCurrentUser(req, db) {
   const token = parseCookies(req).tb_session;
   const session = token ? db.sessions[token] : null;
+  if (token && session?.expiresAt && new Date(session.expiresAt) <= new Date()) {
+    delete db.sessions[token];
+    return { token, user: null, expired: true };
+  }
   const user = session ? db.users.find((item) => item.id === session.userId) : null;
-  return { token, user };
+  const actor = user && session?.driverId ? findCompanyRecord(user, user.drivers, session.driverId) : null;
+  return { token, user, actor };
 }
 
 function getOwnerSession(req, db) {
   const token = parseCookies(req).tb_owner_session;
   const session = token ? db.ownerSessions[token] : null;
   return { token, owner: session?.email === ownerEmail ? { email: ownerEmail } : null };
+}
+
+function getSupportSession(req, db) {
+  const token = parseCookies(req).tb_support_session;
+  const session = token ? db.supportSessions[token] : null;
+  const supportUser = session ? supportUsers.find((item) => item.id === session.supportUserId || item.email === session.email) : null;
+  return { token, supportUser };
 }
 
 function getPartnerSession(req, db) {
@@ -357,10 +934,34 @@ function clearOwnerSession(req, res, db, token) {
   res.setHeader("Set-Cookie", `tb_owner_session=; ${cookieOptions(req, 0)}`);
 }
 
+function setSupportSession(req, res, db, supportUser) {
+  const token = crypto.randomBytes(32).toString("hex");
+  db.supportSessions[token] = {
+    supportUserId: supportUser.id || supportUser.email,
+    email: supportUser.email,
+    createdAt: new Date().toISOString()
+  };
+  res.setHeader("Set-Cookie", `tb_support_session=${token}; ${cookieOptions(req)}`);
+}
+
+function clearSupportSession(req, res, db, token) {
+  if (token) delete db.supportSessions[token];
+  res.setHeader("Set-Cookie", `tb_support_session=; ${cookieOptions(req, 0)}`);
+}
+
 function requireOwner(req, res, db) {
   const session = getOwnerSession(req, db);
   if (!session.owner) {
     sendError(res, 401, "Owner sign in required.");
+    return null;
+  }
+  return session;
+}
+
+function requireSupportUser(req, res, db) {
+  const session = getSupportSession(req, db);
+  if (!session.supportUser) {
+    sendError(res, 401, "Named support sign in required.");
     return null;
   }
   return session;
@@ -588,6 +1189,14 @@ function isAllowedCollection(collection) {
   return ["trips", "expenses", "invoices", "maintenance"].includes(collection);
 }
 
+function collectionPermission(collection, method) {
+  if (collection === "trips") return method === "POST" ? "createLoads" : "editLoads";
+  if (collection === "invoices") return "createInvoices";
+  if (collection === "expenses") return "approveExpenses";
+  if (collection === "maintenance") return "editLoads";
+  return "";
+}
+
 function complianceTypeName(type) {
   return complianceTypes[type]?.name || "Compliance Document";
 }
@@ -604,7 +1213,7 @@ function inferComplianceType(type, fileName = "") {
 
 function findComplianceShare(db, token) {
   for (const user of db.users || []) {
-    const share = (user.complianceShares || []).find((item) => item.token === token);
+    const share = (user.complianceShares || []).find((item) => item.token === token && item.companyId === companyIdFor(user));
     if (share) return { user, share };
   }
   return null;
@@ -1279,11 +1888,11 @@ async function rescanPendingDocuments(user) {
     if (!document.createdTripId) {
       const trip = buildTripFromDocument(document);
       if (trip) {
-        user.records.trips.push(trip);
+        user.records.trips.push(stampCompanyScope(user, trip));
         document.createdTripId = trip.id;
       }
     } else {
-      const trip = user.records.trips.find((item) => item.id === document.createdTripId);
+      const trip = findCompanyRecord(user, user.records.trips, document.createdTripId);
       if (trip && scan.extracted?.amount) trip.amount = scan.extracted.amount;
     }
     changed = true;
@@ -1301,21 +1910,53 @@ async function rescanAllStoredDocuments() {
 }
 
 function normalizeUser(user) {
+  user.id = user.id || crypto.randomUUID();
+  user.companyId = companyIdFor(user) || user.id;
   user.subscriptionTier = subscriptionPlans[user.subscriptionTier] ? user.subscriptionTier : "silver";
-  user.trucks = Array.isArray(user.trucks) ? user.trucks : [];
-  user.drivers = Array.isArray(user.drivers) ? user.drivers : [];
-  user.drivers = user.drivers.map((driver) => ({
-    ...driver,
-    role: accountAccessRoles[driver.role] ? driver.role : "driver",
-    roleLabel: accountAccessRoles[driver.role] || "Driver"
-  }));
-  user.documents = Array.isArray(user.documents) ? user.documents : [];
-  user.documents = user.documents.map((document) => normalizeLoadDocumentRecord({
+  user.businessName = String(user.businessName || "").trim() || "My Trucking Business";
+  user.dotNumber = String(user.dotNumber || "").trim();
+  user.companyPhone = String(user.companyPhone || "").trim();
+  user.companyAddress = String(user.companyAddress || "").trim();
+  user.adminName = String(user.adminName || "").trim();
+  user.adminRole = companyAdminRoles[user.adminRole] ? user.adminRole : "owner";
+  user.emailVerified = user.emailVerified === false ? false : true;
+  user.emailVerifiedAt = user.emailVerifiedAt || "";
+  user.emailVerificationToken = user.emailVerified ? "" : String(user.emailVerificationToken || "");
+  user.emailVerificationSentAt = user.emailVerificationSentAt || "";
+  user.acceptedPolicies = Boolean(user.acceptedPolicies);
+  user.acceptedPoliciesAt = user.acceptedPoliciesAt || "";
+  user.passwordReset = user.passwordReset && typeof user.passwordReset === "object" ? user.passwordReset : null;
+  user.passwordChangedAt = user.passwordChangedAt || "";
+  user.securityNotifications = Array.isArray(user.securityNotifications) ? user.securityNotifications : [];
+  user.role = user.role || "admin";
+  user.permissions = permissionsForUser(user);
+  ensureMfa(user);
+  user.trucks = scopeCompanyCollection(user, user.trucks);
+  user.drivers = scopeCompanyCollection(user, user.drivers).map((driver) => {
+    const role = accountAccessRoles[driver.role] ? driver.role : "driver";
+    return {
+      ...driver,
+      role,
+      roleLabel: accountAccessRoles[role] || "Driver",
+      permissions: normalizePermissions(role, driver.permissions),
+      inviteExpiresAt: driver.inviteExpiresAt || inviteExpiresAt(7),
+      inviteUsedAt: driver.inviteUsedAt || "",
+      emailVerified: Boolean(driver.emailVerified),
+      passwordHash: driver.passwordHash || "",
+      mfa: driver.mfa && typeof driver.mfa === "object" ? driver.mfa : { enabled: false, resetRequired: false },
+      lastLoginAt: driver.lastLoginAt || "",
+      addedBy: driver.addedBy || uploadActor(user),
+      addedAt: driver.addedAt || driver.createdAt || new Date().toISOString(),
+      accessHistory: Array.isArray(driver.accessHistory) ? driver.accessHistory : [],
+      forcePasswordReset: Boolean(driver.forcePasswordReset),
+      status: driver.status || "Access sent"
+    };
+  });
+  user.documents = scopeCompanyCollection(user, user.documents).map((document) => normalizeLoadDocumentRecord({
     ...document,
     uploadedBy: document.uploadedBy || uploadActor(user)
   }));
-  user.complianceDocuments = Array.isArray(user.complianceDocuments) ? user.complianceDocuments : [];
-  user.complianceDocuments = user.complianceDocuments.map((document) => {
+  user.complianceDocuments = scopeCompanyCollection(user, user.complianceDocuments).map((document) => {
     const type = inferComplianceType(document.type, document.fileName);
     const uploadedBy = document.uploadedBy || uploadActor(user);
     if (["w9", "noa"].includes(type)) {
@@ -1331,17 +1972,18 @@ function normalizeUser(user) {
     return { ...document, type, uploadedBy };
   });
   user.records = user.records || cloneStarterRecords();
-  user.records.trips = Array.isArray(user.records.trips) ? user.records.trips.map(normalizeTripRecord) : [];
-  user.records.invoices = Array.isArray(user.records.invoices) ? user.records.invoices : [];
-  user.records.maintenance = Array.isArray(user.records.maintenance) ? user.records.maintenance : [];
-  user.records.expenses = Array.isArray(user.records.expenses) ? user.records.expenses.map((expense) => normalizeExpenseRecord({
+  user.records.trips = scopeCompanyCollection(user, user.records.trips).map(normalizeTripRecord);
+  user.records.invoices = scopeCompanyCollection(user, user.records.invoices);
+  user.records.maintenance = scopeCompanyCollection(user, user.records.maintenance);
+  user.records.expenses = scopeCompanyCollection(user, user.records.expenses).map((expense) => normalizeExpenseRecord({
     ...expense,
     sourceReceipt: expense.sourceReceipt ? {
       ...expense.sourceReceipt,
+      companyId: companyIdFor(user),
       uploadedBy: expense.sourceReceipt.uploadedBy || uploadActor(user)
     } : expense.sourceReceipt
-  })) : [];
-  user.complianceShares = Array.isArray(user.complianceShares) ? user.complianceShares : [];
+  }));
+  user.complianceShares = scopeCompanyCollection(user, user.complianceShares);
   user.completedComplianceAlerts = Array.isArray(user.completedComplianceAlerts) ? user.completedComplianceAlerts : [];
   user.affiliateCode = user.affiliateCode || crypto.randomBytes(5).toString("hex");
   user.referredBy = user.referredBy || "";
@@ -1352,11 +1994,21 @@ function normalizeUser(user) {
   user.trialStartedAt = user.trialStartedAt || user.createdAt || new Date().toISOString();
   user.trialEndsAt = user.trialEndsAt || addDaysIso(user.trialStartedAt, trialDays);
   user.trialStatus = trialSummary(user).status;
-  user.supportIssues = Array.isArray(user.supportIssues) ? user.supportIssues : [];
+  user.supportIssues = scopeCompanyCollection(user, user.supportIssues);
+  user.supportAccessGrants = scopeCompanyCollection(user, user.supportAccessGrants).map((grant) => ({
+    ...grant,
+    status: grant.revokedAt ? "Revoked" : grant.status || "Approved",
+    restrictSensitiveData: grant.restrictSensitiveData !== false,
+    approvedAt: grant.approvedAt || grant.createdAt || new Date().toISOString(),
+    expiresAt: grant.expiresAt || addDaysIso(grant.approvedAt || grant.createdAt || new Date().toISOString(), 1),
+    createdAt: grant.createdAt || grant.approvedAt || new Date().toISOString()
+  }));
   user.routeTracking = user.routeTracking && typeof user.routeTracking === "object" ? user.routeTracking : {};
   user.routeTracking.enabled = Boolean(user.routeTracking.enabled);
-  user.routeTracking.currentLocation = user.routeTracking.currentLocation || null;
-  user.routeTracking.history = Array.isArray(user.routeTracking.history) ? user.routeTracking.history.slice(-100) : [];
+  user.routeTracking.currentLocation = user.routeTracking.currentLocation?.companyId && user.routeTracking.currentLocation.companyId !== companyIdFor(user)
+    ? null
+    : user.routeTracking.currentLocation ? stampCompanyScope(user, user.routeTracking.currentLocation) : null;
+  user.routeTracking.history = scopeCompanyCollection(user, user.routeTracking.history).slice(-100);
   user.role = user.role || "admin";
   return user;
 }
@@ -1551,6 +2203,7 @@ function ownerCustomerSummary(user) {
   const scannerErrors = documents.filter((item) => item.extracted?.aiError || item.aiScan?.aiError || /fallback|failed|unavailable|not detected/i.test(`${item.scanStatus || ""} ${item.extracted?.dateDetection || ""}`));
   return {
     id: user.id,
+    companyId: companyIdFor(user),
     businessName: user.businessName,
     email: user.email,
     status: user.accountStatus || "Active",
@@ -1634,6 +2287,25 @@ function ownerCustomerDetail(user) {
   };
 }
 
+function supportCustomerDetail(user, grant) {
+  const detail = ownerCustomerDetail(user);
+  const restrictSensitiveData = grant?.restrictSensitiveData !== false;
+  return {
+    ...detail,
+    supportAccess: supportAccessSummary(grant),
+    supportAccessMode: restrictSensitiveData ? "Sensitive financial and payroll data restricted" : "Customer approved sensitive financial support access",
+    paymentInfo: restrictSensitiveData ? { provider: detail.paymentInfo?.provider || "", providerStatus: detail.paymentInfo?.providerStatus || "" } : detail.paymentInfo,
+    firstMonthPaid: restrictSensitiveData ? undefined : detail.firstMonthPaid,
+    paymentMethod: restrictSensitiveData ? "Restricted by customer support access settings" : detail.paymentMethod,
+    receiptUploads: restrictSensitiveData
+      ? detail.receiptUploads.map((item) => ({ ...item, amount: null, category: item.category || "Restricted" }))
+      : detail.receiptUploads,
+    drivers: detail.drivers.map((driver) => restrictSensitiveData
+      ? { ...driver, payType: "", ratePerMile: 0, weeklyRate: 0, payPercentage: 0 }
+      : driver)
+  };
+}
+
 function daysUntil(date) {
   const target = new Date(`${date}T12:00:00`);
   if (Number.isNaN(target.getTime())) return null;
@@ -1710,23 +2382,20 @@ function currentPlan(user) {
 }
 
 function requireAdmin(user, res) {
-  if ((user.role || "admin") !== "admin") {
-    sendError(res, 403, "Only account admins can manage trucks and account access.");
-    return false;
-  }
-  return true;
+  return requirePermission(user, res, "manageCompanyUsers", "You do not have permission to manage trucks or account access.");
 }
 
 async function handleApi(req, res, pathname) {
   const db = normalizeAndSaveDb();
   const bonusesReleased = releaseEligibleBonuses(db);
-  const { token, user } = getCurrentUser(req, db);
+  const { token, user, actor, expired } = getCurrentUser(req, db);
+  if (expired) writeDb(db);
 
   if (req.method === "GET" && pathname.match(/^\/api\/shared-compliance\/[^/]+\/[^/]+$/)) {
     const [, , , tokenValue, documentId] = pathname.split("/");
     const found = findComplianceShare(db, tokenValue);
     if (!found || !found.share.documentIds.includes(documentId)) return sendError(res, 404, "Shared document not found.");
-    const document = found.user.complianceDocuments.find((item) => item.id === documentId);
+    const document = findCompanyRecord(found.user, found.user.complianceDocuments, documentId);
     if (!document) return sendError(res, 404, "Shared document not found.");
     const filePath = path.join(uploadDir, document.storedName);
     if (!fs.existsSync(filePath)) return sendError(res, 404, "Uploaded file is missing.");
@@ -1741,17 +2410,47 @@ async function handleApi(req, res, pathname) {
     const body = await readBody(req);
     const email = normalizeEmail(body.email);
     const password = String(body.password || "");
-    if (!email || !isStrongPassword(password)) return sendError(res, 400, "Enter an email and a password with at least 8 characters, including a letter and a number.");
+    const businessName = String(body.businessName || "").trim();
+    const dotNumber = String(body.dotNumber || "").trim();
+    const companyPhone = String(body.companyPhone || "").trim();
+    const companyAddress = String(body.companyAddress || "").trim();
+    const adminName = String(body.adminName || "").trim();
+    const adminRole = String(body.adminRole || "").trim().toLowerCase();
+    const selectedRole = String(body.role || "").trim().toLowerCase();
+    const acceptedPolicies = body.acceptedPolicies === true || body.acceptedPolicies === "true" || body.acceptedPolicies === "yes";
+    const passwordError = passwordValidationError(password);
+    if (!email || passwordError) return sendError(res, 400, passwordError || "Enter a valid email address.");
+    if (!businessName || !dotNumber || !companyPhone || !companyAddress) return sendError(res, 400, "Enter the company name, DOT number, phone, and address.");
+    if (!adminName) return sendError(res, 400, "Enter the first administrator name.");
+    if (selectedRole === "driver" || adminRole === "driver" || !["owner", "admin"].includes(adminRole)) {
+      return sendError(res, 400, "Drivers must be invited from an existing company account and cannot create the first administrator account.");
+    }
+    if (!acceptedPolicies) return sendError(res, 400, "Accept the Terms of Service and Privacy Policy to create an account.");
     if (db.users.some((item) => item.email === email)) return sendError(res, 409, "An account already exists for that email.");
 
     const referrer = findReferrer(db, body.referralCode);
     const createdAt = new Date().toISOString();
+    const companyId = crypto.randomUUID();
+    const emailVerificationToken = crypto.randomBytes(24).toString("hex");
     const newUser = {
-      id: crypto.randomUUID(),
-      businessName: String(body.businessName || "").trim() || "My Trucking Business",
+      id: companyId,
+      companyId,
+      businessName,
+      dotNumber,
+      companyPhone,
+      companyAddress,
+      adminName,
+      adminRole,
       email,
+      emailVerified: false,
+      emailVerifiedAt: "",
+      emailVerificationToken,
+      emailVerificationSentAt: createdAt,
+      acceptedPolicies: true,
+      acceptedPoliciesAt: createdAt,
       passwordHash: hashPassword(password),
       role: "admin",
+      permissions: normalizePermissions(adminRole),
       subscriptionTier: subscriptionPlans[body.subscriptionTier] ? body.subscriptionTier : "silver",
       trucks: [],
       drivers: [],
@@ -1771,25 +2470,164 @@ async function handleApi(req, res, pathname) {
     };
     db.users.push(newUser);
     if (referrer) addReferralCommission(referrer, newUser);
-    setSession(req, res, db, newUser.id);
     writeDb(db);
-    return sendJson(res, 201, { customer: publicUser(newUser), records: newUser.records });
+    return sendJson(res, 201, {
+      ok: true,
+      message: "Company account created. Verify the administrator email before signing in.",
+      verifyUrl: `${originForRequest(req)}/verify-email?token=${emailVerificationToken}`
+    });
   }
 
   if (req.method === "POST" && pathname === "/api/login") {
     const body = await readBody(req);
     const email = normalizeEmail(body.email);
+    const genericLoginError = "Email or password is incorrect, or this account needs email verification.";
     if (isLoginLocked(db, "customer", email)) return sendError(res, 429, "Too many sign in attempts. Please wait 15 minutes and try again.");
     const userMatch = db.users.find((item) => item.email === email);
+    const driverMatch = !userMatch ? db.users
+      .map((company) => ({ company, driver: (company.drivers || []).find((item) => item.email === email && item.emailVerified && item.passwordHash) }))
+      .find((item) => item.driver) : null;
+    if (driverMatch) {
+      if (["Suspended", "Cancelled", "Deactivated", "Password reset required"].includes(driverMatch.driver.status) || driverMatch.driver.forcePasswordReset) {
+        recordLoginFailure(db, "customer", email);
+        auditLog(db, req, { company: driverMatch.company, user: driverMatch.driver, action: "Failed login", status: "failure", affectedRecord: auditRecord("driver", driverMatch.driver), details: "Driver account is not active." });
+        writeDb(db);
+        return sendError(res, 401, genericLoginError);
+      }
+      if (!verifyPassword(body.password || "", driverMatch.driver.passwordHash)) {
+        recordLoginFailure(db, "customer", email);
+        auditLog(db, req, { company: driverMatch.company, user: driverMatch.driver, action: "Failed login", status: "failure", affectedRecord: auditRecord("driver", driverMatch.driver), details: "Driver password did not match." });
+        writeDb(db);
+        return sendError(res, 401, genericLoginError);
+      }
+      clearLoginFailures(db, "customer", email);
+      driverMatch.driver.lastLoginAt = new Date().toISOString();
+      addAccessHistory(driverMatch.driver, "Signed in", { id: driverMatch.driver.id, name: driverMatch.driver.name, email: driverMatch.driver.email }, "Driver mobile account login");
+      setSession(req, res, db, driverMatch.company.id, Boolean(body.rememberMe), driverMatch.driver.id);
+      auditLog(db, req, { company: driverMatch.company, user: driverMatch.driver, action: "Successful login", affectedRecord: auditRecord("driver", driverMatch.driver), details: "Driver mobile account login." });
+      writeDb(db);
+      return sendJson(res, 200, { customer: publicDriverUser(driverMatch.company, driverMatch.driver), records: driverScopedRecords(driverMatch.company, driverMatch.driver) });
+    }
     if (!userMatch || !verifyPassword(body.password || "", userMatch.passwordHash)) {
       recordLoginFailure(db, "customer", email);
+      auditLog(db, req, { company: userMatch, user: userMatch || { email }, action: "Failed login", status: "failure", affectedRecord: auditRecord("company_user", userMatch || { email }), details: "Email, password, or verification did not match." });
       writeDb(db);
-      return sendError(res, 401, "Email or password did not match an account.");
+      return sendError(res, 401, genericLoginError);
     }
+    if (userMatch.emailVerified === false) {
+      auditLog(db, req, { company: userMatch, user: userMatch, action: "Failed login", status: "failure", affectedRecord: auditRecord("company_user", userMatch), details: "Company user email is not verified." });
+      writeDb(db);
+      return sendError(res, 403, genericLoginError);
+    }
+    userMatch.lastLoginAt = new Date().toISOString();
     clearLoginFailures(db, "customer", email);
-    setSession(req, res, db, userMatch.id);
+    const userMfa = ensureMfa(userMatch);
+    if (userMfa.required) {
+      const methods = [
+        userMfa.authenticator?.enabled ? "authenticator" : "",
+        userMfa.emailEnabled !== false ? "email" : "",
+        userMfa.recoveryCodes.some((item) => !item.usedAt) ? "recovery" : ""
+      ].filter(Boolean);
+      const challenge = createMfaChallenge(db, "customer", userMatch.id, methods.length ? methods : ["email"]);
+      writeDb(db);
+      return sendJson(res, 202, {
+        mfaRequired: true,
+        challengeId: challenge.challengeId,
+        methods: methods.length ? methods : ["email"],
+        emailCode: challenge.emailCode,
+        message: "Enter your multi-factor authentication code to continue."
+      });
+    }
+    setSession(req, res, db, userMatch.id, Boolean(body.rememberMe));
+    auditLog(db, req, { company: userMatch, user: userMatch, action: "Successful login", affectedRecord: auditRecord("company_user", userMatch), details: "Company account login." });
     writeDb(db);
     return sendJson(res, 200, { customer: publicUser(userMatch), records: userMatch.records });
+  }
+
+  if (req.method === "POST" && pathname === "/api/mfa/verify") {
+    const body = await readBody(req);
+    const challengeId = String(body.challengeId || "").trim();
+    const rememberMe = Boolean(body.rememberMe);
+    const code = String(body.code || "").trim();
+    const method = String(body.method || "authenticator").trim();
+    const challenge = getMfaChallenge(db, challengeId, "customer");
+    if (!challenge) return sendError(res, 400, "MFA challenge expired. Sign in again.");
+    const mfaUser = db.users.find((item) => item.id === challenge.subjectId);
+    if (!mfaUser) return sendError(res, 400, "MFA challenge expired. Sign in again.");
+    const mfa = ensureMfa(mfaUser);
+    const valid = method === "recovery"
+      ? useRecoveryCode(mfaUser, code)
+      : method === "email"
+        ? hashRecoveryCode(code) === challenge.emailCodeHash && new Date(challenge.emailCodeExpiresAt) > new Date()
+        : Boolean(mfa.authenticator?.enabled && verifyTotp(mfa.authenticator.secret, code));
+    if (!valid) {
+      auditLog(db, req, { company: mfaUser, user: mfaUser, action: "Failed login", status: "failure", affectedRecord: auditRecord("company_user", mfaUser), details: `Invalid MFA code by ${method}.` });
+      writeDb(db);
+      return sendError(res, 401, "Invalid MFA code.");
+    }
+    delete db.security.mfaChallenges[challengeId];
+    setSession(req, res, db, mfaUser.id, rememberMe);
+    mfaUser.mfa.lastVerifiedAt = new Date().toISOString();
+    auditLog(db, req, { company: mfaUser, user: mfaUser, action: "Successful login", affectedRecord: auditRecord("company_user", mfaUser), details: `MFA verified with ${method}.` });
+    writeDb(db);
+    return sendJson(res, 200, { customer: publicUser(mfaUser), records: mfaUser.records });
+  }
+
+  if (req.method === "POST" && pathname === "/api/account-access/accept") {
+    const body = await readBody(req);
+    const found = findAccountInvite(db, body.token);
+    if (!found || !inviteIsAcceptable(found.invite)) return sendError(res, 400, "This invitation is invalid, expired, cancelled, or already used.");
+    const password = String(body.password || "");
+    const passwordError = passwordValidationError(password);
+    if (passwordError) return sendError(res, 400, passwordError);
+    const email = normalizeEmail(body.email);
+    if (email !== found.invite.email) return sendError(res, 400, "Verify the email address that received this invitation.");
+    found.invite.passwordHash = hashPassword(password);
+    found.invite.emailVerified = true;
+    found.invite.emailVerifiedAt = new Date().toISOString();
+    found.invite.inviteUsedAt = new Date().toISOString();
+    found.invite.inviteToken = "";
+    found.invite.inviteLink = "";
+    found.invite.status = "Active";
+    found.invite.forcePasswordReset = false;
+    found.invite.acceptedAt = found.invite.inviteUsedAt;
+    addAccessHistory(found.invite, "Accepted invitation", { id: found.invite.id, name: found.invite.name, email: found.invite.email }, "Email verified and password set");
+    found.company.updatedAt = new Date().toISOString();
+    auditLog(db, req, { company: found.company, user: found.invite, action: "User invitation accepted", affectedRecord: auditRecord("account_access_user", found.invite), details: "Email verified and password set." });
+    writeDb(db);
+    return sendJson(res, 200, {
+      ok: true,
+      message: "Account access accepted. Your email is verified and password is set."
+    });
+  }
+
+  if (req.method === "POST" && pathname === "/api/mfa/setup") {
+    if (!user) return sendError(res, 401, "Please sign in first.");
+    const mfa = ensureMfa(user);
+    const secret = randomBase32();
+    mfa.authenticator = { enabled: false, secret, createdAt: new Date().toISOString() };
+    user.updatedAt = new Date().toISOString();
+    writeDb(db);
+    return sendJson(res, 200, {
+      secret,
+      otpauthUrl: `otpauth://totp/TruckerBooks:${encodeURIComponent(user.email)}?secret=${secret}&issuer=TruckerBooks`
+    });
+  }
+
+  if (req.method === "POST" && pathname === "/api/mfa/enable") {
+    if (!user) return sendError(res, 401, "Please sign in first.");
+    const body = await readBody(req);
+    const mfa = ensureMfa(user);
+    if (!mfa.authenticator?.secret || !verifyTotp(mfa.authenticator.secret, body.code)) return sendError(res, 400, "Enter a valid authenticator code.");
+    const recoveryCodes = generateRecoveryCodes();
+    mfa.enabled = true;
+    mfa.authenticator.enabled = true;
+    mfa.enabledAt = new Date().toISOString();
+    mfa.recoveryCodes = recoveryCodes.map((code) => ({ hash: hashRecoveryCode(code), createdAt: mfa.enabledAt, usedAt: "" }));
+    user.updatedAt = mfa.enabledAt;
+    auditLog(db, req, { company: user, user, action: "MFA changed", affectedRecord: auditRecord("company_user", user), details: "Authenticator app enabled and recovery codes generated." });
+    writeDb(db);
+    return sendJson(res, 200, { customer: publicUser(user), recoveryCodes });
   }
 
   if (req.method === "POST" && pathname === "/api/logout") {
@@ -1798,11 +2636,60 @@ async function handleApi(req, res, pathname) {
     return sendJson(res, 200, { ok: true });
   }
 
+  if (req.method === "POST" && pathname === "/api/logout-all") {
+    if (user) {
+      Object.keys(db.sessions).forEach((sessionToken) => {
+        if (db.sessions[sessionToken]?.userId === user.id) delete db.sessions[sessionToken];
+      });
+    }
+    clearSession(req, res, db, token);
+    writeDb(db);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (req.method === "POST" && pathname === "/api/password-reset/request") {
+    const body = await readBody(req);
+    const email = normalizeEmail(body.email);
+    const resetUser = db.users.find((item) => item.email === email);
+    const reset = resetUser ? createPasswordReset(resetUser) : null;
+    if (resetUser) {
+      resetUser.updatedAt = new Date().toISOString();
+      auditLog(db, req, { company: resetUser, user: resetUser, action: "Password reset requested", affectedRecord: auditRecord("company_user", resetUser), details: "Short-lived reset link created." });
+      writeDb(db);
+    }
+    return sendJson(res, 200, {
+      ok: true,
+      message: "If an account matches that email, a password reset link has been sent.",
+      resetUrl: reset ? `${originForRequest(req)}/reset-password?token=${reset.token}` : ""
+    });
+  }
+
+  if (req.method === "POST" && pathname === "/api/password-reset/confirm") {
+    const body = await readBody(req);
+    const tokenValue = String(body.token || "").trim();
+    const password = String(body.password || "");
+    const passwordError = passwordValidationError(password);
+    if (passwordError) return sendError(res, 400, passwordError);
+    const resetUser = findPasswordResetUser(db, tokenValue);
+    if (!resetUser) return sendError(res, 400, "This password reset link is invalid or expired.");
+    resetUser.passwordHash = hashPassword(password);
+    resetUser.passwordReset.usedAt = new Date().toISOString();
+    recordPasswordChanged(resetUser, req);
+    Object.keys(db.sessions).forEach((sessionToken) => {
+      if (db.sessions[sessionToken]?.userId === resetUser.id) delete db.sessions[sessionToken];
+    });
+    resetUser.updatedAt = new Date().toISOString();
+    auditLog(db, req, { company: resetUser, user: resetUser, action: "Password reset completed", affectedRecord: auditRecord("company_user", resetUser), details: "Password changed and active sessions revoked." });
+    writeDb(db);
+    return sendJson(res, 200, { ok: true, message: "Password changed. Please sign in with the new password." });
+  }
+
   if (req.method === "POST" && pathname === "/api/partners/signup") {
     const body = await readBody(req);
     const email = normalizeEmail(body.email);
     const password = String(body.password || "");
-    if (!email || !isStrongPassword(password)) return sendError(res, 400, "Enter an email and a password with at least 8 characters, including a letter and a number.");
+    const passwordError = passwordValidationError(password);
+    if (!email || passwordError) return sendError(res, 400, passwordError || "Enter a valid email address.");
     if (db.partners.some((item) => item.email === email)) return sendError(res, 409, "A referral partner already exists for that email.");
     const partner = normalizePartner({
       id: crypto.randomUUID(),
@@ -1833,11 +2720,13 @@ async function handleApi(req, res, pathname) {
     const partner = db.partners.find((item) => item.email === email);
     if (!partner || !verifyPassword(body.password || "", partner.passwordHash)) {
       recordLoginFailure(db, "partner", email);
+      auditLog(db, req, { user: partner || { email }, action: "Failed login", status: "failure", affectedRecord: auditRecord("referral_partner", partner || { email }), details: "Referral partner login failed." });
       writeDb(db);
       return sendError(res, 401, "Email or password did not match a referral partner.");
     }
     clearLoginFailures(db, "partner", email);
     setPartnerSession(req, res, db, partner.id);
+    auditLog(db, req, { user: partner, action: "Successful login", affectedRecord: auditRecord("referral_partner", partner), details: "Referral partner login." });
     writeDb(db);
     return sendJson(res, 200, { partner: publicPartner(partner) });
   }
@@ -1854,6 +2743,38 @@ async function handleApi(req, res, pathname) {
     if (!partnerSession.partner) return sendError(res, 401, "Referral partner sign in required.");
     if (bonusesReleased) writeDb(db);
     return sendJson(res, 200, { partner: publicPartner(partnerSession.partner) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/support/login") {
+    const body = await readBody(req);
+    const email = normalizeEmail(body.email);
+    if (!supportUsers.length) return sendError(res, 503, "Named support accounts are not configured. Set SUPPORT_USERS with individual TruckerBooks employee accounts.");
+    if (isLoginLocked(db, "support", email)) return sendError(res, 429, "Too many support sign in attempts. Please wait 15 minutes and try again.");
+    const supportUser = supportUsers.find((item) => item.email === email);
+    if (!supportUser || !verifyPassword(body.password || "", supportUser.passwordHash)) {
+      recordLoginFailure(db, "support", email);
+      auditLog(db, req, { user: supportUser || { email, role: "support" }, action: "Failed login", status: "failure", affectedRecord: auditRecord("support_user", supportUser || { email }), details: "Named support login failed." });
+      writeDb(db);
+      return sendError(res, 401, "Email or password did not match a support account.");
+    }
+    clearLoginFailures(db, "support", email);
+    setSupportSession(req, res, db, supportUser);
+    auditLog(db, req, { user: supportUser, action: "Successful login", affectedRecord: auditRecord("support_user", supportUser), details: "Named TruckerBooks support account login." });
+    writeDb(db);
+    return sendJson(res, 200, { supportUser: publicSupportUser(supportUser) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/support/logout") {
+    const supportSession = getSupportSession(req, db);
+    clearSupportSession(req, res, db, supportSession.token);
+    writeDb(db);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (req.method === "GET" && pathname === "/api/support/session") {
+    const supportSession = getSupportSession(req, db);
+    if (!supportSession.supportUser) return sendError(res, 401, "Named support sign in required.");
+    return sendJson(res, 200, { supportUser: publicSupportUser(supportSession.supportUser) });
   }
 
   if (req.method === "PATCH" && pathname === "/api/partners/profile") {
@@ -1882,15 +2803,38 @@ async function handleApi(req, res, pathname) {
   if (req.method === "POST" && pathname === "/api/owner/login") {
     const body = await readBody(req);
     const email = normalizeEmail(body.email);
-    if (!ownerPassword) return sendError(res, 503, "Owner login is not configured yet. Add OWNER_EMAIL and OWNER_PASSWORD in Railway.");
+    if (!ownerPasswordHash) return sendError(res, 503, "Owner login is not configured yet. Add OWNER_EMAIL and OWNER_PASSWORD_HASH in Railway.");
     if (isLoginLocked(db, "owner", email)) return sendError(res, 429, "Too many owner sign in attempts. Please wait 15 minutes and try again.");
-    if (email !== ownerEmail || String(body.password || "") !== ownerPassword || (ownerAccessCode && String(body.accessCode || "").trim() !== ownerAccessCode)) {
+    if (email !== ownerEmail || !verifyPassword(body.password || "", ownerPasswordHash) || (ownerAccessCode && String(body.accessCode || "").trim() !== ownerAccessCode)) {
       recordLoginFailure(db, "owner", email);
+      auditLog(db, req, { user: { email, role: "owner" }, action: "Failed login", status: "failure", affectedRecord: auditRecord("owner_admin", { email }), details: "Owner login failed." });
       writeDb(db);
       return sendError(res, 401, "Owner email, password, or access code did not match.");
     }
     clearLoginFailures(db, "owner", email);
+    const challenge = createMfaChallenge(db, "owner", ownerEmail, ["email", "recovery"]);
+    writeDb(db);
+    return sendJson(res, 202, {
+      mfaRequired: true,
+      challengeId: challenge.challengeId,
+      methods: ["email"],
+      emailCode: challenge.emailCode,
+      message: "Enter the owner MFA code to continue."
+    });
+  }
+
+  if (req.method === "POST" && pathname === "/api/owner/mfa/verify") {
+    const body = await readBody(req);
+    const challenge = getMfaChallenge(db, String(body.challengeId || ""), "owner");
+    if (!challenge) return sendError(res, 400, "Owner MFA challenge expired. Sign in again.");
+    if (hashRecoveryCode(body.code) !== challenge.emailCodeHash || new Date(challenge.emailCodeExpiresAt) <= new Date()) {
+      auditLog(db, req, { user: { email: ownerEmail, role: "owner" }, action: "Failed login", status: "failure", affectedRecord: auditRecord("owner_admin", { email: ownerEmail }), details: "Invalid owner MFA code." });
+      writeDb(db);
+      return sendError(res, 401, "Invalid MFA code.");
+    }
+    delete db.security.mfaChallenges[String(body.challengeId || "")];
     setOwnerSession(req, res, db);
+    auditLog(db, req, { user: { email: ownerEmail, role: "owner" }, action: "Successful login", affectedRecord: auditRecord("owner_admin", { email: ownerEmail }), details: "Owner MFA verified." });
     writeDb(db);
     return sendJson(res, 200, { owner: { email: ownerEmail } });
   }
@@ -1930,7 +2874,11 @@ async function handleApi(req, res, pathname) {
     const id = pathname.split("/")[4];
     const customer = db.users.find((item) => item.id === id);
     if (!customer) return sendError(res, 404, "Customer not found.");
-    return sendJson(res, 200, { customer: ownerCustomerDetail(customer) });
+    const grant = activeSupportGrant(customer);
+    if (!grant) return sendError(res, 403, "Customer-approved support access is required before viewing account details.");
+    auditLog(db, req, { company: customer, user: { email: ownerEmail, role: "owner" }, action: "Support access", affectedRecord: auditRecord("support_access_grant", grant), details: "Internal owner viewed customer account details through an active customer support grant." });
+    writeDb(db);
+    return sendJson(res, 200, { customer: supportCustomerDetail(customer, grant) });
   }
 
   if (req.method === "PATCH" && pathname.startsWith("/api/owner/customers/")) {
@@ -1938,6 +2886,8 @@ async function handleApi(req, res, pathname) {
     const id = pathname.split("/")[4];
     const customer = db.users.find((item) => item.id === id);
     if (!customer) return sendError(res, 404, "Customer not found.");
+    const grant = activeSupportGrant(customer);
+    if (!grant) return sendError(res, 403, "Customer-approved support access is required before changing customer account details.");
     const body = await readBody(req);
     const businessName = String(body.businessName || "").trim();
     const email = normalizeEmail(body.email);
@@ -1952,8 +2902,9 @@ async function handleApi(req, res, pathname) {
     customer.accountStatus = accountStatus;
     customer.firstMonthPaid = Boolean(body.firstMonthPaid);
     customer.updatedAt = new Date().toISOString();
+    auditLog(db, req, { company: customer, user: { email: ownerEmail, role: "owner" }, action: "Support access", affectedRecord: auditRecord("support_access_grant", grant), details: "Internal owner updated account details through an active customer support grant." });
     writeDb(db);
-    return sendJson(res, 200, { customer: ownerCustomerDetail(customer), customers: db.users.map(ownerCustomerSummary) });
+    return sendJson(res, 200, { customer: supportCustomerDetail(customer, grant), customers: db.users.map(ownerCustomerSummary) });
   }
 
   if (req.method === "POST" && pathname.match(/^\/api\/owner\/customers\/[^/]+\/reset-password$/)) {
@@ -1961,11 +2912,17 @@ async function handleApi(req, res, pathname) {
     const id = pathname.split("/")[4];
     const customer = db.users.find((item) => item.id === id);
     if (!customer) return sendError(res, 404, "Customer not found.");
-    const temporaryPassword = crypto.randomBytes(5).toString("hex");
-    customer.passwordHash = hashPassword(temporaryPassword);
+    const grant = activeSupportGrant(customer);
+    if (!grant) return sendError(res, 403, "Customer-approved support access is required before generating a password reset link.");
+    const reset = createPasswordReset(customer);
     customer.updatedAt = new Date().toISOString();
+    auditLog(db, req, { company: customer, user: { email: ownerEmail, role: "owner" }, action: "Password reset requested", affectedRecord: auditRecord("company_user", customer), details: "Internal owner generated a short-lived reset link." });
     writeDb(db);
-    return sendJson(res, 200, { temporaryPassword, customer: ownerCustomerDetail(customer) });
+    return sendJson(res, 200, {
+      resetUrl: `${originForRequest(req)}/reset-password?token=${reset.token}`,
+      expiresAt: reset.expiresAt,
+      customer: ownerCustomerDetail(customer)
+    });
   }
 
   if (req.method === "POST" && pathname.match(/^\/api\/owner\/customers\/[^/]+\/drivers\/[^/]+\/resend$/)) {
@@ -1973,18 +2930,53 @@ async function handleApi(req, res, pathname) {
     const [, , , , customerId, , driverId] = pathname.split("/");
     const customer = db.users.find((item) => item.id === customerId);
     if (!customer) return sendError(res, 404, "Customer not found.");
+    const grant = activeSupportGrant(customer);
+    if (!grant) return sendError(res, 403, "Customer-approved support access is required before resending an invitation.");
     const driver = customer.drivers.find((item) => item.id === driverId);
     if (!driver) return sendError(res, 404, "Account access invite not found.");
     driver.inviteToken = crypto.randomBytes(24).toString("hex");
     driver.inviteLink = `/account-access/${driver.inviteToken}`;
+    driver.inviteExpiresAt = inviteExpiresAt(7);
+    driver.inviteUsedAt = "";
     driver.status = "Access resent";
     driver.resentAt = new Date().toISOString();
+    addAccessHistory(driver, "Invitation resent", { id: ownerEmail, name: "TruckerBooks Owner", email: ownerEmail }, "Owner regenerated invite link");
     customer.updatedAt = new Date().toISOString();
+    auditLog(db, req, { company: customer, user: { email: ownerEmail, role: "owner" }, action: "User invitation resent", affectedRecord: auditRecord("account_access_user", driver), details: "Internal owner regenerated invite link." });
     writeDb(db);
     return sendJson(res, 200, { inviteLink: driver.inviteLink, customer: ownerCustomerDetail(customer) });
   }
 
+  if (req.method === "GET" && pathname === "/api/support/customers") {
+    const supportSession = requireSupportUser(req, res, db);
+    if (!supportSession) return;
+    const customers = db.users
+      .filter((company) => activeSupportGrant(company))
+      .map((company) => ({
+        ...ownerCustomerSummary(company),
+        supportAccess: supportAccessSummary(activeSupportGrant(company))
+      }))
+      .sort((a, b) => (a.supportAccess.expiresAt || "").localeCompare(b.supportAccess.expiresAt || ""));
+    return sendJson(res, 200, { customers });
+  }
+
+  if (req.method === "GET" && pathname.match(/^\/api\/support\/customers\/[^/]+$/)) {
+    const supportSession = requireSupportUser(req, res, db);
+    if (!supportSession) return;
+    const id = pathname.split("/")[4];
+    const customer = db.users.find((item) => item.id === id);
+    if (!customer) return sendError(res, 404, "Customer not found.");
+    const grant = activeSupportGrant(customer);
+    if (!grant) return sendError(res, 403, "Customer approval is required before support can access this account.");
+    auditLog(db, req, { company: customer, user: supportSession.supportUser, action: "Support access", affectedRecord: auditRecord("support_access_grant", grant), details: `Named support user viewed customer details. Sensitive data restricted: ${grant.restrictSensitiveData !== false}.` });
+    writeDb(db);
+    return sendJson(res, 200, { customer: supportCustomerDetail(customer, grant) });
+  }
+
   if (!user) return sendError(res, 401, "Please sign in first.");
+  if (isDriverActor(actor) && !driverCanAccessApi(req, pathname)) {
+    return sendError(res, 403, "Drivers can only access their own mobile account records.");
+  }
 
   if (req.method === "GET" && pathname === "/api/scanner-status") {
     const keyStatus = openAiKeyStatus();
@@ -2000,15 +2992,114 @@ async function handleApi(req, res, pathname) {
 
   if (req.method === "GET" && pathname === "/api/session") {
     if (await rescanPendingDocuments(user)) writeDb(db);
+    if (isDriverActor(actor)) return sendJson(res, 200, { customer: publicDriverUser(user, actor), records: driverScopedRecords(user, actor) });
     return sendJson(res, 200, { customer: publicUser(user), records: user.records });
   }
 
   if (req.method === "GET" && pathname === "/api/account") {
     if (await rescanPendingDocuments(user)) writeDb(db);
+    if (isDriverActor(actor)) return sendJson(res, 200, { customer: publicDriverUser(user, actor) });
     return sendJson(res, 200, { customer: publicUser(user) });
   }
 
+  if (req.method === "GET" && pathname === "/api/audit-logs") {
+    if (isDriverActor(actor)) return sendError(res, 403, "Drivers cannot view company audit logs.");
+    if (!requirePermission(user, res, "manageCompanyUsers", "You do not have permission to view audit logs.")) return;
+    const companyId = companyIdFor(user);
+    const auditLogs = (db.auditLogs || [])
+      .filter((entry) => entry.companyId === companyId)
+      .slice(0, 250);
+    return sendJson(res, 200, { auditLogs });
+  }
+
+  if (req.method === "GET" && pathname === "/api/support/access-grants") {
+    if (isDriverActor(actor)) return sendError(res, 403, "Drivers cannot manage support access.");
+    if (!requirePermission(user, res, "manageCompanyUsers", "You do not have permission to manage support access.")) return;
+    return sendJson(res, 200, {
+      supportAccessGrants: (user.supportAccessGrants || []).map(supportAccessSummary),
+      activeSupportAccess: activeSupportGrant(user) ? supportAccessSummary(activeSupportGrant(user)) : null
+    });
+  }
+
+  if (req.method === "POST" && pathname === "/api/support/access-grants") {
+    if (isDriverActor(actor)) return sendError(res, 403, "Drivers cannot approve support access.");
+    if (!requirePermission(user, res, "manageCompanyUsers", "You do not have permission to approve support access.")) return;
+    const body = await readBody(req);
+    const now = new Date();
+    const durationHours = supportGrantDurationHours(body.durationHours);
+    const grant = stampCompanyScope(user, {
+      id: crypto.randomUUID(),
+      status: "Approved",
+      reason: String(body.reason || "Customer approved support access").trim(),
+      restrictSensitiveData: body.restrictSensitiveData !== false,
+      requestedBy: body.requestedBy && typeof body.requestedBy === "object" ? body.requestedBy : null,
+      approvedBy: uploadActor(user),
+      approvedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + durationHours * 60 * 60 * 1000).toISOString(),
+      revokedAt: "",
+      revokedBy: null,
+      createdAt: now.toISOString()
+    });
+    user.supportAccessGrants.unshift(grant);
+    user.supportAccessGrants = user.supportAccessGrants.slice(0, 50);
+    user.updatedAt = grant.createdAt;
+    auditLog(db, req, { company: user, user, action: "Support access approved", affectedRecord: auditRecord("support_access_grant", grant), details: `Expires ${grant.expiresAt}. Sensitive data restricted: ${grant.restrictSensitiveData}.` });
+    writeDb(db);
+    return sendJson(res, 201, {
+      supportAccess: supportAccessSummary(grant),
+      customer: publicUser(user)
+    });
+  }
+
+  if (req.method === "POST" && pathname.match(/^\/api\/support\/access-grants\/[^/]+\/revoke$/)) {
+    if (isDriverActor(actor)) return sendError(res, 403, "Drivers cannot revoke support access.");
+    if (!requirePermission(user, res, "manageCompanyUsers", "You do not have permission to revoke support access.")) return;
+    const id = pathname.split("/")[4];
+    const grant = findCompanyRecord(user, user.supportAccessGrants, id);
+    if (!grant) return sendError(res, 404, "Support access grant not found.");
+    grant.status = "Revoked";
+    grant.revokedAt = new Date().toISOString();
+    grant.revokedBy = uploadActor(user);
+    user.updatedAt = grant.revokedAt;
+    auditLog(db, req, { company: user, user, action: "Support access revoked", affectedRecord: auditRecord("support_access_grant", grant), details: "Customer revoked support access." });
+    writeDb(db);
+    return sendJson(res, 200, { supportAccessGrants: user.supportAccessGrants.map(supportAccessSummary), customer: publicUser(user) });
+  }
+
+  if (req.method === "PATCH" && pathname === "/api/driver/profile") {
+    if (!isDriverActor(actor)) return sendError(res, 403, "Driver profile access required.");
+    const body = await readBody(req);
+    actor.phone = String(body.phone || "").trim();
+    actor.emergencyContact = String(body.emergencyContact || "").trim();
+    actor.updatedAt = new Date().toISOString();
+    user.updatedAt = actor.updatedAt;
+    writeDb(db);
+    return sendJson(res, 200, { customer: publicDriverUser(user, actor), records: driverScopedRecords(user, actor) });
+  }
+
+  if (req.method === "POST" && pathname === "/api/driver/detention-delay") {
+    if (!isDriverActor(actor)) return sendError(res, 403, "Driver access required.");
+    const body = await readBody(req);
+    const report = stampCompanyScope(user, {
+      id: crypto.randomUUID(),
+      driverId: actor.id,
+      truckId: actor.truckId || "",
+      type: String(body.type || "Delay").trim() || "Delay",
+      loadId: String(body.loadId || "").trim(),
+      location: String(body.location || "").trim(),
+      notes: String(body.notes || "").trim(),
+      status: "Submitted",
+      createdAt: new Date().toISOString()
+    });
+    user.records.detentionDelays = Array.isArray(user.records.detentionDelays) ? user.records.detentionDelays : [];
+    user.records.detentionDelays.push(report);
+    user.updatedAt = report.createdAt;
+    writeDb(db);
+    return sendJson(res, 201, { report, records: driverScopedRecords(user, actor) });
+  }
+
   if (req.method === "GET" && pathname === "/api/affiliate") {
+    if (isDriverActor(actor)) return sendError(res, 403, "Drivers cannot access referral or company financial information.");
     return sendJson(res, 200, { customer: publicUser(user) });
   }
 
@@ -2020,13 +3111,14 @@ async function handleApi(req, res, pathname) {
     if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return sendError(res, 400, "GPS location is outside the valid range.");
     const recordedAt = new Date().toISOString();
     const location = {
+      companyId: companyIdFor(user),
       latitude,
       longitude,
       accuracy: Number(body.accuracy || 0),
       speed: Number(body.speed || 0),
       heading: Number(body.heading || 0),
       active: true,
-      sharedBy: uploadActor(user),
+      sharedBy: isDriverActor(actor) ? { id: actor.id, companyId: companyIdFor(user), name: actor.name, email: actor.email, role: "driver", roleLabel: "Driver" } : uploadActor(user),
       recordedAt
     };
     user.routeTracking = user.routeTracking && typeof user.routeTracking === "object" ? user.routeTracking : {};
@@ -2062,8 +3154,12 @@ async function handleApi(req, res, pathname) {
     const message = String(body.message || "").trim();
     if (!subject) return sendError(res, 400, "Enter a subject for the issue.");
     if (!message) return sendError(res, 400, "Describe the issue.");
+    if (!isDriverActor(actor) && body.requestSupportAccess && !hasPermission(user, "manageCompanyUsers")) {
+      return sendError(res, 403, "You do not have permission to approve support account access.");
+    }
     const issue = {
       id: crypto.randomUUID(),
+      companyId: companyIdFor(user),
       category,
       subject,
       message,
@@ -2075,22 +3171,51 @@ async function handleApi(req, res, pathname) {
     user.supportIssues.push(issue);
     user.accountStatus = "Needs Support";
     user.updatedAt = new Date().toISOString();
+    auditLog(db, req, { company: user, user: isDriverActor(actor) ? actor : user, action: "Support access", affectedRecord: auditRecord("support_issue", issue), details: "Support issue opened by account user." });
+    let supportAccess = null;
+    if (!isDriverActor(actor) && body.requestSupportAccess) {
+      const now = new Date();
+      const durationHours = supportGrantDurationHours(body.supportAccessDurationHours);
+      const grant = stampCompanyScope(user, {
+        id: crypto.randomUUID(),
+        status: "Approved",
+        reason: `Support issue: ${subject}`,
+        restrictSensitiveData: body.restrictSensitiveData !== false,
+        requestedBy: uploadActor(user),
+        approvedBy: uploadActor(user),
+        approvedAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + durationHours * 60 * 60 * 1000).toISOString(),
+        revokedAt: "",
+        revokedBy: null,
+        createdAt: now.toISOString()
+      });
+      user.supportAccessGrants.unshift(grant);
+      user.supportAccessGrants = user.supportAccessGrants.slice(0, 50);
+      supportAccess = supportAccessSummary(grant);
+      auditLog(db, req, { company: user, user, action: "Support access approved", affectedRecord: auditRecord("support_access_grant", grant), details: `Approved from support issue. Expires ${grant.expiresAt}. Sensitive data restricted: ${grant.restrictSensitiveData}.` });
+    }
     writeDb(db);
-    return sendJson(res, 201, { issue, supportIssues: user.supportIssues, customer: publicUser(user) });
+    return sendJson(res, 201, {
+      issue,
+      supportAccess,
+      supportIssues: isDriverActor(actor) ? [issue] : user.supportIssues,
+      customer: isDriverActor(actor) ? publicDriverUser(user, actor) : publicUser(user)
+    });
   }
 
   if (req.method === "POST" && pathname === "/api/billing/first-month-paid") {
-    if (!requireAdmin(user, res)) return;
+    if (!requirePermission(user, res, "changeSubscription", "You do not have permission to change billing status.")) return;
     user.firstMonthPaid = true;
     user.trialStatus = "Active";
     user.updatedAt = new Date().toISOString();
     earnReferralCommission(db, user);
+    auditLog(db, req, { company: user, user, action: "Financial approval", affectedRecord: auditRecord("billing_account", user), details: "First month payment marked paid and referral commission evaluated." });
     writeDb(db);
     return sendJson(res, 200, { customer: publicUser(user) });
   }
 
   if (req.method === "POST" && pathname === "/api/billing/stripe-checkout") {
-    if (!requireAdmin(user, res)) return;
+    if (!requirePermission(user, res, "changeSubscription", "You do not have permission to change billing or subscription settings.")) return;
     if (!stripeConfigured) return sendError(res, 503, "Stripe is not connected yet. Add STRIPE_SECRET_KEY in Railway.");
     const body = await readBody(req);
     const interval = body.interval === "year" ? "year" : "month";
@@ -2103,23 +3228,25 @@ async function handleApi(req, res, pathname) {
       updatedAt: new Date().toISOString()
     };
     user.updatedAt = new Date().toISOString();
+    auditLog(db, req, { company: user, user, action: "Financial approval", affectedRecord: auditRecord("stripe_checkout", { id: session.id, label: interval }), details: "Stripe checkout started." });
     writeDb(db);
     return sendJson(res, 200, { url: session.url, sessionId: session.id, customer: publicUser(user) });
   }
 
   if (req.method === "POST" && pathname === "/api/billing/stripe-confirm") {
-    if (!requireAdmin(user, res)) return;
+    if (!requirePermission(user, res, "changeSubscription", "You do not have permission to change billing or subscription settings.")) return;
     const body = await readBody(req);
     const sessionId = String(body.sessionId || "").trim();
     if (!sessionId) return sendError(res, 400, "Stripe session is missing.");
     const session = await retrieveStripeCheckoutSession(sessionId);
     applyStripeSessionToUser(db, user, session);
+    auditLog(db, req, { company: user, user, action: "Financial approval", affectedRecord: auditRecord("stripe_session", { id: sessionId }), details: "Stripe checkout confirmed and subscription updated." });
     writeDb(db);
     return sendJson(res, 200, { customer: publicUser(user) });
   }
 
   if (req.method === "POST" && pathname === "/api/plaid/link-token") {
-    if (!requireAdmin(user, res)) return;
+    if (!requirePermission(user, res, "manageIntegrations", "You do not have permission to manage integrations.")) return;
     if (!plaidConfigured) return sendError(res, 503, "Plaid is not connected yet. Add PLAID_CLIENT_ID, PLAID_SECRET, and PLAID_ENV in Railway.");
     const token = await plaidRequest("/link/token/create", {
       client_name: "TruckerBooks",
@@ -2132,7 +3259,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === "POST" && pathname === "/api/plaid/exchange") {
-    if (!requireAdmin(user, res)) return;
+    if (!requirePermission(user, res, "manageIntegrations", "You do not have permission to manage integrations.")) return;
     const body = await readBody(req);
     const publicToken = String(body.public_token || "").trim();
     if (!publicToken) return sendError(res, 400, "Plaid did not return a bank connection token.");
@@ -2153,12 +3280,13 @@ async function handleApi(req, res, pathname) {
       updatedAt: new Date().toISOString()
     };
     user.updatedAt = new Date().toISOString();
+    auditLog(db, req, { company: user, user, action: "Integration connected", affectedRecord: auditRecord("plaid_item", { id: exchange.item_id, label: metadata.institution?.name || "Bank connected" }), details: "Plaid bank connection exchanged and stored." });
     writeDb(db);
     return sendJson(res, 200, { customer: publicUser(user) });
   }
 
   if (req.method === "PATCH" && pathname === "/api/account/subscription") {
-    if (!requireAdmin(user, res)) return;
+    if (!requirePermission(user, res, "changeSubscription", "You do not have permission to change the subscription.")) return;
     const body = await readBody(req);
     if (!subscriptionPlans[body.subscriptionTier]) return sendError(res, 400, "Choose Owner-Operator, Small Fleet, Growth, or Growth Plus.");
     const nextPlan = subscriptionPlans[body.subscriptionTier];
@@ -2172,7 +3300,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === "PATCH" && pathname === "/api/account/payment") {
-    if (!requireAdmin(user, res)) return;
+    if (!requirePermission(user, res, "viewFinancialInformation", "You do not have permission to manage billing information.")) return;
     const body = await readBody(req);
     const billingName = String(body.billingName || "").trim();
     const billingEmail = normalizeEmail(body.billingEmail);
@@ -2204,6 +3332,7 @@ async function handleApi(req, res, pathname) {
     const body = await readBody(req);
     const truck = {
       id: crypto.randomUUID(),
+      companyId: companyIdFor(user),
       unitNumber: String(body.unitNumber || "").trim() || `Truck ${user.trucks.length + 1}`,
       vin: String(body.vin || "").trim(),
       status: String(body.status || "Active").trim() || "Active",
@@ -2218,7 +3347,7 @@ async function handleApi(req, res, pathname) {
   if (req.method === "DELETE" && pathname.startsWith("/api/trucks/")) {
     if (!requireAdmin(user, res)) return;
     const id = pathname.split("/")[3];
-    user.trucks = user.trucks.filter((truck) => truck.id !== id);
+    user.trucks = user.trucks.filter((truck) => !(truck.id === id && truck.companyId === companyIdFor(user)));
     user.drivers = user.drivers.map((driver) => driver.truckId === id ? { ...driver, truckId: "" } : driver);
     user.updatedAt = new Date().toISOString();
     writeDb(db);
@@ -2230,8 +3359,12 @@ async function handleApi(req, res, pathname) {
     const plan = currentPlan(user);
     const body = await readBody(req);
     const role = accountAccessRoles[body.role] ? body.role : "driver";
+    const isDriverRole = role === "driver";
+    const permissions = normalizePermissions(role, body.permissions);
+    const expiresAt = body.inviteExpiresAt ? new Date(String(body.inviteExpiresAt)) : new Date(inviteExpiresAt(body.inviteExpiresInDays));
+    if (Number.isNaN(expiresAt.getTime()) || expiresAt <= new Date()) return sendError(res, 400, "Choose a future invitation expiration date.");
     const currentDriverCount = user.drivers.filter((driver) => (driver.role || "driver") === "driver").length;
-    if (role === "driver" && currentDriverCount >= plan.maxTrucks) {
+    if (isDriverRole && currentDriverCount >= plan.maxTrucks) {
       return sendError(res, 400, `${plan.name} allows driver access for up to ${plan.maxTrucks} drivers.`);
     }
     const email = normalizeEmail(body.email);
@@ -2239,12 +3372,13 @@ async function handleApi(req, res, pathname) {
     if (user.drivers.some((driver) => driver.email === email)) return sendError(res, 409, "That user already has access or an invite.");
     const truckNumber = String(body.truckNumber || "").trim();
     let truckId = "";
-    if (role === "driver" && truckNumber) {
+    if (isDriverRole && truckNumber) {
       let truck = user.trucks.find((item) => item.unitNumber.toLowerCase() === truckNumber.toLowerCase());
       if (!truck) {
         if (user.trucks.length >= plan.maxTrucks) return sendError(res, 400, `${plan.name} allows up to ${plan.maxTrucks} trucks. Add this driver to an existing truck number or upgrade the plan.`);
         truck = {
           id: crypto.randomUUID(),
+          companyId: companyIdFor(user),
           unitNumber: truckNumber,
           vin: "",
           status: "Active",
@@ -2257,46 +3391,224 @@ async function handleApi(req, res, pathname) {
     const inviteToken = crypto.randomBytes(24).toString("hex");
     const driver = {
       id: crypto.randomUUID(),
+      companyId: companyIdFor(user),
       name: String(body.name || "").trim() || accountAccessRoles[role],
       email,
       role,
       roleLabel: accountAccessRoles[role],
+      permissions,
       truckId,
-      truckNumber: role === "driver" ? truckNumber : "",
-      payType: role === "driver" && ["per_mile", "weekly", "percentage"].includes(body.payType) ? body.payType : "",
-      ratePerMile: role === "driver" ? Number(body.ratePerMile || 0) : 0,
-      weeklyRate: role === "driver" ? Number(body.weeklyRate || 0) : 0,
-      payPercentage: role === "driver" ? Number(body.payPercentage || 0) : 0,
+      truckNumber: isDriverRole ? truckNumber : "",
+      payType: isDriverRole && ["per_mile", "weekly", "percentage"].includes(body.payType) ? body.payType : "",
+      ratePerMile: isDriverRole ? Number(body.ratePerMile || 0) : 0,
+      weeklyRate: isDriverRole ? Number(body.weeklyRate || 0) : 0,
+      payPercentage: isDriverRole ? Number(body.payPercentage || 0) : 0,
       status: "Access sent",
       inviteToken,
       inviteLink: `/account-access/${inviteToken}`,
+      inviteExpiresAt: expiresAt.toISOString(),
+      inviteUsedAt: "",
+      emailVerified: false,
+      passwordHash: "",
+      mfa: { enabled: false, resetRequired: false },
+      lastLoginAt: "",
+      addedBy: uploadActor(user),
+      addedAt: new Date().toISOString(),
+      accessHistory: [],
       createdAt: new Date().toISOString()
     };
+    addAccessHistory(driver, "Invited", uploadActor(user), `Role: ${accountAccessRoles[role]}`);
     user.drivers.push(driver);
     user.updatedAt = new Date().toISOString();
+    auditLog(db, req, { company: user, user, action: "User invitation sent", affectedRecord: auditRecord("account_access_user", driver), details: `Role: ${accountAccessRoles[role]}. Expires: ${driver.inviteExpiresAt}.` });
     writeDb(db);
     return sendJson(res, 201, { driver, customer: publicUser(user) });
+  }
+
+  if (req.method === "POST" && pathname.match(/^\/api\/drivers\/[^/]+\/resend$/)) {
+    if (!requireAdmin(user, res)) return;
+    const id = pathname.split("/")[3];
+    const driver = findCompanyRecord(user, user.drivers, id);
+    if (!driver) return sendError(res, 404, "Account access invite not found.");
+    if (driver.inviteUsedAt) return sendError(res, 400, "This invitation has already been accepted.");
+    if (driver.status === "Cancelled") return sendError(res, 400, "Cancelled invitations cannot be resent. Create a new invitation.");
+    driver.inviteToken = crypto.randomBytes(24).toString("hex");
+    driver.inviteLink = `/account-access/${driver.inviteToken}`;
+    driver.inviteExpiresAt = inviteExpiresAt(7);
+    driver.status = "Access resent";
+    driver.resentAt = new Date().toISOString();
+    addAccessHistory(driver, "Invitation resent", uploadActor(user), "Invite link regenerated");
+    user.updatedAt = new Date().toISOString();
+    auditLog(db, req, { company: user, user, action: "User invitation resent", affectedRecord: auditRecord("account_access_user", driver), details: `Expires: ${driver.inviteExpiresAt}.` });
+    writeDb(db);
+    return sendJson(res, 200, { inviteLink: driver.inviteLink, customer: publicUser(user) });
+  }
+
+  if (req.method === "POST" && pathname.match(/^\/api\/drivers\/[^/]+\/cancel$/)) {
+    if (!requireAdmin(user, res)) return;
+    const id = pathname.split("/")[3];
+    const driver = findCompanyRecord(user, user.drivers, id);
+    if (!driver) return sendError(res, 404, "Account access invite not found.");
+    if (driver.inviteUsedAt) return sendError(res, 400, "Accepted invitations cannot be cancelled.");
+    driver.status = "Cancelled";
+    driver.inviteToken = "";
+    driver.inviteLink = "";
+    driver.cancelledAt = new Date().toISOString();
+    addAccessHistory(driver, "Invitation cancelled", uploadActor(user), "Pending invitation cancelled");
+    user.updatedAt = new Date().toISOString();
+    auditLog(db, req, { company: user, user, action: "User invitation cancelled", affectedRecord: auditRecord("account_access_user", driver), details: "Pending invitation cancelled." });
+    writeDb(db);
+    return sendJson(res, 200, { customer: publicUser(user) });
+  }
+
+  if (req.method === "GET" && pathname.match(/^\/api\/drivers\/[^/]+\/history$/)) {
+    if (!requireAdmin(user, res)) return;
+    const id = pathname.split("/")[3];
+    const driver = findCompanyRecord(user, user.drivers, id);
+    if (!driver) return sendError(res, 404, "User not found.");
+    return sendJson(res, 200, { history: driver.accessHistory || [] });
+  }
+
+  if (req.method === "PATCH" && pathname.match(/^\/api\/drivers\/[^/]+\/role$/)) {
+    if (!requireAdmin(user, res)) return;
+    const id = pathname.split("/")[3];
+    const body = await readBody(req);
+    const driver = findCompanyRecord(user, user.drivers, id);
+    if (!driver) return sendError(res, 404, "User not found.");
+    const role = accountAccessRoles[body.role] ? body.role : driver.role;
+    driver.role = role;
+    driver.roleLabel = accountAccessRoles[role];
+    driver.permissions = normalizePermissions(role, body.permissions);
+    driver.updatedAt = new Date().toISOString();
+    addAccessHistory(driver, "Role changed", uploadActor(user), `New role: ${driver.roleLabel}`);
+    user.updatedAt = driver.updatedAt;
+    auditLog(db, req, { company: user, user, action: "Role changed", affectedRecord: auditRecord("account_access_user", driver), details: `New role: ${driver.roleLabel}.` });
+    auditLog(db, req, { company: user, user, action: "Permission changed", affectedRecord: auditRecord("account_access_user", driver), details: `Permissions: ${driver.permissions.join(", ")}.` });
+    writeDb(db);
+    return sendJson(res, 200, { customer: publicUser(user) });
+  }
+
+  if (req.method === "POST" && pathname.match(/^\/api\/drivers\/[^/]+\/reset-mfa$/)) {
+    if (!requireAdmin(user, res)) return;
+    const id = pathname.split("/")[3];
+    const driver = findCompanyRecord(user, user.drivers, id);
+    if (!driver) return sendError(res, 404, "User not found.");
+    driver.mfa = { enabled: false, resetRequired: true, resetAt: new Date().toISOString() };
+    addAccessHistory(driver, "MFA reset", uploadActor(user), "Authenticator and recovery setup reset");
+    user.updatedAt = driver.mfa.resetAt;
+    auditLog(db, req, { company: user, user, action: "MFA changed", affectedRecord: auditRecord("account_access_user", driver), details: "MFA reset by administrator." });
+    writeDb(db);
+    return sendJson(res, 200, { customer: publicUser(user) });
+  }
+
+  if (req.method === "POST" && pathname.match(/^\/api\/drivers\/[^/]+\/suspend$/)) {
+    if (!requireAdmin(user, res)) return;
+    const id = pathname.split("/")[3];
+    const driver = findCompanyRecord(user, user.drivers, id);
+    if (!driver) return sendError(res, 404, "User not found.");
+    driver.status = "Suspended";
+    driver.suspendedAt = new Date().toISOString();
+    addAccessHistory(driver, "Suspended", uploadActor(user), "Access suspended");
+    Object.keys(db.sessions).forEach((sessionToken) => {
+      if (db.sessions[sessionToken]?.userId === user.id && db.sessions[sessionToken]?.driverId === driver.id) delete db.sessions[sessionToken];
+    });
+    user.updatedAt = driver.suspendedAt;
+    auditLog(db, req, { company: user, user, action: "Account suspended", affectedRecord: auditRecord("account_access_user", driver), details: "Access suspended and active sessions revoked." });
+    writeDb(db);
+    return sendJson(res, 200, { customer: publicUser(user) });
+  }
+
+  if (req.method === "POST" && pathname.match(/^\/api\/drivers\/[^/]+\/reactivate$/)) {
+    if (!requireAdmin(user, res)) return;
+    const id = pathname.split("/")[3];
+    const driver = findCompanyRecord(user, user.drivers, id);
+    if (!driver) return sendError(res, 404, "User not found.");
+    driver.status = driver.passwordHash ? "Active" : "Access sent";
+    driver.reactivatedAt = new Date().toISOString();
+    addAccessHistory(driver, "Reactivated", uploadActor(user), "Access reactivated");
+    user.updatedAt = driver.reactivatedAt;
+    auditLog(db, req, { company: user, user, action: "Account reactivated", affectedRecord: auditRecord("account_access_user", driver), details: `Status: ${driver.status}.` });
+    writeDb(db);
+    return sendJson(res, 200, { customer: publicUser(user) });
+  }
+
+  if (req.method === "POST" && pathname.match(/^\/api\/drivers\/[^/]+\/force-password-reset$/)) {
+    if (!requireAdmin(user, res)) return;
+    const id = pathname.split("/")[3];
+    const driver = findCompanyRecord(user, user.drivers, id);
+    if (!driver) return sendError(res, 404, "User not found.");
+    driver.forcePasswordReset = true;
+    driver.status = "Password reset required";
+    driver.inviteToken = crypto.randomBytes(24).toString("hex");
+    driver.inviteLink = `/account-access/${driver.inviteToken}`;
+    driver.inviteExpiresAt = inviteExpiresAt(7);
+    addAccessHistory(driver, "Password reset forced", uploadActor(user), "User must set a new password");
+    Object.keys(db.sessions).forEach((sessionToken) => {
+      if (db.sessions[sessionToken]?.userId === user.id && db.sessions[sessionToken]?.driverId === driver.id) delete db.sessions[sessionToken];
+    });
+    user.updatedAt = new Date().toISOString();
+    auditLog(db, req, { company: user, user, action: "Password reset forced", affectedRecord: auditRecord("account_access_user", driver), details: "Administrator forced password reset and revoked active sessions." });
+    writeDb(db);
+    return sendJson(res, 200, { inviteLink: driver.inviteLink, customer: publicUser(user) });
+  }
+
+  if (req.method === "POST" && pathname.match(/^\/api\/drivers\/[^/]+\/signout$/)) {
+    if (!requireAdmin(user, res)) return;
+    const id = pathname.split("/")[3];
+    const driver = findCompanyRecord(user, user.drivers, id);
+    if (!driver) return sendError(res, 404, "User not found.");
+    Object.keys(db.sessions).forEach((sessionToken) => {
+      if (db.sessions[sessionToken]?.userId === user.id && db.sessions[sessionToken]?.driverId === driver.id) delete db.sessions[sessionToken];
+    });
+    addAccessHistory(driver, "Signed out", uploadActor(user), "All active sessions ended");
+    user.updatedAt = new Date().toISOString();
+    auditLog(db, req, { company: user, user, action: "User signed out", affectedRecord: auditRecord("account_access_user", driver), details: "Administrator ended active sessions." });
+    writeDb(db);
+    return sendJson(res, 200, { customer: publicUser(user) });
   }
 
   if (req.method === "DELETE" && pathname.startsWith("/api/drivers/")) {
     if (!requireAdmin(user, res)) return;
     const id = pathname.split("/")[3];
-    user.drivers = user.drivers.filter((driver) => driver.id !== id);
+    const driver = findCompanyRecord(user, user.drivers, id);
+    if (!driver) return sendError(res, 404, "User not found.");
+    if (userHasAttachedActivity(user, driver)) {
+      driver.status = "Deactivated";
+      driver.deactivatedAt = new Date().toISOString();
+      addAccessHistory(driver, "Deactivated", uploadActor(user), "User has attached activity; retained for audit trail");
+      auditLog(db, req, { company: user, user, action: "Account suspended", affectedRecord: auditRecord("account_access_user", driver), details: "User deactivated because attached activity must remain in the audit trail." });
+    } else {
+      addAccessHistory(driver, "Removed", uploadActor(user), "User had no attached activity");
+      auditLog(db, req, { company: user, user, action: "User removed", affectedRecord: auditRecord("account_access_user", driver), details: "User had no attached activity." });
+      user.drivers = user.drivers.filter((item) => !(item.id === id && item.companyId === companyIdFor(user)));
+    }
+    Object.keys(db.sessions).forEach((sessionToken) => {
+      if (db.sessions[sessionToken]?.userId === user.id && db.sessions[sessionToken]?.driverId === id) delete db.sessions[sessionToken];
+    });
     user.updatedAt = new Date().toISOString();
     writeDb(db);
     return sendJson(res, 200, { customer: publicUser(user) });
   }
 
   if (req.method === "GET" && pathname === "/api/records") {
+    if (isDriverActor(actor)) return sendJson(res, 200, { records: driverScopedRecords(user, actor) });
     return sendJson(res, 200, { records: user.records });
   }
 
   if (req.method === "GET" && pathname === "/api/documents") {
     if (await rescanPendingDocuments(user)) writeDb(db);
+    if (isDriverActor(actor)) return sendJson(res, 200, { documents: driverScopedDocuments(user, actor) });
     return sendJson(res, 200, { documents: user.documents });
   }
 
   if (req.method === "GET" && pathname === "/api/compliance") {
+    if (isDriverActor(actor)) {
+      const customer = publicDriverUser(user, actor);
+      return sendJson(res, 200, {
+        complianceDocuments: customer.complianceDocuments,
+        complianceAlerts: customer.complianceAlerts
+      });
+    }
     return sendJson(res, 200, {
       complianceDocuments: user.complianceDocuments,
       complianceAlerts: complianceAlerts(user)
@@ -2304,6 +3616,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === "POST" && pathname === "/api/compliance-alerts/complete") {
+    if (!requirePermission(user, res, "viewDriverQualificationFiles", "You do not have permission to manage compliance alerts.")) return;
     const body = await readBody(req);
     const alertId = String(body.alertId || "").trim();
     if (!alertId) return sendError(res, 400, "Choose an alert to complete.");
@@ -2314,6 +3627,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === "POST" && pathname === "/api/compliance") {
+    if (!requirePermission(user, res, "viewDriverQualificationFiles", "You do not have permission to upload compliance documents.")) return;
     const body = await readBody(req);
     const fileName = path.basename(String(body.fileName || "compliance-document"));
     const type = inferComplianceType(body.type, fileName);
@@ -2328,6 +3642,7 @@ async function handleApi(req, res, pathname) {
     const scan = await scanComplianceDocument(buffer, mimeType, type);
     const complianceDocument = {
       id,
+      companyId: companyIdFor(user),
       type,
       fileName,
       mimeType,
@@ -2351,6 +3666,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === "POST" && pathname === "/api/compliance/mcs150") {
+    if (!requirePermission(user, res, "viewDriverQualificationFiles", "You do not have permission to manage compliance reminders.")) return;
     const body = await readBody(req);
     const lastFiledDate = normalizeDate(String(body.lastFiledDate || ""));
     if (!lastFiledDate) return sendError(res, 400, "Enter the MCS-150 last filed date.");
@@ -2358,6 +3674,7 @@ async function handleApi(req, res, pathname) {
     const existing = user.complianceDocuments.find((item) => item.type === "mcs150" && item.manualOnly);
     const complianceDocument = existing || {
       id: crypto.randomUUID(),
+      companyId: companyIdFor(user),
       type: "mcs150",
       fileName: "MCS-150 Biennial Update",
       mimeType: "",
@@ -2385,8 +3702,9 @@ async function handleApi(req, res, pathname) {
 
   if (req.method === "GET" && pathname.startsWith("/api/compliance/")) {
     const id = pathname.split("/")[3];
-    const document = user.complianceDocuments.find((item) => item.id === id);
+    const document = findCompanyRecord(user, user.complianceDocuments, id);
     if (!document) return sendError(res, 404, "Compliance document not found.");
+    if (isDriverActor(actor) && !driverScopedCompliance(user, actor).some((item) => item.id === id)) return sendError(res, 404, "Compliance document not found.");
     if (document.manualOnly) return sendError(res, 400, "This compliance item is a reminder only and has no document to download.");
     const filePath = path.join(uploadDir, document.storedName);
     if (!fs.existsSync(filePath)) return sendError(res, 404, "Uploaded file is missing.");
@@ -2398,6 +3716,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === "POST" && pathname === "/api/compliance/share") {
+    if (!requirePermission(user, res, "viewDriverQualificationFiles", "You do not have permission to share compliance documents.")) return;
     const body = await readBody(req);
     const ids = Array.isArray(body.documentIds) ? body.documentIds.map(String) : [];
     const selectedDocuments = user.complianceDocuments.filter((item) => ids.includes(item.id));
@@ -2405,6 +3724,7 @@ async function handleApi(req, res, pathname) {
     const tokenValue = crypto.randomBytes(18).toString("hex");
     const share = {
       token: tokenValue,
+      companyId: companyIdFor(user),
       documentIds: selectedDocuments.map((item) => item.id),
       createdAt: new Date().toISOString()
     };
@@ -2418,14 +3738,16 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === "DELETE" && pathname.startsWith("/api/compliance/")) {
+    if (!requirePermission(user, res, "deleteDocuments", "You do not have permission to delete documents.")) return;
     const id = pathname.split("/")[3];
-    const document = user.complianceDocuments.find((item) => item.id === id);
-    user.complianceDocuments = user.complianceDocuments.filter((item) => item.id !== id);
+    const document = findCompanyRecord(user, user.complianceDocuments, id);
+    user.complianceDocuments = user.complianceDocuments.filter((item) => !(item.id === id && item.companyId === companyIdFor(user)));
     if (document && document.storedName) {
       const filePath = path.join(uploadDir, document.storedName);
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     }
     user.updatedAt = new Date().toISOString();
+    auditLog(db, req, { company: user, user: isDriverActor(actor) ? actor : user, action: "Document deleted", affectedRecord: auditRecord("compliance_document", document || { id }), details: "Compliance document deleted." });
     writeDb(db);
     return sendJson(res, 200, {
       complianceDocuments: user.complianceDocuments,
@@ -2434,9 +3756,10 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === "PATCH" && pathname.startsWith("/api/compliance/")) {
+    if (!requirePermission(user, res, "viewDriverQualificationFiles", "You do not have permission to edit compliance documents.")) return;
     const id = pathname.split("/")[3];
     const body = await readBody(req);
-    const document = user.complianceDocuments.find((item) => item.id === id);
+    const document = findCompanyRecord(user, user.complianceDocuments, id);
     if (!document) return sendError(res, 404, "Compliance document not found.");
     const expirationDate = normalizeDate(String(body.expirationDate || ""));
     if (!expirationDate) return sendError(res, 400, "Enter a valid expiration date.");
@@ -2453,8 +3776,9 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === "POST" && pathname.match(/^\/api\/compliance\/[^/]+\/rescan$/)) {
+    if (!requirePermission(user, res, "viewDriverQualificationFiles", "You do not have permission to rescan compliance documents.")) return;
     const id = pathname.split("/")[3];
-    const document = user.complianceDocuments.find((item) => item.id === id);
+    const document = findCompanyRecord(user, user.complianceDocuments, id);
     if (!document) return sendError(res, 404, "Compliance document not found.");
     if (document.manualOnly) return sendError(res, 400, "This reminder does not have a document to rescan.");
     const filePath = path.join(uploadDir, document.storedName);
@@ -2474,6 +3798,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === "POST" && pathname === "/api/documents") {
+    if (!requirePermission(user, res, "createLoads", "You do not have permission to upload load documents.")) return;
     const body = await readBody(req);
     const type = body.type === "bol" ? "bol" : "rateCon";
     const fileName = path.basename(String(body.fileName || "document"));
@@ -2488,6 +3813,7 @@ async function handleApi(req, res, pathname) {
     const scan = await scanDocument(buffer, mimeType, type);
     const document = {
       id,
+      companyId: companyIdFor(user),
       type,
       fileName,
       mimeType,
@@ -2496,21 +3822,33 @@ async function handleApi(req, res, pathname) {
       scanStatus: scan.scanStatus,
       extracted: scan.extracted,
       aiScan: scan.extracted.generic,
-      uploadedBy: uploadActor(user),
+      uploadedBy: isDriverActor(actor) ? { id: actor.id, companyId: companyIdFor(user), name: actor.name, email: actor.email, role: "driver", roleLabel: "Driver" } : uploadActor(user),
+      driverId: isDriverActor(actor) ? actor.id : String(body.driverId || "").trim(),
+      truckId: isDriverActor(actor) ? actor.truckId || "" : String(body.truckId || "").trim(),
       uploadedAt: new Date().toISOString()
     };
     user.documents.push(document);
     const trip = buildTripFromDocument(document);
     if (trip) {
-      user.records.trips.push(trip);
+      user.records.trips.push(stampCompanyScope(user, {
+        ...trip,
+        driverId: isDriverActor(actor) ? actor.id : String(body.driverId || "").trim(),
+        truckId: isDriverActor(actor) ? actor.truckId || "" : String(body.truckId || "").trim(),
+        truckNumber: isDriverActor(actor) ? actor.truckNumber || "" : String(body.truckNumber || "").trim()
+      }));
       document.createdTripId = trip.id;
     }
     user.updatedAt = new Date().toISOString();
     writeDb(db);
-    return sendJson(res, 201, { document, documents: user.documents, records: user.records });
+    return sendJson(res, 201, {
+      document,
+      documents: isDriverActor(actor) ? driverScopedDocuments(user, actor) : user.documents,
+      records: isDriverActor(actor) ? driverScopedRecords(user, actor) : user.records
+    });
   }
 
   if (req.method === "POST" && pathname === "/api/expenses/receipt") {
+    if (!requirePermission(user, res, "approveExpenses", "You do not have permission to create expenses.")) return;
     const body = await readBody(req);
     const fileName = path.basename(String(body.fileName || "receipt"));
     const mimeType = String(body.mimeType || "application/octet-stream");
@@ -2525,6 +3863,10 @@ async function handleApi(req, res, pathname) {
     const scan = await scanReceiptDocument(buffer, mimeType);
     const expense = {
       id: crypto.randomUUID(),
+      companyId: companyIdFor(user),
+      driverId: isDriverActor(actor) ? actor.id : String(body.driverId || "").trim(),
+      truckId: isDriverActor(actor) ? actor.truckId || "" : String(body.truckId || "").trim(),
+      createdByDriverId: isDriverActor(actor) ? actor.id : "",
       date: scan.extracted.date || new Date().toISOString().slice(0, 10),
       description: scan.extracted.description || fileName,
       amount: scan.extracted.amount || 0,
@@ -2532,27 +3874,30 @@ async function handleApi(req, res, pathname) {
       status: "Paid",
       sourceReceipt: {
         id,
+        companyId: companyIdFor(user),
         fileName,
         mimeType,
         storedName,
         size: buffer.length,
         scanStatus: scan.scanStatus,
         extracted: scan.extracted,
-        uploadedBy: uploadActor(user),
+        uploadedBy: isDriverActor(actor) ? { id: actor.id, companyId: companyIdFor(user), name: actor.name, email: actor.email, role: "driver", roleLabel: "Driver" } : uploadActor(user),
         uploadedAt: new Date().toISOString()
       }
     };
     const normalizedExpense = normalizeExpenseRecord(expense);
     user.records.expenses.push(normalizedExpense);
     user.updatedAt = new Date().toISOString();
+    auditLog(db, req, { company: user, user: isDriverActor(actor) ? actor : user, action: "Financial approval", affectedRecord: auditRecord("expense", normalizedExpense), details: "Receipt scanned and expense record created." });
     writeDb(db);
-    return sendJson(res, 201, { expense: normalizedExpense, records: user.records });
+    return sendJson(res, 201, { expense: normalizedExpense, records: isDriverActor(actor) ? driverScopedRecords(user, actor) : user.records });
   }
 
   if (req.method === "GET" && pathname.startsWith("/api/documents/")) {
     const id = pathname.split("/")[3];
-    const document = user.documents.find((item) => item.id === id);
+    const document = findCompanyRecord(user, user.documents, id);
     if (!document) return sendError(res, 404, "Document not found.");
+    if (isDriverActor(actor) && !driverScopedDocuments(user, actor).some((item) => item.id === id)) return sendError(res, 404, "Document not found.");
     const filePath = path.join(uploadDir, document.storedName);
     if (!fs.existsSync(filePath)) return sendError(res, 404, "Uploaded file is missing.");
     res.writeHead(200, {
@@ -2563,9 +3908,10 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === "PATCH" && pathname.startsWith("/api/documents/")) {
+    if (!requirePermission(user, res, "editLoads", "You do not have permission to edit load documents.")) return;
     const id = pathname.split("/")[3];
     const body = await readBody(req);
-    const document = user.documents.find((item) => item.id === id);
+    const document = findCompanyRecord(user, user.documents, id);
     if (!document) return sendError(res, 404, "Document not found.");
     const fileName = path.basename(String(body.fileName || "").trim());
     if (!fileName) return sendError(res, 400, "Enter a file name.");
@@ -2577,14 +3923,16 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === "DELETE" && pathname.startsWith("/api/documents/")) {
+    if (!requirePermission(user, res, "deleteDocuments", "You do not have permission to delete documents.")) return;
     const id = pathname.split("/")[3];
-    const document = user.documents.find((item) => item.id === id);
-    user.documents = user.documents.filter((item) => item.id !== id);
+    const document = findCompanyRecord(user, user.documents, id);
+    user.documents = user.documents.filter((item) => !(item.id === id && item.companyId === companyIdFor(user)));
     if (document) {
       const filePath = path.join(uploadDir, document.storedName);
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     }
     user.updatedAt = new Date().toISOString();
+    auditLog(db, req, { company: user, user: isDriverActor(actor) ? actor : user, action: "Document deleted", affectedRecord: auditRecord("load_document", document || { id }), details: "Load document deleted." });
     writeDb(db);
     return sendJson(res, 200, { documents: user.documents });
   }
@@ -2592,10 +3940,14 @@ async function handleApi(req, res, pathname) {
   if (req.method === "POST" && pathname.startsWith("/api/records/")) {
     const collection = pathname.split("/")[3];
     if (!isAllowedCollection(collection)) return sendError(res, 404, "Unknown record type.");
+    if (!requirePermission(user, res, collectionPermission(collection, "POST"))) return;
     const body = await readBody(req);
-    const record = { id: crypto.randomUUID(), ...body };
+    const record = stampCompanyScope(user, { id: crypto.randomUUID(), ...body });
     user.records[collection].push(record);
     user.updatedAt = new Date().toISOString();
+    if (["expenses", "invoices"].includes(collection)) {
+      auditLog(db, req, { company: user, user: isDriverActor(actor) ? actor : user, action: "Financial approval", affectedRecord: auditRecord(collection.slice(0, -1), record), details: `${collection} record created.` });
+    }
     writeDb(db);
     return sendJson(res, 201, { record, records: user.records });
   }
@@ -2603,14 +3955,19 @@ async function handleApi(req, res, pathname) {
   if (req.method === "DELETE" && pathname.startsWith("/api/records/")) {
     const [, , , collection, id] = pathname.split("/");
     if (!isAllowedCollection(collection)) return sendError(res, 404, "Unknown record type.");
-    user.records[collection] = user.records[collection].filter((record) => record.id !== id);
+    if (!requirePermission(user, res, collectionPermission(collection, "DELETE"))) return;
+    user.records[collection] = user.records[collection].filter((record) => !(record.id === id && record.companyId === companyIdFor(user)));
     user.updatedAt = new Date().toISOString();
     writeDb(db);
     return sendJson(res, 200, { records: user.records });
   }
 
   if (req.method === "GET" && pathname === "/api/export") {
+    if (isDriverActor(actor)) return sendError(res, 403, "Drivers cannot export company-wide reports.");
+    if (!requirePermission(user, res, "exportReports", "You do not have permission to export reports.")) return;
     const fileName = `${user.businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "truckerbooks"}-records.json`;
+    auditLog(db, req, { company: user, user, action: "Data exported", affectedRecord: auditRecord("company_records_export", { id: companyIdFor(user), label: fileName }), details: "Company records JSON exported." });
+    writeDb(db);
     res.writeHead(200, secureHeaders({
       "Content-Type": "application/json; charset=utf-8",
       "Content-Disposition": `attachment; filename="${fileName}"`
@@ -2654,6 +4011,168 @@ function serveStatic(req, res, pathname) {
   });
 }
 
+function serveEmailVerificationPage(req, res) {
+  const url = new URL(req.url, originForRequest(req));
+  const tokenValue = String(url.searchParams.get("token") || "").trim();
+  const db = readDb();
+  const user = tokenValue ? db.users.find((item) => item.emailVerificationToken === tokenValue) : null;
+  const verifiedAt = new Date().toISOString();
+  const title = user ? "Email verified" : "Verification link invalid";
+  const message = user
+    ? "Your administrator email has been verified. You can sign in to TruckerBooks."
+    : "This verification link is invalid or has already been used.";
+
+  if (user) {
+    user.emailVerified = true;
+    user.emailVerifiedAt = verifiedAt;
+    user.emailVerificationToken = "";
+    user.updatedAt = verifiedAt;
+    writeDb(db);
+  }
+
+  res.writeHead(user ? 200 : 404, secureHeaders({ "Content-Type": "text/html; charset=utf-8" }));
+  res.end(`<!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>${escapeHtml(title)} - TruckerBooks</title>
+        <style>
+          body{font-family:Arial,sans-serif;margin:0;background:#f5f7f8;color:#10222b}
+          main{max-width:620px;margin:56px auto;background:#fff;border:1px solid #dbe4e7;border-radius:8px;padding:28px}
+          h1{margin:0 0 10px;font-size:28px} p{color:#5f6f76;line-height:1.5} a{color:#0f6f72;font-weight:700}
+        </style>
+      </head>
+      <body>
+        <main>
+          <h1>${escapeHtml(title)}</h1>
+          <p>${escapeHtml(message)}</p>
+          <a href="/">Return to sign in</a>
+        </main>
+      </body>
+    </html>`);
+}
+
+function servePasswordResetPage(req, res) {
+  const url = new URL(req.url, originForRequest(req));
+  const tokenValue = String(url.searchParams.get("token") || "").trim();
+  const db = readDb();
+  const user = findPasswordResetUser(db, tokenValue);
+  const valid = Boolean(user);
+  res.writeHead(valid ? 200 : 404, secureHeaders({ "Content-Type": "text/html; charset=utf-8" }));
+  res.end(`<!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Password Reset - TruckerBooks</title>
+        <style>
+          body{font-family:Arial,sans-serif;margin:0;background:#f5f7f8;color:#10222b}
+          main{max-width:620px;margin:56px auto;background:#fff;border:1px solid #dbe4e7;border-radius:8px;padding:28px}
+          h1{margin:0 0 10px;font-size:28px} p{color:#5f6f76;line-height:1.5}
+          label{display:grid;gap:8px;margin:16px 0;font-weight:700} input{min-height:44px;border:1px solid #dbe4e7;border-radius:8px;padding:0 12px;font-size:16px}
+          button{min-height:44px;border:0;border-radius:8px;background:#0f6f72;color:#fff;font-weight:800;padding:0 16px;cursor:pointer} a{color:#0f6f72;font-weight:700}
+          .error{color:#b42318;font-weight:800}.success{color:#0f6f72;font-weight:800}
+        </style>
+      </head>
+      <body>
+        <main>
+          <h1>${valid ? "Set a new password" : "Reset link invalid"}</h1>
+          ${valid ? `
+            <p>Use at least ${minimumPasswordLength} characters. Long passphrases are supported.</p>
+            <form id="resetForm">
+              <input name="token" type="hidden" value="${escapeHtml(tokenValue)}" />
+              <label>New password or passphrase<input name="password" type="password" minlength="${minimumPasswordLength}" autocomplete="new-password" required /></label>
+              <button type="submit">Change Password</button>
+              <p id="message" role="alert"></p>
+            </form>
+            <script>
+              document.querySelector("#resetForm").addEventListener("submit", async (event) => {
+                event.preventDefault();
+                const message = document.querySelector("#message");
+                message.className = "";
+                message.textContent = "";
+                const formData = new FormData(event.target);
+                const response = await fetch("/api/password-reset/confirm", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ token: formData.get("token"), password: formData.get("password") })
+                });
+                const payload = await response.json().catch(() => ({}));
+                message.className = response.ok ? "success" : "error";
+                message.textContent = payload.message || payload.error || "Password reset failed.";
+                if (response.ok) event.target.reset();
+              });
+            </script>
+          ` : `
+            <p>This reset link is invalid, expired, or already used.</p>
+            <a href="/">Return to sign in</a>
+          `}
+        </main>
+      </body>
+    </html>`);
+}
+
+function serveAccountAccessPage(res, tokenValue) {
+  const db = readDb();
+  const found = findAccountInvite(db, tokenValue);
+  const valid = Boolean(found && inviteIsAcceptable(found.invite));
+  res.writeHead(valid ? 200 : 404, secureHeaders({ "Content-Type": "text/html; charset=utf-8" }));
+  res.end(`<!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Account Access - TruckerBooks</title>
+        <style>
+          body{font-family:Arial,sans-serif;margin:0;background:#f5f7f8;color:#10222b}
+          main{max-width:620px;margin:56px auto;background:#fff;border:1px solid #dbe4e7;border-radius:8px;padding:28px}
+          h1{margin:0 0 10px;font-size:28px} p{color:#5f6f76;line-height:1.5}
+          label{display:grid;gap:8px;margin:16px 0;font-weight:700} input{min-height:44px;border:1px solid #dbe4e7;border-radius:8px;padding:0 12px;font-size:16px}
+          button{min-height:44px;border:0;border-radius:8px;background:#0f6f72;color:#fff;font-weight:800;padding:0 16px;cursor:pointer} a{color:#0f6f72;font-weight:700}
+          .error{color:#b42318;font-weight:800}.success{color:#0f6f72;font-weight:800}
+        </style>
+      </head>
+      <body>
+        <main>
+          <h1>${valid ? "Accept account access" : "Invitation unavailable"}</h1>
+          ${valid ? `
+            <p>${escapeHtml(found.company.businessName)} invited ${escapeHtml(found.invite.name)} as ${escapeHtml(found.invite.roleLabel)}. Verify your email and set a password before this invitation expires.</p>
+            <p>Expires ${escapeHtml(new Date(found.invite.inviteExpiresAt).toLocaleString())}</p>
+            <form id="inviteForm">
+              <input name="token" type="hidden" value="${escapeHtml(tokenValue)}" />
+              <label>Email address<input name="email" type="email" autocomplete="email" value="${escapeHtml(found.invite.email)}" required /></label>
+              <label>Password or passphrase<input name="password" type="password" minlength="${minimumPasswordLength}" autocomplete="new-password" required /></label>
+              <button type="submit">Verify Email and Set Password</button>
+              <p id="message" role="alert"></p>
+            </form>
+            <script>
+              document.querySelector("#inviteForm").addEventListener("submit", async (event) => {
+                event.preventDefault();
+                const message = document.querySelector("#message");
+                message.className = "";
+                message.textContent = "";
+                const formData = new FormData(event.target);
+                const response = await fetch("/api/account-access/accept", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ token: formData.get("token"), email: formData.get("email"), password: formData.get("password") })
+                });
+                const payload = await response.json().catch(() => ({}));
+                message.className = response.ok ? "success" : "error";
+                message.textContent = payload.message || payload.error || "Invitation could not be accepted.";
+                if (response.ok) event.target.reset();
+              });
+            </script>
+          ` : `
+            <p>This invitation is invalid, expired, cancelled, or already used.</p>
+            <a href="/">Return to sign in</a>
+          `}
+        </main>
+      </body>
+    </html>`);
+}
+
 function serveComplianceShare(res, tokenValue) {
   const db = readDb();
   const found = findComplianceShare(db, tokenValue);
@@ -2663,7 +4182,7 @@ function serveComplianceShare(res, tokenValue) {
     return;
   }
   const documents = found.share.documentIds
-    .map((id) => found.user.complianceDocuments.find((item) => item.id === id))
+    .map((id) => findCompanyRecord(found.user, found.user.complianceDocuments, id))
     .filter(Boolean);
   const links = documents.map((document) => `
     <li><a href="/api/shared-compliance/${found.share.token}/${document.id}">${escapeHtml(complianceTypeName(document.type))}: ${escapeHtml(document.fileName)}</a></li>
@@ -2700,6 +4219,18 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname.startsWith("/shared-compliance/")) {
       serveComplianceShare(res, decodeURIComponent(url.pathname.split("/")[2] || ""));
+      return;
+    }
+    if (url.pathname.startsWith("/account-access/")) {
+      serveAccountAccessPage(res, decodeURIComponent(url.pathname.split("/")[2] || ""));
+      return;
+    }
+    if (url.pathname === "/verify-email") {
+      serveEmailVerificationPage(req, res);
+      return;
+    }
+    if (url.pathname === "/reset-password") {
+      servePasswordResetPage(req, res);
       return;
     }
     serveStatic(req, res, decodeURIComponent(url.pathname));

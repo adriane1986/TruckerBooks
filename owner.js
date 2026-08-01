@@ -2,7 +2,8 @@ const ownerState = {
   customers: [],
   partners: [],
   selectedCustomer: null,
-  message: ""
+  message: "",
+  pendingMfa: null
 };
 
 const ownerAuth = document.querySelector("#ownerAuth");
@@ -10,6 +11,9 @@ const ownerShell = document.querySelector("#ownerShell");
 const ownerLoginForm = document.querySelector("#ownerLoginForm");
 const ownerAuthError = document.querySelector("#ownerAuthError");
 const ownerLogoutBtn = document.querySelector("#ownerLogoutBtn");
+const ownerMfaChallenge = document.querySelector("#ownerMfaChallenge");
+const ownerMfaCode = document.querySelector("#ownerMfaCode");
+const ownerVerifyMfaBtn = document.querySelector("#ownerVerifyMfaBtn");
 const customerSearch = document.querySelector("#customerSearch");
 const customerList = document.querySelector("#customerList");
 const customerCount = document.querySelector("#customerCount");
@@ -220,7 +224,7 @@ function renderCustomerDetail() {
           <label class="owner-checkbox"><input name="firstMonthPaid" type="checkbox" ${customer.firstMonthPaid ? "checked" : ""} /> First month paid</label>
           <div class="billing-actions">
             <button class="primary-button" type="submit">Update Account</button>
-            <button class="ghost-button" type="button" data-reset-password>Reset Password</button>
+            <button class="ghost-button" type="button" data-reset-password>Send Reset Link</button>
           </div>
         </form>
         ${ownerState.message ? `<p class="form-message">${escapeHtml(ownerState.message)}</p>` : ""}
@@ -228,7 +232,7 @@ function renderCustomerDetail() {
     </section>
 
     <section class="panel">
-      <div class="panel-header"><h2>Account Access</h2><span class="muted">Drivers, bookkeepers/accountants, and dispatchers</span></div>
+      <div class="panel-header"><h2>Account Access</h2><span class="muted">Dispatch, accounting, payroll, compliance, drivers, and read-only users</span></div>
       <table class="data-table owner-table"><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Action</th></tr></thead><tbody>${accessRows}</tbody></table>
     </section>
 
@@ -260,7 +264,7 @@ ownerLoginForm.addEventListener("submit", (event) => {
     try {
       ownerAuthError.textContent = "";
       const formData = new FormData(ownerLoginForm);
-      await ownerApi("/api/owner/login", {
+      const payload = await ownerApi("/api/owner/login", {
         method: "POST",
         body: JSON.stringify({
           email: formData.get("email"),
@@ -268,6 +272,13 @@ ownerLoginForm.addEventListener("submit", (event) => {
           accessCode: formData.get("accessCode")
         })
       });
+      if (payload.mfaRequired) {
+        ownerState.pendingMfa = payload.challengeId;
+        ownerMfaChallenge.classList.remove("hidden");
+        ownerAuthError.textContent = payload.emailCode ? `${payload.message} Local email code: ${payload.emailCode}` : payload.message;
+        ownerMfaCode.focus();
+        return;
+      }
       ownerLoginForm.reset();
       showOwnerApp();
       await loadCustomers();
@@ -275,6 +286,23 @@ ownerLoginForm.addEventListener("submit", (event) => {
       ownerAuthError.textContent = error.message;
     }
   })();
+});
+
+ownerVerifyMfaBtn.addEventListener("click", () => {
+  (async () => {
+    ownerAuthError.textContent = "";
+    await ownerApi("/api/owner/mfa/verify", {
+      method: "POST",
+      body: JSON.stringify({ challengeId: ownerState.pendingMfa, code: ownerMfaCode.value })
+    });
+    ownerState.pendingMfa = null;
+    ownerMfaChallenge.classList.add("hidden");
+    ownerLoginForm.reset();
+    showOwnerApp();
+    await loadCustomers();
+  })().catch((error) => {
+    ownerAuthError.textContent = error.message;
+  });
 });
 
 ownerLogoutBtn.addEventListener("click", async () => {
@@ -288,12 +316,19 @@ document.addEventListener("click", (event) => {
   const customerButton = event.target.closest("[data-customer-id]");
   const resetButton = event.target.closest("[data-reset-password]");
   const resendButton = event.target.closest("[data-resend-invite]");
-  if (customerButton) loadCustomer(customerButton.dataset.customerId);
+  if (customerButton) {
+    loadCustomer(customerButton.dataset.customerId).catch((error) => {
+      ownerState.selectedCustomer = null;
+      ownerState.message = error.message;
+      ownerDetail.innerHTML = `<section class="panel"><div class="panel-body"><p class="form-message">${escapeHtml(error.message)}</p></div></section>`;
+      renderCustomerList();
+    });
+  }
   if (resetButton && ownerState.selectedCustomer) {
     (async () => {
       const payload = await ownerApi(`/api/owner/customers/${ownerState.selectedCustomer.id}/reset-password`, { method: "POST" });
       ownerState.selectedCustomer = payload.customer;
-      ownerState.message = `Temporary password: ${payload.temporaryPassword}`;
+      ownerState.message = `Password reset link: ${location.origin}${new URL(payload.resetUrl).pathname}${new URL(payload.resetUrl).search}`;
       renderCustomerDetail();
     })().catch((error) => {
       ownerState.message = error.message;

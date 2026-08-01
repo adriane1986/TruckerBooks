@@ -66,7 +66,9 @@ const state = {
   reportYear: String(new Date().getFullYear()),
   dateRange: "all",
   gpsWatchId: null,
-  accountMessage: ""
+  accountMessage: "",
+  pendingMfa: null,
+  mfaSetup: null
 };
 
 const complianceTypes = {
@@ -84,14 +86,47 @@ const complianceTypes = {
 const accountAccessRoles = {
   driver: "Driver",
   bookkeeper: "Bookkeeper/Accountant",
-  dispatcher: "Dispatcher"
+  dispatcher: "Dispatcher",
+  payrollManager: "Payroll Manager",
+  complianceManager: "Compliance Manager",
+  readOnly: "Read-Only User"
 };
 
-const roleNavAccess = {
-  admin: ["dashboard", "affiliate", "compliance", "expenses", "rateCons", "reports", "userManagement", "account", "support"],
-  driver: ["dashboard", "expenses", "rateCons", "compliance", "support"],
-  bookkeeper: ["dashboard", "expenses", "rateCons", "reports", "support"],
-  dispatcher: ["dashboard", "rateCons", "reports", "support"]
+const permissionCatalog = {
+  viewLoads: "View loads",
+  createLoads: "Create loads",
+  editLoads: "Edit loads",
+  assignDrivers: "Assign drivers",
+  viewFinancialInformation: "View financial information",
+  createInvoices: "Create invoices",
+  approveExpenses: "Approve expenses",
+  processSettlements: "Process settlements",
+  viewPayroll: "View payroll",
+  manageCompanyUsers: "Manage company users",
+  manageIntegrations: "Manage integrations",
+  changeSubscription: "Change subscription",
+  exportReports: "Export reports",
+  deleteDocuments: "Delete documents",
+  viewDriverQualificationFiles: "View driver qualification files"
+};
+
+const roleDefaultPermissions = {
+  driver: ["viewLoads", "createLoads"],
+  dispatcher: ["viewLoads", "createLoads", "editLoads", "assignDrivers"],
+  bookkeeper: ["viewFinancialInformation", "createInvoices", "approveExpenses", "exportReports"],
+  payrollManager: ["viewFinancialInformation", "processSettlements", "viewPayroll", "exportReports"],
+  complianceManager: ["viewDriverQualificationFiles", "deleteDocuments", "exportReports"],
+  readOnly: ["viewLoads", "viewFinancialInformation", "viewPayroll", "viewDriverQualificationFiles", "exportReports"]
+};
+
+const viewPermissionRequirements = {
+  affiliate: "exportReports",
+  compliance: "viewDriverQualificationFiles",
+  expenses: "viewFinancialInformation",
+  rateCons: "viewLoads",
+  reports: "exportReports",
+  userManagement: "manageCompanyUsers",
+  account: "changeSubscription"
 };
 
 const subscriptionPlans = {
@@ -106,6 +141,13 @@ const appShell = document.querySelector("#appShell");
 const authForm = document.querySelector("#authForm");
 const authError = document.querySelector("#authError");
 const authSubmit = document.querySelector("#authSubmit");
+const authPassword = document.querySelector("#authPassword");
+const togglePassword = document.querySelector("#togglePassword");
+const forgotPasswordBtn = document.querySelector("#forgotPasswordBtn");
+const mfaChallenge = document.querySelector("#mfaChallenge");
+const mfaCode = document.querySelector("#mfaCode");
+const mfaMethod = document.querySelector("#mfaMethod");
+const verifyMfaBtn = document.querySelector("#verifyMfaBtn");
 const content = document.querySelector("#content");
 const navList = document.querySelector("#navList");
 const sectionTitle = document.querySelector("#sectionTitle");
@@ -149,7 +191,12 @@ function setAuthMode(mode) {
   document.querySelectorAll(".signup-only").forEach((field) => {
     field.style.display = mode === "signup" ? "grid" : "none";
   });
+  document.querySelectorAll(".signin-only").forEach((field) => {
+    field.style.display = mode === "signin" ? "flex" : "none";
+  });
   authSubmit.textContent = mode === "signup" ? "Create Account" : "Sign In";
+  mfaChallenge.classList.add("hidden");
+  state.pendingMfa = null;
   authError.textContent = "";
 }
 
@@ -188,6 +235,54 @@ async function signOut() {
   authScreen.classList.remove("hidden");
   authForm.reset();
   setAuthMode("signin");
+}
+
+async function signOutEverywhere() {
+  stopGpsSharing(false);
+  await api("/api/logout-all", { method: "POST" });
+  state.customer = null;
+  state.records = cloneStarterRecords();
+  state.documents = [];
+  state.complianceDocuments = [];
+  state.complianceAlerts = [];
+  appShell.classList.add("hidden");
+  authScreen.classList.remove("hidden");
+  authForm.reset();
+  setAuthMode("signin");
+  authError.textContent = "Signed out from all devices.";
+}
+
+function showMfaChallenge(payload, rememberMe) {
+  state.pendingMfa = { challengeId: payload.challengeId, rememberMe };
+  mfaChallenge.classList.remove("hidden");
+  authSubmit.disabled = true;
+  authError.textContent = payload.emailCode
+    ? `${payload.message} Local email code: ${payload.emailCode}`
+    : payload.message;
+  const methods = payload.methods || ["authenticator", "email", "recovery"];
+  Array.from(mfaMethod.options).forEach((option) => {
+    option.hidden = !methods.includes(option.value);
+  });
+  mfaMethod.value = methods[0] || "email";
+  mfaCode.focus();
+}
+
+async function verifyMfaChallenge() {
+  if (!state.pendingMfa) return;
+  const payload = await api("/api/mfa/verify", {
+    method: "POST",
+    body: JSON.stringify({
+      challengeId: state.pendingMfa.challengeId,
+      rememberMe: state.pendingMfa.rememberMe,
+      method: mfaMethod.value,
+      code: mfaCode.value
+    })
+  });
+  state.pendingMfa = null;
+  mfaChallenge.classList.add("hidden");
+  authSubmit.disabled = false;
+  authForm.reset();
+  showDashboard(payload.customer, payload.records);
 }
 
 function money(value) {
@@ -336,13 +431,22 @@ function renderIcons(root = document) {
 }
 
 function isAdmin() {
-  return (state.customer?.role || "admin") === "admin";
+  return hasPermission("manageCompanyUsers");
+}
+
+function customerPermissions() {
+  if (Array.isArray(state.customer?.permissions)) return state.customer.permissions;
+  return state.customer?.role === "admin" ? Object.keys(permissionCatalog) : roleDefaultPermissions[state.customer?.role] || roleDefaultPermissions.driver;
+}
+
+function hasPermission(permission) {
+  if (!permission) return true;
+  return customerPermissions().includes(permission);
 }
 
 function visibleNavItems() {
-  const role = state.customer?.role || "admin";
-  const allowed = roleNavAccess[role] || roleNavAccess.driver;
-  return navItems.filter((item) => allowed.includes(item.id) && (!item.adminOnly || isAdmin()));
+  if (isDriverAccount()) return navItems.filter((item) => ["dashboard", "support"].includes(item.id));
+  return navItems.filter((item) => hasPermission(viewPermissionRequirements[item.id]) && (!item.adminOnly || isAdmin()));
 }
 
 function renderNav() {
@@ -810,6 +914,94 @@ function accountRoleLabel(role) {
   return accountAccessRoles[role] || "Driver";
 }
 
+function permissionsForInviteRole(role) {
+  return role === "driver" ? roleDefaultPermissions.driver : roleDefaultPermissions[role] || [];
+}
+
+function permissionLabelList(permissions = []) {
+  return permissions.map((permission) => permissionCatalog[permission]).filter(Boolean).join(", ") || "No extra permissions";
+}
+
+function userMfaLabel(user) {
+  if (user.mfa?.enabled) return "Enabled";
+  if (user.mfa?.resetRequired) return "Reset required";
+  return "Not enabled";
+}
+
+function invitationLabel(user) {
+  if (user.inviteUsedAt) return `Accepted ${new Date(user.inviteUsedAt).toLocaleDateString()}`;
+  if (user.status === "Cancelled") return "Cancelled";
+  if (user.inviteExpiresAt && new Date(user.inviteExpiresAt) <= new Date()) return "Expired";
+  return user.inviteLink ? `Pending until ${new Date(user.inviteExpiresAt).toLocaleDateString()}` : "Not pending";
+}
+
+function defaultInviteExpirationDate() {
+  const date = new Date(Date.now() + 7 * 86400000);
+  return date.toISOString().slice(0, 10);
+}
+
+function renderPermissionEditor(role = "driver") {
+  const defaults = new Set(permissionsForInviteRole(role));
+  return `
+    <div class="permission-editor" id="permissionEditor">
+      <div>
+        <strong>Individual permissions</strong>
+        <span class="muted">Role presets can be customized for office users. Drivers stay restricted to their own authorized records.</span>
+      </div>
+      <div class="permission-grid">
+        ${Object.entries(permissionCatalog).map(([value, label]) => `
+          <label class="permission-check">
+            <input type="checkbox" name="permissions" value="${value}" ${defaults.has(value) ? "checked" : ""} ${role === "driver" ? "disabled" : ""} />
+            <span>${label}</span>
+          </label>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderAccountAccessTable(drivers, trucks) {
+  return `
+    <div class="account-access-table-wrap">
+      <table class="data-table account-access-table">
+        <thead>
+          <tr><th>User name</th><th>Email</th><th>Role</th><th>Account status</th><th>Last login</th><th>MFA status</th><th>Invitation status</th><th>Date added</th><th>Who added</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          ${drivers.map((driver) => {
+            const assignedTruck = trucks.find((truck) => truck.id === driver.truckId);
+            const absoluteLink = `${location.origin}${driver.inviteLink}`;
+            const role = driver.role || "driver";
+            return `
+              <tr>
+                <td><strong>${driver.name}</strong>${role === "driver" ? `<br><span class="muted">${assignedTruck ? assignedTruck.unitNumber : "No truck assigned"}</span>` : ""}</td>
+                <td>${driver.email}${driver.inviteLink ? `<br><a href="mailto:${driver.email}?subject=Your TruckerBooks access&body=${encodeURIComponent(`Use this secure one-time link to verify your email and set your TruckerBooks password: ${absoluteLink}`)}">Open email</a>` : ""}</td>
+                <td>${accountRoleLabel(role)}<br><span class="muted">${permissionLabelList(driver.permissions || permissionsForInviteRole(role))}</span></td>
+                <td><span class="status Scheduled">${driver.status}</span></td>
+                <td>${driver.lastLoginAt ? new Date(driver.lastLoginAt).toLocaleString() : "Never"}</td>
+                <td>${userMfaLabel(driver)}</td>
+                <td>${invitationLabel(driver)}</td>
+                <td>${driver.addedAt || driver.createdAt ? new Date(driver.addedAt || driver.createdAt).toLocaleDateString() : "Not recorded"}</td>
+                <td>${driver.addedBy?.name || driver.addedBy?.email || "System"}</td>
+                <td class="table-actions">
+                  <button class="chip-button" type="button" data-change-driver-role="${driver.id}">Change Role</button>
+                  <button class="chip-button" type="button" data-reset-driver-mfa="${driver.id}">Reset MFA</button>
+                  ${driver.status === "Suspended" || driver.status === "Deactivated" ? `<button class="chip-button" type="button" data-reactivate-driver="${driver.id}">Reactivate</button>` : `<button class="chip-button" type="button" data-suspend-driver="${driver.id}">Suspend</button>`}
+                  <button class="chip-button" type="button" data-force-driver-password="${driver.id}">Force Password Reset</button>
+                  <button class="chip-button" type="button" data-signout-driver="${driver.id}">Sign Out</button>
+                  ${driver.inviteLink ? `<button class="chip-button" type="button" data-resend-driver="${driver.id}">Resend</button><button class="chip-button" type="button" data-cancel-driver="${driver.id}">Cancel Invite</button>` : ""}
+                  <button class="chip-button" type="button" data-driver-history="${driver.id}">History</button>
+                  <button class="icon-button" type="button" data-delete-driver="${driver.id}" title="Remove user" aria-label="Remove user"><span data-icon="trash"></span></button>
+                </td>
+              </tr>
+            `;
+          }).join("") || `<tr><td colspan="10">No account access has been sent yet.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 function driverPayLabel(driver) {
   const loadedMiles = (state.records.trips || []).reduce((total, trip) => total + Number(trip.miles || 0), 0);
   const revenue = sum(state.records.trips || []);
@@ -1240,12 +1432,12 @@ function renderAccount() {
         </div>
       </section>
       <section class="panel">
-        <div class="panel-header"><h2>Account Access</h2><span class="muted">Invite drivers, bookkeepers/accountants, and dispatchers</span></div>
+        <div class="panel-header"><h2>Account Access</h2><span class="muted">Invite dispatch, accounting, payroll, compliance, drivers, and read-only users</span></div>
         <div class="panel-body">
           <form class="inline-form driver-form" id="driverForm">
-            <input name="name" type="text" required placeholder="Driver name" />
+            <input name="name" type="text" required placeholder="User name" />
             <input name="email" type="email" required placeholder="user@example.com" />
-            <select name="role">
+            <select name="role" data-permission-role>
               ${Object.entries(accountAccessRoles).map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}
             </select>
             <input name="truckNumber" type="text" placeholder="Truck/unit number" />
@@ -1258,9 +1450,12 @@ function renderAccount() {
             <input name="ratePerMile" type="number" min="0" step="0.01" placeholder="Rate per mile" />
             <input name="weeklyRate" type="number" min="0" step="0.01" placeholder="Weekly rate" />
             <input name="payPercentage" type="number" min="0" max="100" step="0.01" placeholder="Pay percentage" />
+            <label class="compact-field">Invite expires<input name="inviteExpiresAt" type="date" value="${defaultInviteExpirationDate()}" required /></label>
+            ${renderPermissionEditor("driver")}
             <button class="primary-button" type="submit">Send Access</button>
           </form>
-          <div class="list account-list">
+          ${renderAccountAccessTable(drivers, trucks)}
+          <div class="list account-list hidden">
             ${drivers.map((driver) => {
               const assignedTruck = trucks.find((truck) => truck.id === driver.truckId);
               const absoluteLink = `${location.origin}${driver.inviteLink}`;
@@ -1271,11 +1466,14 @@ function renderAccount() {
                     <strong>${driver.name}</strong>
                     <span>${accountRoleLabel(role)}${role === "driver" ? ` · ${assignedTruck ? assignedTruck.unitNumber : "No truck assigned"}` : ""}</span>
                     ${role === "driver" ? `<span>${driverPayLabel(driver)}</span>` : ""}
+                    <span>${permissionLabelList(driver.permissions || permissionsForInviteRole(role))}</span>
+                    <span>Expires ${driver.inviteExpiresAt ? new Date(driver.inviteExpiresAt).toLocaleDateString() : "not set"}${driver.inviteUsedAt ? ` · Accepted ${new Date(driver.inviteUsedAt).toLocaleDateString()}` : ""}</span>
                     <span>${driver.email}</span>
-                    <a href="mailto:${driver.email}?subject=Your TruckerBooks access&body=${encodeURIComponent(`Use this link to access your TruckerBooks account dashboard: ${absoluteLink}`)}">Open email</a>
+                    ${driver.inviteLink ? `<a href="mailto:${driver.email}?subject=Your TruckerBooks access&body=${encodeURIComponent(`Use this secure one-time link to verify your email and set your TruckerBooks password: ${absoluteLink}`)}">Open email</a>` : ""}
                   </div>
                   <div>
                     <span class="status Scheduled">${driver.status}</span>
+                    ${driver.inviteLink ? `<button class="chip-button" type="button" data-resend-driver="${driver.id}">Resend</button><button class="chip-button" type="button" data-cancel-driver="${driver.id}">Cancel</button>` : ""}
                     <button class="icon-button" type="button" data-delete-driver="${driver.id}" title="Remove driver access" aria-label="Remove driver access"><span data-icon="trash"></span></button>
                   </div>
                 </article>
@@ -1298,6 +1496,7 @@ function renderPaymentAccount() {
   const stripeConnected = integrations.stripe === "Connected";
   const plaidReady = integrations.plaid === "Connected";
   const bank = payment.bankConnection;
+  const mfa = customer.mfa || {};
   content.innerHTML = `
     <div class="metric-grid">
       ${metric("Plan", plan.name, planPrice(plan), "credit-card")}
@@ -1338,6 +1537,30 @@ function renderPaymentAccount() {
     </section>
     <section class="panel">
       <div class="panel-header">
+        <h2>Multi-Factor Authentication</h2>
+        <span class="muted">${mfa.required ? "Required for this account" : "Optional"}</span>
+      </div>
+      <div class="panel-body">
+        <div class="security-banner">
+          <strong>${mfa.enabled ? "MFA enabled" : "MFA setup needed"}</strong>
+          <span>Use an authenticator app first. Email codes are a temporary fallback. Save recovery codes somewhere secure.</span>
+        </div>
+        <div class="billing-actions">
+          <button class="primary-button" type="button" data-mfa-setup>${mfa.authenticatorEnabled ? "Regenerate Authenticator Setup" : "Set Up Authenticator App"}</button>
+        </div>
+        ${state.mfaSetup ? `
+          <form class="billing-form" id="mfaEnableForm">
+            <label>Authenticator secret<input readonly value="${state.mfaSetup.secret}" /></label>
+            <label>Authenticator code<input name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code" required /></label>
+            <button class="primary-button" type="submit">Enable MFA</button>
+          </form>
+        ` : ""}
+        ${mfa.recoveryCodesRemaining ? `<p class="muted">${mfa.recoveryCodesRemaining} recovery codes remaining.</p>` : ""}
+        ${state.accountMessage ? `<p class="form-message">${state.accountMessage}</p>` : ""}
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-header">
         <h2>Bank Connection</h2>
         <span class="muted">Connect securely with Plaid</span>
       </div>
@@ -1355,6 +1578,35 @@ function renderPaymentAccount() {
 }
 
 function renderSupport() {
+  const supportGrants = state.customer?.supportAccessGrants || [];
+  const activeSupport = state.customer?.activeSupportAccess || supportGrants.find((grant) => grant.status === "Approved" && grant.expiresAt && new Date(grant.expiresAt) > new Date());
+  const canManageSupportAccess = !isDriverAccount() && hasPermission("manageCompanyUsers");
+  const supportAccessPanel = canManageSupportAccess ? `
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Support Access</h2>
+        <span class="muted">Customer-controlled account review</span>
+      </div>
+      <div class="panel-body">
+        <div class="security-banner">
+          <strong>${activeSupport ? "Support access approved" : "No active support access"}</strong>
+          <span>${activeSupport ? `Expires ${formatDate(activeSupport.expiresAt)}. Sensitive financial and payroll data ${activeSupport.restrictSensitiveData ? "remain restricted" : "are included for this support window"}.` : "TruckerBooks support can only review account details after you approve a limited access window."}</span>
+        </div>
+        <div class="list">
+          ${supportGrants.slice(0, 5).map((grant) => `
+            <article class="list-item">
+              <div>
+                <strong>${escapeHtml(grant.status || "Approved")}</strong>
+                <span>${escapeHtml(grant.reason || "Support access")} · expires ${formatDate(grant.expiresAt)}</span>
+                <span>${grant.restrictSensitiveData ? "Financial and payroll data restricted" : "Financial access included"}</span>
+              </div>
+              ${grant.status === "Approved" && grant.expiresAt && new Date(grant.expiresAt) > new Date() ? `<button class="ghost-button" type="button" data-revoke-support-access="${escapeHtml(grant.id)}">Revoke</button>` : ""}
+            </article>
+          `).join("") || `<p class="muted">No support access has been approved.</p>`}
+        </div>
+      </div>
+    </section>
+  ` : "";
   content.innerHTML = `
     <section class="panel">
       <div class="panel-header">
@@ -1383,6 +1635,25 @@ function renderSupport() {
             What happened?
             <textarea name="message" required rows="7" placeholder="Describe the issue so support can review it."></textarea>
           </label>
+          ${canManageSupportAccess ? `
+            <label class="checkbox-row">
+              <input name="requestSupportAccess" type="checkbox" />
+              Approve temporary support access for this issue
+            </label>
+            <label>
+              Access window
+              <select name="supportAccessDurationHours">
+                <option value="24">24 hours</option>
+                <option value="8">8 hours</option>
+                <option value="48">48 hours</option>
+                <option value="72">72 hours</option>
+              </select>
+            </label>
+            <label class="checkbox-row">
+              <input name="restrictSensitiveData" type="checkbox" checked />
+              Keep sensitive financial and payroll data restricted
+            </label>
+          ` : ""}
           <div class="billing-actions">
             <button class="primary-button" type="submit">Send Issue</button>
             <a class="chip-button" href="mailto:info@thetruckerconsultant.com">Email Support</a>
@@ -1391,10 +1662,114 @@ function renderSupport() {
         ${state.accountMessage ? `<p class="form-message">${state.accountMessage}</p>` : ""}
       </div>
     </section>
+    ${supportAccessPanel}
+  `;
+}
+
+function isDriverAccount() {
+  return state.customer?.role === "driver";
+}
+
+function renderDriverMobile() {
+  const profile = state.customer?.driverProfile || {};
+  const loads = state.records.trips || [];
+  const expenses = state.records.expenses || [];
+  const settlements = state.records.settlements || [];
+  const docs = state.documents || [];
+  const alerts = state.complianceAlerts || [];
+  content.innerHTML = `
+    <div class="driver-mobile">
+      <section class="panel">
+        <div class="panel-header"><h2>My Loads</h2><span class="muted">${loads.length} assigned</span></div>
+        <div class="panel-body">
+          <div class="list">
+            ${loads.map((load) => `
+              <article class="list-item">
+                <div>
+                  <strong>${load.description || "Assigned load"}</strong>
+                  <span>${load.origin || "Pickup TBD"} to ${load.destination || "Delivery TBD"}</span>
+                  <span>${formatDate(load.date)} · ${load.status || "Scheduled"} · ${number(load.miles || 0)} miles</span>
+                </div>
+              </article>
+            `).join("") || `<p class="muted">No assigned loads are available yet.</p>`}
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>Upload Documents</h2><span class="muted">BOLs, PODs, receipts, and load files</span></div>
+        <div class="panel-body driver-actions">
+          <form class="inline-form document-form" id="documentForm">
+            <select name="type">
+              <option value="bol">BOL / POD</option>
+              <option value="rateCon">Other load document</option>
+            </select>
+            <input name="file" type="file" accept=".pdf,.png,.jpg,.jpeg,.txt" required />
+            <button class="primary-button" type="submit">Upload</button>
+          </form>
+          <form class="inline-form document-form" id="receiptForm">
+            <select name="category">
+              <option value="">Receipt category</option>
+              <option value="Fuel">Fuel</option>
+              <option value="Road costs">Road costs</option>
+              <option value="Maintenance">Maintenance</option>
+              <option value="General">General</option>
+            </select>
+            <input name="file" type="file" accept=".pdf,.png,.jpg,.jpeg,.txt" required />
+            <button class="primary-button" type="submit">Submit Expense</button>
+          </form>
+          ${state.accountMessage ? `<p class="form-message">${state.accountMessage}</p>` : ""}
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>Report Detention or Delay</h2></div>
+        <div class="panel-body">
+          <form class="support-form" id="driverDelayForm">
+            <label>Type<select name="type"><option>Delay</option><option>Detention</option></select></label>
+            <label>Load<select name="loadId"><option value="">Select load</option>${loads.map((load) => `<option value="${load.id}">${load.description || load.id}</option>`).join("")}</select></label>
+            <label>Location<input name="location" type="text" placeholder="City, state or facility" /></label>
+            <label class="support-message-field">Notes<textarea name="notes" rows="4" placeholder="What happened?"></textarea></label>
+            <button class="primary-button" type="submit">Submit Report</button>
+          </form>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>Settlements</h2><span class="muted">Your statement only</span></div>
+        <div class="panel-body">
+          <div class="list">
+            ${settlements.map((item) => `<article class="list-item"><div><strong>${item.driverName}</strong><span>${driverPayLabel(item)}</span><span>${item.status}</span></div></article>`).join("") || `<p class="muted">No settlement statement is available yet.</p>`}
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>My Compliance</h2></div>
+        <div class="panel-body">
+          <div class="list">
+            ${alerts.map(renewalAlertItem).join("") || `<p class="muted">No compliance expirations need attention right now.</p>`}
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>My Profile</h2><span class="muted">${profile.truckNumber || "No truck assigned"}</span></div>
+        <div class="panel-body">
+          <form class="inline-form" id="driverProfileForm">
+            <input name="phone" type="tel" value="${escapeAttribute(profile.phone || "")}" placeholder="Phone" />
+            <input name="emergencyContact" type="text" value="${escapeAttribute(profile.emergencyContact || "")}" placeholder="Emergency contact" />
+            <button class="primary-button" type="submit">Update</button>
+          </form>
+        </div>
+      </section>
+    </div>
   `;
 }
 
 function renderContent() {
+  if (isDriverAccount()) {
+    sectionTitle.textContent = "Driver Account";
+    sectionEyebrow.textContent = "Assigned loads, documents, expenses, and settlements";
+    renderDriverMobile();
+    renderIcons(content);
+    return;
+  }
   if (state.view === "dashboard") renderDashboard();
   if (state.view === "trips") renderTableView("trips", "Trip Ledger", [
     { label: "Date", render: (item) => formatDate(item.date) },
@@ -1432,6 +1807,26 @@ function renderContent() {
 function currentCollection() {
   if (["trips", "expenses", "invoices", "maintenance"].includes(state.view)) return state.view;
   return "trips";
+}
+
+async function startMfaSetup() {
+  const payload = await api("/api/mfa/setup", { method: "POST" });
+  state.mfaSetup = payload;
+  state.accountMessage = `Add this secret to your authenticator app: ${payload.secret}`;
+  renderContent();
+}
+
+async function enableMfa(event) {
+  event.preventDefault();
+  const formData = new FormData(event.target);
+  const payload = await api("/api/mfa/enable", {
+    method: "POST",
+    body: JSON.stringify({ code: formData.get("code") })
+  });
+  state.customer = payload.customer;
+  state.mfaSetup = null;
+  state.accountMessage = `MFA enabled. Recovery codes: ${payload.recoveryCodes.join(", ")}`;
+  renderContent();
 }
 
 function openEntryDialog(type = currentCollection().replace("s", "")) {
@@ -1632,12 +2027,31 @@ async function submitSupportIssue(form) {
       body: JSON.stringify({
         category: formData.get("category"),
         subject: formData.get("subject"),
-        message: formData.get("message")
+        message: formData.get("message"),
+        requestSupportAccess: formData.get("requestSupportAccess") === "on",
+        supportAccessDurationHours: formData.get("supportAccessDurationHours"),
+        restrictSensitiveData: formData.get("restrictSensitiveData") === "on"
       })
     });
     if (state.customer) state.customer.supportIssues = payload.supportIssues;
+    if (payload.customer) state.customer = payload.customer;
     form.reset();
-    state.accountMessage = "Issue sent. Support can now review it from the Owner/Admin dashboard.";
+    state.accountMessage = payload.supportAccess
+      ? "Issue sent. Temporary support access is approved and can be revoked here any time."
+      : "Issue sent. Support can review the ticket without account access.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
+async function revokeSupportAccess(id) {
+  try {
+    state.accountMessage = "";
+    const payload = await api(`/api/support/access-grants/${id}/revoke`, { method: "POST" });
+    if (payload.customer) state.customer = payload.customer;
+    state.accountMessage = "Support access revoked.";
     renderContent();
   } catch (error) {
     state.accountMessage = error.message;
@@ -1675,6 +2089,8 @@ async function inviteDriver(form) {
         name: formData.get("name"),
         email: formData.get("email"),
         role: formData.get("role"),
+        permissions: formData.getAll("permissions"),
+        inviteExpiresAt: formData.get("inviteExpiresAt"),
         truckNumber: formData.get("truckNumber"),
         payType: formData.get("payType"),
         ratePerMile: formData.get("ratePerMile"),
@@ -1689,6 +2105,71 @@ async function inviteDriver(form) {
     state.accountMessage = error.message;
     renderContent();
   }
+}
+
+async function resendDriverInvite(id) {
+  try {
+    const payload = await api(`/api/drivers/${id}/resend`, { method: "POST" });
+    state.customer = payload.customer;
+    state.accountMessage = payload.inviteLink ? `Invite resent. Use the email button to send ${location.origin}${payload.inviteLink}` : "Invite resent.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
+async function cancelDriverInvite(id) {
+  try {
+    const payload = await api(`/api/drivers/${id}/cancel`, { method: "POST" });
+    state.customer = payload.customer;
+    state.accountMessage = "Invitation cancelled.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
+async function accountAccessAction(id, action, options = {}) {
+  try {
+    const payload = await api(`/api/drivers/${id}/${action}`, {
+      method: options.method || "POST",
+      body: options.body ? JSON.stringify(options.body) : undefined
+    });
+    if (payload.customer) state.customer = payload.customer;
+    state.accountMessage = payload.inviteLink ? `Action complete. Send link: ${location.origin}${payload.inviteLink}` : "Account access updated.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
+async function changeDriverRole(id) {
+  const current = (state.customer?.drivers || []).find((driver) => driver.id === id);
+  const role = window.prompt(`Enter role: ${Object.keys(accountAccessRoles).join(", ")}`, current?.role || "driver");
+  if (!role) return;
+  await accountAccessAction(id, "role", { method: "PATCH", body: { role, permissions: roleDefaultPermissions[role] || [] } });
+}
+
+async function showDriverHistory(id) {
+  try {
+    const payload = await api(`/api/drivers/${id}/history`);
+    const lines = (payload.history || []).map((item) => `${new Date(item.createdAt).toLocaleString()} - ${item.action} by ${item.actorName}${item.details ? `: ${item.details}` : ""}`);
+    state.accountMessage = lines.length ? lines.join(" | ") : "No access history recorded yet.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
+function updateInvitePermissionEditor(select) {
+  const form = select.closest("form");
+  const editor = form?.querySelector("#permissionEditor");
+  if (!form || !editor) return;
+  editor.outerHTML = renderPermissionEditor(select.value);
 }
 
 async function removeTruck(id) {
@@ -1767,6 +2248,47 @@ async function uploadReceipt(form) {
     state.accountMessage = payload.expense?.amount
       ? `Receipt scanned. Expense added for ${money(payload.expense.amount)}.`
       : "Receipt scanned and expense added. Please review the amount.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
+async function updateDriverProfile(form) {
+  try {
+    const formData = new FormData(form);
+    const payload = await api("/api/driver/profile", {
+      method: "PATCH",
+      body: JSON.stringify({
+        phone: formData.get("phone"),
+        emergencyContact: formData.get("emergencyContact")
+      })
+    });
+    state.customer = payload.customer;
+    if (payload.records) state.records = payload.records;
+    state.accountMessage = "Profile updated.";
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
+async function reportDriverDelay(form) {
+  try {
+    const formData = new FormData(form);
+    const payload = await api("/api/driver/detention-delay", {
+      method: "POST",
+      body: JSON.stringify({
+        type: formData.get("type"),
+        loadId: formData.get("loadId"),
+        location: formData.get("location"),
+        notes: formData.get("notes")
+      })
+    });
+    if (payload.records) state.records = payload.records;
+    state.accountMessage = "Report submitted.";
     renderContent();
   } catch (error) {
     state.accountMessage = error.message;
@@ -1998,6 +2520,15 @@ document.addEventListener("click", (event) => {
   const planButton = event.target.closest("[data-plan]");
   const deleteTruckButton = event.target.closest("[data-delete-truck]");
   const deleteDriverButton = event.target.closest("[data-delete-driver]");
+  const resendDriverButton = event.target.closest("[data-resend-driver]");
+  const cancelDriverButton = event.target.closest("[data-cancel-driver]");
+  const changeDriverRoleButton = event.target.closest("[data-change-driver-role]");
+  const resetDriverMfaButton = event.target.closest("[data-reset-driver-mfa]");
+  const suspendDriverButton = event.target.closest("[data-suspend-driver]");
+  const reactivateDriverButton = event.target.closest("[data-reactivate-driver]");
+  const forceDriverPasswordButton = event.target.closest("[data-force-driver-password]");
+  const signoutDriverButton = event.target.closest("[data-signout-driver]");
+  const driverHistoryButton = event.target.closest("[data-driver-history]");
   const deleteDocumentButton = event.target.closest("[data-delete-document]");
   const deleteComplianceButton = event.target.closest("[data-delete-compliance]");
   const rescanComplianceButton = event.target.closest("[data-rescan-compliance]");
@@ -2008,7 +2539,9 @@ document.addEventListener("click", (event) => {
   const markPaidButton = event.target.closest("[data-mark-first-paid]");
   const stripeCheckoutButton = event.target.closest("[data-stripe-checkout]");
   const plaidLinkButton = event.target.closest("[data-plaid-link]");
+  const mfaSetupButton = event.target.closest("[data-mfa-setup]");
   const gpsToggleButton = event.target.closest("[data-gps-toggle]");
+  const revokeSupportAccessButton = event.target.closest("[data-revoke-support-access]");
   if (navButton) setView(navButton.dataset.view);
   if (shortcut) setView(shortcut.dataset.viewShortcut);
   if (deleteButton) deleteEntry(deleteButton.dataset.delete);
@@ -2016,6 +2549,15 @@ document.addEventListener("click", (event) => {
   if (planButton) updatePlan(planButton.dataset.plan);
   if (deleteTruckButton) removeTruck(deleteTruckButton.dataset.deleteTruck);
   if (deleteDriverButton) removeDriver(deleteDriverButton.dataset.deleteDriver);
+  if (resendDriverButton) resendDriverInvite(resendDriverButton.dataset.resendDriver);
+  if (cancelDriverButton) cancelDriverInvite(cancelDriverButton.dataset.cancelDriver);
+  if (changeDriverRoleButton) changeDriverRole(changeDriverRoleButton.dataset.changeDriverRole);
+  if (resetDriverMfaButton) accountAccessAction(resetDriverMfaButton.dataset.resetDriverMfa, "reset-mfa");
+  if (suspendDriverButton) accountAccessAction(suspendDriverButton.dataset.suspendDriver, "suspend");
+  if (reactivateDriverButton) accountAccessAction(reactivateDriverButton.dataset.reactivateDriver, "reactivate");
+  if (forceDriverPasswordButton) accountAccessAction(forceDriverPasswordButton.dataset.forceDriverPassword, "force-password-reset");
+  if (signoutDriverButton) accountAccessAction(signoutDriverButton.dataset.signoutDriver, "signout");
+  if (driverHistoryButton) showDriverHistory(driverHistoryButton.dataset.driverHistory);
   if (deleteDocumentButton) removeDocument(deleteDocumentButton.dataset.deleteDocument);
   if (deleteComplianceButton) removeComplianceDocument(deleteComplianceButton.dataset.deleteCompliance);
   if (rescanComplianceButton) rescanComplianceDocument(rescanComplianceButton.dataset.rescanCompliance);
@@ -2030,6 +2572,11 @@ document.addEventListener("click", (event) => {
   if (markPaidButton) markFirstMonthPaid();
   if (stripeCheckoutButton) startStripeCheckout(stripeCheckoutButton.dataset.stripeCheckout);
   if (plaidLinkButton) startPlaidLink();
+  if (revokeSupportAccessButton) revokeSupportAccess(revokeSupportAccessButton.dataset.revokeSupportAccess);
+  if (mfaSetupButton) startMfaSetup().catch((error) => {
+    state.accountMessage = error.message;
+    renderContent();
+  });
   if (gpsToggleButton) {
     if (gpsToggleButton.dataset.gpsToggle === "start") startGpsSharing();
     if (gpsToggleButton.dataset.gpsToggle === "stop") stopGpsSharing();
@@ -2049,6 +2596,13 @@ document.addEventListener("submit", (event) => {
     event.preventDefault();
     updatePaymentInfo(event.target);
   }
+  if (event.target.id === "mfaEnableForm") {
+    event.preventDefault();
+    enableMfa(event).catch((error) => {
+      state.accountMessage = error.message;
+      renderContent();
+    });
+  }
   if (event.target.id === "supportIssueForm") {
     event.preventDefault();
     submitSupportIssue(event.target);
@@ -2060,6 +2614,14 @@ document.addEventListener("submit", (event) => {
   if (event.target.id === "receiptForm") {
     event.preventDefault();
     uploadReceipt(event.target);
+  }
+  if (event.target.id === "driverProfileForm") {
+    event.preventDefault();
+    updateDriverProfile(event.target);
+  }
+  if (event.target.id === "driverDelayForm") {
+    event.preventDefault();
+    reportDriverDelay(event.target);
   }
   if (event.target.id === "complianceForm") {
     event.preventDefault();
@@ -2104,6 +2666,37 @@ document.querySelector("#quickAddBtn").addEventListener("click", () => openEntry
 document.querySelector("#saveEntryBtn").addEventListener("click", addEntry);
 document.querySelector("#exportBtn").addEventListener("click", exportRecords);
 document.querySelector("#logoutBtn").addEventListener("click", signOut);
+document.querySelector("#logoutAllBtn").addEventListener("click", signOutEverywhere);
+togglePassword.addEventListener("click", () => {
+  const showing = authPassword.type === "text";
+  authPassword.type = showing ? "password" : "text";
+  togglePassword.textContent = showing ? "Show" : "Hide";
+  togglePassword.setAttribute("aria-pressed", String(!showing));
+});
+forgotPasswordBtn.addEventListener("click", () => {
+  (async () => {
+    const formData = new FormData(authForm);
+    const email = normalizeEmail(formData.get("email"));
+    if (!email) {
+      authError.textContent = "Enter your email address first.";
+      return;
+    }
+    const payload = await api("/api/password-reset/request", {
+      method: "POST",
+      body: JSON.stringify({ email })
+    });
+    authError.textContent = payload.resetUrl
+      ? `${payload.message} ${payload.resetUrl}`
+      : payload.message;
+  })().catch((error) => {
+    authError.textContent = error.message;
+  });
+});
+verifyMfaBtn.addEventListener("click", () => {
+  verifyMfaChallenge().catch((error) => {
+    authError.textContent = error.message;
+  });
+});
 authForm.addEventListener("submit", (event) => {
   event.preventDefault();
   (async () => {
@@ -2111,18 +2704,36 @@ authForm.addEventListener("submit", (event) => {
       authSubmit.disabled = true;
       authError.textContent = "";
       const path = state.authMode === "signup" ? "/api/signup" : "/api/login";
-    const formData = new FormData(authForm);
+      const formData = new FormData(authForm);
       const payload = await api(path, {
         method: "POST",
         body: JSON.stringify({
           businessName: formData.get("businessName"),
+          dotNumber: formData.get("dotNumber"),
+          companyPhone: formData.get("companyPhone"),
+          companyAddress: formData.get("companyAddress"),
+          adminName: formData.get("adminName"),
+          adminRole: formData.get("adminRole"),
           email: normalizeEmail(formData.get("email")),
           password: formData.get("password"),
           subscriptionTier: formData.get("subscriptionTier"),
-          referralCode: formData.get("referralCode")
+          referralCode: formData.get("referralCode"),
+          acceptedPolicies: formData.has("acceptedPolicies"),
+          rememberMe: formData.has("rememberMe")
         })
       });
+      if (payload.mfaRequired) {
+        showMfaChallenge(payload, formData.has("rememberMe"));
+        return;
+      }
       authForm.reset();
+      if (state.authMode === "signup") {
+        setAuthMode("signin");
+        authError.textContent = payload.verifyUrl
+          ? `Account created. Verify the administrator email before signing in: ${payload.verifyUrl}`
+          : "Account created. Verify the administrator email before signing in.";
+        return;
+      }
       showDashboard(payload.customer, payload.records);
     } catch (error) {
       authError.textContent = error.message;
@@ -2130,6 +2741,10 @@ authForm.addEventListener("submit", (event) => {
       authSubmit.disabled = false;
     }
   })();
+});
+
+document.addEventListener("change", (event) => {
+  if (event.target.matches("[data-permission-role]")) updateInvitePermissionEditor(event.target);
 });
 
 renderIcons();
