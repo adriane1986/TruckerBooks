@@ -23,6 +23,7 @@ const plaidEnv = String(process.env.PLAID_ENV || "sandbox").trim().toLowerCase()
 const plaidProducts = String(process.env.PLAID_PRODUCTS || "transactions").split(",").map((item) => item.trim()).filter(Boolean);
 const plaidConfigured = Boolean(plaidClientId && plaidSecret);
 const mfaDisabled = ["true", "1", "yes", "on"].includes(String(process.env.DISABLE_MFA || "").trim().toLowerCase());
+const emailVerificationDisabled = ["true", "1", "yes", "on"].includes(String(process.env.DISABLE_EMAIL_VERIFICATION || "").trim().toLowerCase());
 const trialDays = 7;
 const sessionMaxAgeSeconds = 60 * 60 * 8;
 const rememberedSessionMaxAgeSeconds = 60 * 60 * 24 * 30;
@@ -2436,7 +2437,7 @@ async function handleApi(req, res, pathname) {
     const referrer = findReferrer(db, body.referralCode);
     const createdAt = new Date().toISOString();
     const companyId = crypto.randomUUID();
-    const emailVerificationToken = crypto.randomBytes(24).toString("hex");
+    const emailVerificationToken = emailVerificationDisabled ? "" : crypto.randomBytes(24).toString("hex");
     const newUser = {
       id: companyId,
       companyId,
@@ -2447,8 +2448,8 @@ async function handleApi(req, res, pathname) {
       adminName,
       adminRole,
       email,
-      emailVerified: false,
-      emailVerifiedAt: "",
+      emailVerified: emailVerificationDisabled,
+      emailVerifiedAt: emailVerificationDisabled ? createdAt : "",
       emailVerificationToken,
       emailVerificationSentAt: createdAt,
       acceptedPolicies: true,
@@ -2478,8 +2479,8 @@ async function handleApi(req, res, pathname) {
     writeDb(db);
     return sendJson(res, 201, {
       ok: true,
-      message: "Company account created. Verify the administrator email before signing in.",
-      verifyUrl: `${originForRequest(req)}/verify-email?token=${emailVerificationToken}`
+      message: emailVerificationDisabled ? "Company account created. You can sign in now." : "Company account created. Verify the administrator email before signing in.",
+      verifyUrl: emailVerificationDisabled ? "" : `${originForRequest(req)}/verify-email?token=${emailVerificationToken}`
     });
   }
 
@@ -2519,10 +2520,15 @@ async function handleApi(req, res, pathname) {
       writeDb(db);
       return sendError(res, 401, genericLoginError);
     }
-    if (userMatch.emailVerified === false) {
+    if (userMatch.emailVerified === false && !emailVerificationDisabled) {
       auditLog(db, req, { company: userMatch, user: userMatch, action: "Failed login", status: "failure", affectedRecord: auditRecord("company_user", userMatch), details: "Company user email is not verified." });
       writeDb(db);
       return sendError(res, 403, genericLoginError);
+    }
+    if (userMatch.emailVerified === false && emailVerificationDisabled) {
+      userMatch.emailVerified = true;
+      userMatch.emailVerifiedAt = new Date().toISOString();
+      userMatch.emailVerificationToken = "";
     }
     userMatch.lastLoginAt = new Date().toISOString();
     clearLoginFailures(db, "customer", email);
