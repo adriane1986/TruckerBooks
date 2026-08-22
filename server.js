@@ -1352,10 +1352,26 @@ function chooseBestComplianceDate({ type, expirationDate, dates = [], dateCandid
     if (latestCabCardDate) return latestCabCardDate;
   }
 
+  if (type === "dotPhysical") {
+    const dotExpirationWords = /(medical\s+examiner|medical\s+certificate|medical\s+card|certificate\s+exp|expiration|expires|valid\s+until|qualified\s+until|qualified\s+through)/i;
+    const dotExpiration = labeled
+      .filter((item) => dotExpirationWords.test(item.label))
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .at(-1);
+    if (dotExpiration) return dotExpiration.date;
+
+    const dotDates = [
+      ...dates.map(normalizeDate),
+      ...labeled.map((item) => item.date)
+    ].filter(Boolean);
+    const latestDotDate = [...new Set(dotDates)].sort().at(-1);
+    if (latestDotDate) return latestDotDate;
+  }
+
   const explicit = normalizeDate(expirationDate || "");
   if (explicit) return explicit;
 
-  const expirationWords = /(exp|expires|expiration|valid until|valid through|thru|through|to|end|ending|coverage end|policy exp|policy expires|policy expiration|policy period|medical card|certification expires|renewal)/i;
+  const expirationWords = /(exp|expires|expiration|valid until|valid through|thru|through|to|end|ending|coverage end|policy exp|policy expires|policy expiration|policy period|medical examiner|medical certificate|medical card|certification expires|qualified until|qualified through|renewal)/i;
   const issueWords = /(issue|issued|effective|start|begin|created|printed|invoice|payment|paid|signature|signed)/i;
 
   const labeledExpiration = labeled
@@ -1418,7 +1434,7 @@ function parseDocumentText(text, type) {
 function parseComplianceText(text, type = "") {
   const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
   const expiration = firstMatch(clean, [
-    /(?:expiration date|expiration|expires on|expires|expiry date|valid until|medical card expires|policy exp\.?|policy expires|policy expiration|coverage end date|coverage ends|policy end date|end date|valid through|thru|through)\s*:?\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
+    /(?:medical examiner'?s?\s+certificate\s+expiration\s+date|medical examiner\s+certificate\s+expiration|medical certificate expiration|certificate expires|qualified until|expiration date|expiration|expires on|expires|expiry date|valid until|medical card expires|policy exp\.?|policy expires|policy expiration|coverage end date|coverage ends|policy end date|end date|valid through|thru|through)\s*:?\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
     /(?:exp\.?|expires)\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
     /(?:from|effective)\s+[A-Za-z0-9/.,\s-]{0,40}\s(?:to|through|thru|-)\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[-\s][A-Za-z]{3,9}[-\s]\d{2,4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
     /(?:period|term)\s*:?\s*[A-Za-z0-9/.,\s-]{0,40}\s(?:to|through|thru|-)\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[-\s][A-Za-z]{3,9}[-\s]\d{2,4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i
@@ -1624,7 +1640,10 @@ async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
       }
     };
   }
-  const scan = await runAiScanner(buffer, mimeType, "This is a Compliance upload. Prioritize renewal, expiration, valid-through, policy end, coverage end, Policy Exp., DOT physical expiration, UCR, 2290 tax period, IRP Cab Card validity period end date, and Clearinghouse MVR report/run dates. Clearinghouse MVR should be run every 12 months, so use the report/run/completed/query date plus 12 months as the renewal date when no expiration is printed.", openaiVisionModel);
+  const dotPhysicalContext = complianceType === "dotPhysical"
+    ? "This is a DOT Physical / Medical Examiner's Certificate upload. Read the card visually if the PDF has no text layer. Use the date labeled Medical Examiner's Certificate Expiration Date, Medical Examiner Certificate Expiration, Medical Card Expires, Certificate Expires, Expiration Date, or Qualified Until. Do not use the examination date, signature date, issue date, registry number, or driver's license date. If the card has an examination date and an expiration date, choose the later date."
+    : "";
+  const scan = await runAiScanner(buffer, mimeType, `This is a Compliance upload. Prioritize renewal, expiration, valid-through, policy end, coverage end, Policy Exp., DOT physical expiration, UCR, 2290 tax period, IRP Cab Card validity period end date, and Clearinghouse MVR report/run dates. ${dotPhysicalContext} Clearinghouse MVR should be run every 12 months, so use the report/run/completed/query date plus 12 months as the renewal date when no expiration is printed.`, openaiVisionModel);
   const local = parseComplianceText(scan.text, complianceType);
   const generic = scan.extracted || {};
   const aiExpiration = normalizeDate(generic.expirationDate || "");
@@ -1762,7 +1781,8 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
     "dateCandidates must be an array of objects like {date: 'YYYY-MM-DD', label: 'nearby text label or context'} for every visible date.",
     "Dates must be ISO YYYY-MM-DD. Amount must be a number.",
     "For compliance documents, expirationDate should be the renewal/expiration date.",
-    "For Insurance, DOT Physical, UCR, 2290, or Clearinghouse MVR documents, prioritize labels like Expiration Date, Expires, Valid Until, Policy Exp., Policy Period end date, Coverage End Date, Medical Card Expires, UCR year end, Form 2290 tax period ending date, MVR report date, Clearinghouse query date, ran date, completed date, and check date.",
+    "For Insurance, DOT Physical, UCR, 2290, or Clearinghouse MVR documents, prioritize labels like Expiration Date, Expires, Valid Until, Policy Exp., Policy Period end date, Coverage End Date, Medical Examiner's Certificate Expiration Date, Medical Card Expires, Certificate Expires, Qualified Until, UCR year end, Form 2290 tax period ending date, MVR report date, Clearinghouse query date, ran date, completed date, and check date.",
+    "For DOT Physical / Medical Examiner's Certificate cards, expirationDate must be the medical certificate expiration date. Do not use the examination date, signature date, issue date, or driver's license date. If the card shows multiple dates, choose the date labeled Medical Examiner's Certificate Expiration Date or the later certificate expiration date.",
     "Clearinghouse MVR should be run every 12 months. If no expiration date is printed, set expirationDate to 12 months after the report/run/completed/query date.",
     "For ACORD insurance certificates, read Policy Exp., the insurance table columns labeled EFF and EXP, or policy period end. Use the Policy Exp. or EXP date, not the EFF date.",
     "For IRP-Cab Card documents, use the ending date in the Validity Period/date range as expirationDate.",
@@ -1861,6 +1881,8 @@ async function runOpenAiExpirationOnlyScanner(buffer, mimeType, extractedText, c
   const prompt = [
     `This is a ${typeName} compliance document for a trucking business.`,
     "Find the document expiration, renewal, valid-through, coverage end, policy end, DOT physical expiration, UCR year end, 2290 tax period ending date, or Clearinghouse MVR report/run date.",
+    "For DOT Physical / Medical Examiner's Certificate cards, read the card visually if the PDF has no text layer. Return the date labeled Medical Examiner's Certificate Expiration Date, Medical Examiner Certificate Expiration, Medical Card Expires, Certificate Expires, Expiration Date, or Qualified Until.",
+    "For DOT Physical cards, do not return the examination date, signature date, issue date, or driver's license date. If the card has an examination date and an expiration date, return the later certificate expiration date.",
     "Clearinghouse MVR should be run every 12 months. If this is a Clearinghouse MVR document and no expiration date is printed, return a renewal date 12 months after the report/run/completed/query date.",
     "For ACORD certificates of liability insurance, read Policy Exp., the table columns labeled EFF and EXP, or policy period end. Use the Policy Exp. or EXP date as the expiration date.",
     "Insurance certificates often show dates in compact MM/DD/YYYY boxes near policy numbers. Use the later date in the EFF/EXP pair.",
