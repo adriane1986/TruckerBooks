@@ -84,7 +84,9 @@ const complianceTypes = {
   clearinghouseMvr: { id: "clearinghouseMvr", name: "Clearinghouse MVR" },
   ucr: { id: "ucr", name: "UCR" },
   form2290: { id: "form2290", name: "2290" },
+  iftaLicense: { id: "iftaLicense", name: "IFTA License" },
   irp: { id: "irp", name: "IRP" },
+  irpCabCard: { id: "irpCabCard", name: "IRP-Cab Card" },
   mcs150: { id: "mcs150", name: "MCS-150 Biennial Update" },
   w9: { id: "w9", name: "W9" },
   noa: { id: "noa", name: "NOA" }
@@ -1213,6 +1215,8 @@ function inferComplianceType(type, fileName = "") {
   if (/\bw-?9\b/.test(cleanName)) return "w9";
   if (/\bnoa\b|notice\s+of\s+assignment/.test(cleanName)) return "noa";
   if (/\bmcs-?150\b|biennial/.test(cleanName)) return "mcs150";
+  if (/\bcab\s*card\b|irp\s*[- ]?\s*cab\s*card/.test(cleanName)) return "irpCabCard";
+  if (/\bifta\s*license\b|\bifta\b/.test(cleanName)) return "iftaLicense";
   if (/\birp\b|international\s+registration\s+plan/.test(cleanName)) return "irp";
   return complianceTypes[cleanType] ? cleanType : "insurance";
 }
@@ -1293,12 +1297,21 @@ function extractLabeledDateCandidates(text) {
 }
 
 function chooseBestComplianceDate({ type, expirationDate, dates = [], dateCandidates = [] }) {
-  const explicit = normalizeDate(expirationDate || "");
-  if (explicit) return explicit;
-
   const labeled = dateCandidates
     .map((item) => ({ date: normalizeDate(item.date), label: String(item.label || "").toLowerCase() }))
     .filter((item) => item.date);
+
+  if (type === "clearinghouseMvr") {
+    const completedWords = /(mvr|clearinghouse|query|report|run|ran|completed|completion|check|checked|date|result)/i;
+    const completedDate = labeled
+      .filter((item) => completedWords.test(item.label))
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .at(-1)?.date || normalizeDate(expirationDate || "") || [...dates.map(normalizeDate).filter(Boolean)].sort().at(-1);
+    if (completedDate) return addMonthsIsoDate(completedDate, 12);
+  }
+
+  const explicit = normalizeDate(expirationDate || "");
+  if (explicit) return explicit;
 
   const expirationWords = /(exp|expires|expiration|valid until|valid through|thru|through|to|end|ending|coverage end|policy exp|policy expires|policy expiration|policy period|medical card|certification expires|renewal)/i;
   const issueWords = /(issue|issued|effective|start|begin|created|printed|invoice|payment|paid|signature|signed)/i;
@@ -1317,15 +1330,6 @@ function chooseBestComplianceDate({ type, expirationDate, dates = [], dateCandid
   if (type === "form2290") {
     const years = labeled.map((item) => Number(item.date.slice(0, 4))).sort();
     if (years.length) return `${years.at(-1)}-06-30`;
-  }
-
-  if (type === "clearinghouseMvr") {
-    const runWords = /(mvr|clearinghouse|query|report|run|ran|completed|check|checked|date|result)/i;
-    const runDate = labeled
-      .filter((item) => runWords.test(item.label))
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .at(-1)?.date || [...dates.map(normalizeDate).filter(Boolean)].sort().at(-1);
-    if (runDate) return addMonthsIsoDate(runDate, 12);
   }
 
   const cleanDates = [
@@ -3772,12 +3776,18 @@ async function handleApi(req, res, pathname) {
     const body = await readBody(req);
     const document = findCompanyRecord(user, user.complianceDocuments, id);
     if (!document) return sendError(res, 404, "Compliance document not found.");
-    const expirationDate = normalizeDate(String(body.expirationDate || ""));
-    if (!expirationDate) return sendError(res, 400, "Enter a valid expiration date.");
+    const enteredDate = normalizeDate(String(body.expirationDate || ""));
+    if (!enteredDate) return sendError(res, 400, "Enter a valid expiration date.");
+    const expirationDate = document.type === "clearinghouseMvr" ? addMonthsIsoDate(enteredDate, 12) : enteredDate;
     document.expirationDate = expirationDate;
     document.manualExpirationDate = true;
-    document.extracted = { ...(document.extracted || {}), expirationDate, dateDetection: "manual" };
-    document.aiScan = { ...(document.aiScan || {}), expirationDate, dateDetection: "manual" };
+    document.extracted = {
+      ...(document.extracted || {}),
+      expirationDate,
+      completedDate: document.type === "clearinghouseMvr" ? enteredDate : document.extracted?.completedDate || "",
+      dateDetection: document.type === "clearinghouseMvr" ? "manual_completed_date_plus_1_year" : "manual"
+    };
+    document.aiScan = { ...(document.aiScan || {}), expirationDate, dateDetection: document.extracted.dateDetection };
     user.updatedAt = new Date().toISOString();
     writeDb(db);
     return sendJson(res, 200, {

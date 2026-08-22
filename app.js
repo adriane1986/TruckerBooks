@@ -79,7 +79,9 @@ const complianceTypes = {
   clearinghouseMvr: "Clearinghouse MVR",
   ucr: "UCR",
   form2290: "2290",
+  iftaLicense: "IFTA License",
   irp: "IRP",
+  irpCabCard: "IRP-Cab Card",
   mcs150: "MCS-150",
   w9: "W9",
   noa: "NOA"
@@ -1236,7 +1238,7 @@ function renderCompliance() {
       : "The backend does not see OPENAI_API_KEY. Add it to the Railway app service Variables, then redeploy.";
   content.innerHTML = `
     <div class="metric-grid">
-      ${metric("Compliance files", documents.length, "Insurance, DOT, Clearinghouse MVR, UCR, 2290, W9, NOA", "shield")}
+      ${metric("Compliance files", documents.length, "Insurance, DOT, Clearinghouse MVR, UCR, 2290, IFTA License, IRP, W9, NOA", "shield")}
       ${metric("Renewal alerts", alerts.length, "Includes IFTA deadlines", "receipt")}
       ${metric("IFTA due dates", "Q1 Apr 30", "Q2 Jul 31 / Q3 Oct 31 / Q4 Jan 31", "bar-chart")}
       ${metric("Next due", alerts[0] ? formatDate(alerts[0].date) : "Clear", alerts[0]?.label || "No urgent renewals", "file-text")}
@@ -1311,7 +1313,7 @@ function renderCompliance() {
                   <strong>${isCarrierPacketDocument(item) ? "No renewal needed" : item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong>
                   ${item.expirationDate || isCarrierPacketDocument(item) ? "" : `
                     <form class="mini-date-form" data-expiration-form="${item.id}">
-                      <input type="date" name="expirationDate" required />
+                      <label>${item.type === "clearinghouseMvr" ? "Completed date" : "Expiration date"}<input type="date" name="expirationDate" required /></label>
                       <button class="chip-button" type="submit">Save</button>
                     </form>
                   `}
@@ -2576,7 +2578,10 @@ async function saveComplianceExpiration(form) {
     });
     state.complianceDocuments = payload.complianceDocuments;
     state.complianceAlerts = payload.complianceAlerts;
-    state.accountMessage = "Expiration date saved.";
+    const updated = payload.complianceDocuments?.find((item) => item.id === form.dataset.expirationForm);
+    state.accountMessage = updated?.type === "clearinghouseMvr"
+      ? `Clearinghouse renewal saved for ${formatDate(updated.expirationDate)}.`
+      : "Expiration date saved.";
     renderContent();
   } catch (error) {
     state.accountMessage = error.message;
