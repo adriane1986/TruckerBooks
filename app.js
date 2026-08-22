@@ -80,7 +80,6 @@ const complianceTypes = {
   ucr: "UCR",
   form2290: "2290",
   iftaLicense: "IFTA License",
-  irp: "IRP",
   irpCabCard: "IRP-Cab Card",
   mcs150: "MCS-150",
   w9: "W9",
@@ -1238,7 +1237,7 @@ function renderCompliance() {
       : "The backend does not see OPENAI_API_KEY. Add it to the Railway app service Variables, then redeploy.";
   content.innerHTML = `
     <div class="metric-grid">
-      ${metric("Compliance files", documents.length, "Insurance, DOT, Clearinghouse MVR, UCR, 2290, IFTA License, IRP, W9, NOA", "shield")}
+      ${metric("Compliance files", documents.length, "Insurance, DOT, Clearinghouse MVR, UCR, 2290, IFTA License, IRP-Cab Card, W9, NOA", "shield")}
       ${metric("Renewal alerts", alerts.length, "Includes IFTA deadlines", "receipt")}
       ${metric("IFTA due dates", "Q1 Apr 30", "Q2 Jul 31 / Q3 Oct 31 / Q4 Jan 31", "bar-chart")}
       ${metric("Next due", alerts[0] ? formatDate(alerts[0].date) : "Clear", alerts[0]?.label || "No urgent renewals", "file-text")}

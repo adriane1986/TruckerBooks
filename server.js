@@ -85,7 +85,6 @@ const complianceTypes = {
   ucr: { id: "ucr", name: "UCR" },
   form2290: { id: "form2290", name: "2290" },
   iftaLicense: { id: "iftaLicense", name: "IFTA License" },
-  irp: { id: "irp", name: "IRP" },
   irpCabCard: { id: "irpCabCard", name: "IRP-Cab Card" },
   mcs150: { id: "mcs150", name: "MCS-150 Biennial Update" },
   w9: { id: "w9", name: "W9" },
@@ -1217,7 +1216,6 @@ function inferComplianceType(type, fileName = "") {
   if (/\bmcs-?150\b|biennial/.test(cleanName)) return "mcs150";
   if (/\bcab\s*card\b|irp\s*[- ]?\s*cab\s*card/.test(cleanName)) return "irpCabCard";
   if (/\bifta\s*license\b|\bifta\b/.test(cleanName)) return "iftaLicense";
-  if (/\birp\b|international\s+registration\s+plan/.test(cleanName)) return "irp";
   return complianceTypes[cleanType] ? cleanType : "insurance";
 }
 
@@ -1264,6 +1262,38 @@ function normalizeDate(value) {
   if (!value) return "";
   const parsed = new Date(value);
   if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  const monthMap = {
+    jan: "01",
+    january: "01",
+    feb: "02",
+    february: "02",
+    mar: "03",
+    march: "03",
+    apr: "04",
+    april: "04",
+    may: "05",
+    jun: "06",
+    june: "06",
+    jul: "07",
+    july: "07",
+    aug: "08",
+    august: "08",
+    sep: "09",
+    sept: "09",
+    september: "09",
+    oct: "10",
+    october: "10",
+    nov: "11",
+    november: "11",
+    dec: "12",
+    december: "12"
+  };
+  const dmy = String(value).match(/\b(\d{1,2})[-\s](Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)[-\s](\d{2,4})\b/i);
+  if (dmy) {
+    const year = dmy[3].length === 2 ? `20${dmy[3]}` : dmy[3];
+    const month = monthMap[dmy[2].toLowerCase().replace(".", "")];
+    if (month) return `${year}-${month}-${dmy[1].padStart(2, "0")}`;
+  }
   const parts = value.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
   if (!parts) return "";
   const year = parts[3].length === 2 ? `20${parts[3]}` : parts[3];
@@ -1273,6 +1303,7 @@ function normalizeDate(value) {
 function extractDateCandidates(text) {
   const matches = [
     ...text.matchAll(/\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+\d{1,2},?\s+\d{4}\b/gi),
+    ...text.matchAll(/\b\d{1,2}[-\s](?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)[-\s]\d{2,4}\b/gi),
     ...text.matchAll(/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/g),
     ...text.matchAll(/\b\d{4}-\d{1,2}-\d{1,2}\b/g)
   ].map((match) => normalizeDate(match[0])).filter(Boolean);
@@ -1281,7 +1312,7 @@ function extractDateCandidates(text) {
 }
 
 function extractLabeledDateCandidates(text) {
-  const datePattern = /(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2}/gi;
+  const datePattern = /(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[-\s](?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)[-\s]\d{2,4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2}/gi;
   return [...text.matchAll(datePattern)]
     .map((match) => {
       const date = normalizeDate(match[0]);
@@ -1308,6 +1339,17 @@ function chooseBestComplianceDate({ type, expirationDate, dates = [], dateCandid
       .sort((a, b) => a.date.localeCompare(b.date))
       .at(-1)?.date || normalizeDate(expirationDate || "") || [...dates.map(normalizeDate).filter(Boolean)].sort().at(-1);
     if (completedDate) return addMonthsIsoDate(completedDate, 12);
+  }
+
+  if (type === "irpCabCard") {
+    const cabCardDates = [
+      ...dates.map(normalizeDate),
+      ...labeled
+        .filter((item) => /(validity|valid|registration|irp|cab\s*card|period|to|through|thru)/i.test(item.label))
+        .map((item) => item.date)
+    ].filter(Boolean);
+    const latestCabCardDate = [...new Set(cabCardDates)].sort().at(-1);
+    if (latestCabCardDate) return latestCabCardDate;
   }
 
   const explicit = normalizeDate(expirationDate || "");
@@ -1373,17 +1415,18 @@ function parseDocumentText(text, type) {
   };
 }
 
-function parseComplianceText(text) {
+function parseComplianceText(text, type = "") {
   const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
   const expiration = firstMatch(clean, [
     /(?:expiration date|expiration|expires on|expires|expiry date|valid until|medical card expires|policy exp\.?|policy expires|policy expiration|coverage end date|coverage ends|policy end date|end date|valid through|thru|through)\s*:?\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
     /(?:exp\.?|expires)\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
-    /(?:from|effective)\s+[A-Za-z0-9/.,\s-]{0,40}\s(?:to|through|thru|-)\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
-    /(?:period|term)\s*:?\s*[A-Za-z0-9/.,\s-]{0,40}\s(?:to|through|thru|-)\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i
+    /(?:from|effective)\s+[A-Za-z0-9/.,\s-]{0,40}\s(?:to|through|thru|-)\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[-\s][A-Za-z]{3,9}[-\s]\d{2,4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
+    /(?:period|term)\s*:?\s*[A-Za-z0-9/.,\s-]{0,40}\s(?:to|through|thru|-)\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[-\s][A-Za-z]{3,9}[-\s]\d{2,4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i
   ]);
   const candidates = extractDateCandidates(clean);
   const labeledCandidates = extractLabeledDateCandidates(clean);
   const expirationDate = chooseBestComplianceDate({
+    type,
     expirationDate: normalizeDate(expiration),
     dates: candidates,
     dateCandidates: labeledCandidates
@@ -1581,8 +1624,8 @@ async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
       }
     };
   }
-  const scan = await runAiScanner(buffer, mimeType, "This is a Compliance upload. Prioritize renewal, expiration, valid-through, policy end, coverage end, Policy Exp., DOT physical expiration, UCR, 2290 tax period, and Clearinghouse MVR report/run dates. Clearinghouse MVR should be run every 12 months, so use the report/run/completed/query date plus 12 months as the renewal date when no expiration is printed.", openaiVisionModel);
-  const local = parseComplianceText(scan.text);
+  const scan = await runAiScanner(buffer, mimeType, "This is a Compliance upload. Prioritize renewal, expiration, valid-through, policy end, coverage end, Policy Exp., DOT physical expiration, UCR, 2290 tax period, IRP Cab Card validity period end date, and Clearinghouse MVR report/run dates. Clearinghouse MVR should be run every 12 months, so use the report/run/completed/query date plus 12 months as the renewal date when no expiration is printed.", openaiVisionModel);
+  const local = parseComplianceText(scan.text, complianceType);
   const generic = scan.extracted || {};
   const aiExpiration = normalizeDate(generic.expirationDate || "");
   const aiDateCandidates = Array.isArray(generic.dateCandidates) ? generic.dateCandidates : [];
@@ -1722,6 +1765,7 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
     "For Insurance, DOT Physical, UCR, 2290, or Clearinghouse MVR documents, prioritize labels like Expiration Date, Expires, Valid Until, Policy Exp., Policy Period end date, Coverage End Date, Medical Card Expires, UCR year end, Form 2290 tax period ending date, MVR report date, Clearinghouse query date, ran date, completed date, and check date.",
     "Clearinghouse MVR should be run every 12 months. If no expiration date is printed, set expirationDate to 12 months after the report/run/completed/query date.",
     "For ACORD insurance certificates, read Policy Exp., the insurance table columns labeled EFF and EXP, or policy period end. Use the Policy Exp. or EXP date, not the EFF date.",
+    "For IRP-Cab Card documents, use the ending date in the Validity Period/date range as expirationDate.",
     "If no explicit expiration label exists but there is a date range, use the later/end date as expirationDate.",
     "If multiple dates appear, choose the most likely future renewal/expiration/end date, not the issue date.",
     "For Rate Cons/BOLs, amount should be carrier pay, total carrier pay, linehaul plus fuel, or agreed rate.",
