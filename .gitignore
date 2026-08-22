@@ -7,6 +7,7 @@ data/
 # Local verification artifacts
 verification*.png
 test-rate-con.txt
+tmp_dot_images/
 
 # Environment files
 .env

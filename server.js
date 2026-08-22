@@ -1689,7 +1689,12 @@ async function runAiScanner(buffer, mimeType, documentContext = "", modelOverrid
   } else if (/pdf/i.test(mimeType)) {
     try {
       text = await extractPdfText(buffer);
-      scanStatus = text ? "Scanned" : "Stored - no PDF text found";
+      if (text.trim()) {
+        scanStatus = "Scanned";
+      } else {
+        text = await extractPdfImageOcrText(buffer).catch(() => "");
+        scanStatus = text.trim() ? "Scanned with PDF OCR" : "Stored - no PDF text found";
+      }
     } catch {
       scanStatus = "Stored - PDF scan failed";
     }
@@ -1933,6 +1938,96 @@ async function extractPdfText(buffer) {
     text += `${content.items.map((item) => item.str).join(" ")}\n`;
   }
   return text;
+}
+
+function pixelAt(image, x, y) {
+  const { data, width, height } = image;
+  if (x < 0 || y < 0 || x >= width || y >= height) return [255, 255, 255];
+  const pixelCount = width * height;
+  if (data.length >= pixelCount * 4) {
+    const offset = (y * width + x) * 4;
+    return [data[offset], data[offset + 1], data[offset + 2]];
+  }
+  if (data.length >= pixelCount * 3) {
+    const offset = (y * width + x) * 3;
+    return [data[offset], data[offset + 1], data[offset + 2]];
+  }
+  const gray = data[y * width + x] || 255;
+  return [gray, gray, gray];
+}
+
+function rotatedPixel(image, x, y, rotation) {
+  if (rotation === 90) return pixelAt(image, y, image.height - 1 - x);
+  if (rotation === 270) return pixelAt(image, image.width - 1 - y, x);
+  return pixelAt(image, x, y);
+}
+
+function imageDataToBmp(image, rotation = 0) {
+  const width = rotation === 90 || rotation === 270 ? image.height : image.width;
+  const height = rotation === 90 || rotation === 270 ? image.width : image.height;
+  const rowSize = Math.ceil((width * 3) / 4) * 4;
+  const pixelArraySize = rowSize * height;
+  const fileSize = 54 + pixelArraySize;
+  const bmp = Buffer.alloc(fileSize);
+  bmp.write("BM", 0);
+  bmp.writeUInt32LE(fileSize, 2);
+  bmp.writeUInt32LE(54, 10);
+  bmp.writeUInt32LE(40, 14);
+  bmp.writeInt32LE(width, 18);
+  bmp.writeInt32LE(height, 22);
+  bmp.writeUInt16LE(1, 26);
+  bmp.writeUInt16LE(24, 28);
+  bmp.writeUInt32LE(pixelArraySize, 34);
+
+  for (let y = 0; y < height; y += 1) {
+    const bmpY = height - 1 - y;
+    for (let x = 0; x < width; x += 1) {
+      const [r, g, b] = rotatedPixel(image, x, y, rotation);
+      const offset = 54 + bmpY * rowSize + x * 3;
+      bmp[offset] = b;
+      bmp[offset + 1] = g;
+      bmp[offset + 2] = r;
+    }
+  }
+  return bmp;
+}
+
+async function extractPdfEmbeddedImages(buffer) {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const { OPS } = pdfjs;
+  const document = await pdfjs.getDocument({ data: new Uint8Array(buffer), disableWorker: true }).promise;
+  const images = [];
+  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+    const page = await document.getPage(pageNumber);
+    const operatorList = await page.getOperatorList();
+    for (let index = 0; index < operatorList.fnArray.length; index += 1) {
+      const fn = operatorList.fnArray[index];
+      const args = operatorList.argsArray[index] || [];
+      let image = null;
+      if (fn === OPS.paintInlineImageXObject) {
+        image = args[0];
+      } else if (fn === OPS.paintImageXObject || fn === OPS.paintJpegXObject) {
+        image = await new Promise((resolve) => page.objs.get(args[0], resolve));
+      }
+      if (image?.data && image.width && image.height) images.push(image);
+    }
+  }
+  return images;
+}
+
+async function extractPdfImageOcrText(buffer) {
+  const tesseract = require("tesseract.js");
+  const images = await extractPdfEmbeddedImages(buffer);
+  const textParts = [];
+  for (const image of images.slice(0, 6)) {
+    for (const rotation of [0, 90, 270]) {
+      const bmp = imageDataToBmp(image, rotation);
+      const result = await tesseract.recognize(bmp, "eng");
+      const text = result?.data?.text || "";
+      if (text.trim()) textParts.push(text);
+    }
+  }
+  return textParts.join("\n");
 }
 
 function buildTripFromDocument(document) {
