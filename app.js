@@ -7,6 +7,7 @@ const navItems = [
   { id: "reports", label: "Reports", icon: "bar-chart", eyebrow: "Profit and tax summary" },
   { id: "userManagement", label: "User Management", icon: "users", eyebrow: "Subscription and access" },
   { id: "account", label: "Account", icon: "credit-card", eyebrow: "Admin payment settings", adminOnly: true },
+  { id: "multiCompany", label: "Multi-Company", icon: "users", eyebrow: "Manage authorized client accounts", adminOnly: true },
   { id: "support", label: "Support", icon: "help-circle", eyebrow: "Report issues and contact us" }
 ];
 
@@ -67,6 +68,7 @@ const state = {
   dateRange: "all",
   gpsWatchId: null,
   accountMessage: "",
+  selectedWorkspacePlan: "multiCompanyPro",
   pendingMfa: null,
   mfaSetup: null
 };
@@ -87,6 +89,8 @@ const accountAccessRoles = {
   driver: "Driver",
   bookkeeper: "Bookkeeper/Accountant",
   dispatcher: "Dispatcher",
+  consultant: "Consultant",
+  managementTeam: "Management Team",
   payrollManager: "Payroll Manager",
   complianceManager: "Compliance Manager",
   readOnly: "Read-Only User"
@@ -114,10 +118,14 @@ const roleDefaultPermissions = {
   driver: ["viewLoads", "createLoads"],
   dispatcher: ["viewLoads", "createLoads", "editLoads", "assignDrivers"],
   bookkeeper: ["viewFinancialInformation", "createInvoices", "approveExpenses", "exportReports"],
+  consultant: ["viewLoads", "viewFinancialInformation", "viewPayroll", "viewDriverQualificationFiles", "exportReports"],
+  managementTeam: ["viewLoads", "createLoads", "editLoads", "assignDrivers", "viewFinancialInformation", "createInvoices", "approveExpenses", "processSettlements", "viewPayroll", "viewDriverQualificationFiles", "exportReports"],
   payrollManager: ["viewFinancialInformation", "processSettlements", "viewPayroll", "exportReports"],
   complianceManager: ["viewDriverQualificationFiles", "deleteDocuments", "exportReports"],
   readOnly: ["viewLoads", "viewFinancialInformation", "viewPayroll", "viewDriverQualificationFiles", "exportReports"]
 };
+
+const multiCompanyWorkspaceRoles = ["bookkeeper", "dispatcher", "consultant", "managementTeam"];
 
 const viewPermissionRequirements = {
   affiliate: "exportReports",
@@ -135,6 +143,17 @@ const subscriptionPlans = {
   platinum: { id: "platinum", name: "Growth", minTrucks: 6, maxTrucks: 10, monthlyPrice: 269, annualPrice: 2690 },
   growthPlus: { id: "growthPlus", name: "Growth Plus", minTrucks: 11, maxTrucks: 20, monthlyPrice: 289, annualPrice: 2890, priceNote: "$269 + $20 for each truck over 10", annualNote: "Two months free annually" }
 };
+
+const multiCompanyWorkspacePlans = [
+  { id: "multiCompanyStarter", name: "Multi-Company Starter", companies: "Up to 5", price: "$149/month" },
+  { id: "multiCompanyPro", name: "Multi-Company Pro", companies: "Up to 15", price: "$299/month" }
+];
+
+const sampleWorkspaceCompanies = [
+  { name: "Osborne Trucking LLC", dot: "DOT 1234567", plan: "Growth Plus", status: "Authorized", trucks: 12 },
+  { name: "Blue Ridge Freight LLC", dot: "DOT 7654321", plan: "Small Fleet", status: "Authorized", trucks: 4 },
+  { name: "Peach State Carriers", dot: "DOT 2468101", plan: "Owner-Operator", status: "Pending owner approval", trucks: 1 }
+];
 
 const authScreen = document.querySelector("#authScreen");
 const appShell = document.querySelector("#appShell");
@@ -434,6 +453,10 @@ function isAdmin() {
   return hasPermission("manageCompanyUsers");
 }
 
+function canViewMultiCompanyWorkspace() {
+  return isAdmin() || multiCompanyWorkspaceRoles.includes(state.customer?.role);
+}
+
 function customerPermissions() {
   if (Array.isArray(state.customer?.permissions)) return state.customer.permissions;
   return state.customer?.role === "admin" ? Object.keys(permissionCatalog) : roleDefaultPermissions[state.customer?.role] || roleDefaultPermissions.driver;
@@ -446,7 +469,10 @@ function hasPermission(permission) {
 
 function visibleNavItems() {
   if (isDriverAccount()) return navItems.filter((item) => ["dashboard", "support"].includes(item.id));
-  return navItems.filter((item) => hasPermission(viewPermissionRequirements[item.id]) && (!item.adminOnly || isAdmin()));
+  return navItems.filter((item) => {
+    if (item.id === "multiCompany") return canViewMultiCompanyWorkspace();
+    return hasPermission(viewPermissionRequirements[item.id]) && (!item.adminOnly || isAdmin());
+  });
 }
 
 function renderNav() {
@@ -462,7 +488,7 @@ function renderNav() {
 function setView(view) {
   const availableItems = visibleNavItems();
   const nextView = availableItems.some((item) => item.id === view) ? view : "dashboard";
-  if ((view === "account" && !isAdmin()) || !availableItems.some((item) => item.id === view)) return setView("dashboard");
+  if (((view === "account" && !isAdmin()) || (view === "multiCompany" && !canViewMultiCompanyWorkspace())) || !availableItems.some((item) => item.id === view)) return setView("dashboard");
   state.view = nextView;
   const meta = availableItems.find((item) => item.id === nextView) || availableItems[0];
   sectionTitle.textContent = meta.label;
@@ -946,12 +972,12 @@ function renderPermissionEditor(role = "driver") {
     <div class="permission-editor" id="permissionEditor">
       <div>
         <strong>Individual permissions</strong>
-        <span class="muted">Role presets can be customized for office users. Drivers stay restricted to their own authorized records.</span>
+        <span class="muted">Choose what this user can access before sending the invite. Company owners still control authorization.</span>
       </div>
       <div class="permission-grid">
         ${Object.entries(permissionCatalog).map(([value, label]) => `
           <label class="permission-check">
-            <input type="checkbox" name="permissions" value="${value}" ${defaults.has(value) ? "checked" : ""} ${role === "driver" ? "disabled" : ""} />
+            <input type="checkbox" name="permissions" value="${value}" ${defaults.has(value) ? "checked" : ""} />
             <span>${label}</span>
           </label>
         `).join("")}
@@ -1357,6 +1383,83 @@ function renderAffiliate() {
   `;
 }
 
+function renderMultiCompanyWorkspace() {
+  content.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Workspace model", "Management layer", "Each carrier keeps its own subscription", "users")}
+      ${metric("Approval required", "Owner authorized", "No company can be added without approval", "shield")}
+      ${metric("Company switching", "One login", "Toggle between approved subscriber accounts", "share")}
+      ${metric("Access control", "Suspends automatically", "Inactive company subscriptions pause workspace access", "credit-card")}
+    </div>
+    <section class="panel">
+      <div class="panel-header">
+        <h2>TruckerBooks Multi-Company Workspace</h2>
+        <span class="muted">For accountants, dispatchers, consultants, and management teams</span>
+      </div>
+      <div class="panel-body">
+        <p class="muted">Manage all of your TruckerBooks client accounts from one secure dashboard. Each trucking company maintains its own TruckerBooks subscription, data, users, truck limits, billing, and reports.</p>
+        <p class="muted">Accountants, dispatchers, consultants, and management teams can see this workspace option after they gain authorized account access. They can only link a company after the owner approves it.</p>
+        <div class="package-grid">
+          ${multiCompanyWorkspacePlans.map((plan) => `
+            <button class="package-option ${state.selectedWorkspacePlan === plan.id ? "active" : ""}" type="button" data-workspace-plan="${plan.id}">
+              <strong>${plan.name}</strong>
+              <span>${plan.companies} linked companies</span>
+              <em>${plan.price}</em>
+            </button>
+          `).join("")}
+        </div>
+      </div>
+    </section>
+    <div class="dashboard-grid">
+      <section class="panel">
+        <div class="panel-header"><h2>Add Authorized Company</h2><span class="muted">Requires owner approval</span></div>
+        <div class="panel-body">
+          <form class="inline-form">
+            <input type="text" placeholder="Business name" aria-label="Business name" />
+            <input type="text" placeholder="DOT number" aria-label="DOT number" />
+            <input type="email" placeholder="Owner email" aria-label="Owner email" />
+            <button class="primary-button" type="button">Request Access</button>
+          </form>
+          <div class="insight-list">
+            <article class="insight-item"><strong>1. Carrier subscribes first</strong><span>The trucking company keeps its own active TruckerBooks plan.</span></article>
+            <article class="insight-item"><strong>2. Owner authorizes access</strong><span>The owner invites or approves the professional workspace user.</span></article>
+            <article class="insight-item"><strong>3. Workspace links account</strong><span>The professional can switch into that company after approval.</span></article>
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>Linked Companies</h2><span class="muted">Example workspace toggle</span></div>
+        <div class="panel-body">
+          <div class="list account-list">
+            ${sampleWorkspaceCompanies.map((company, index) => `
+              <article class="list-item">
+                <div>
+                  <strong>${company.name}</strong>
+                  <span>${company.dot} · ${company.plan} · ${company.trucks} truck${company.trucks === 1 ? "" : "s"}</span>
+                </div>
+                <div class="table-actions">
+                  <span class="status ${company.status === "Authorized" ? "Paid" : "Pending"}">${company.status}</span>
+                  <button class="chip-button" type="button" ${company.status !== "Authorized" ? "disabled" : ""}>${index === 0 ? "Current" : "Switch"}</button>
+                </div>
+              </article>
+            `).join("")}
+          </div>
+        </div>
+      </section>
+    </div>
+    <section class="panel">
+      <div class="panel-header"><h2>Data Separation Rules</h2><span class="muted">Workspace access is not shared billing</span></div>
+      <div class="panel-body">
+        <div class="package-grid">
+          <article class="package-option active"><strong>Carrier billing</strong><span>Separate subscription</span><em>Each company pays for its own trucks and users</em></article>
+          <article class="package-option active"><strong>Workspace fee</strong><span>Separate management fee</span><em>Professional pays for multi-company convenience</em></article>
+          <article class="package-option active"><strong>Inactive carrier</strong><span>Access suspended</span><em>Workspace cannot view that company until active again</em></article>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function renderAccount() {
   const customer = state.customer;
   const plan = customer.subscription || subscriptionPlans[customer.subscriptionTier] || subscriptionPlans.silver;
@@ -1390,6 +1493,24 @@ function renderAccount() {
           `).join("")}
         </div>
         ${state.accountMessage ? `<p class="form-message">${state.accountMessage}</p>` : ""}
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Multi-Company Workspace Plans</h2>
+        <span class="muted">Add-on for managing multiple active TruckerBooks subscribers</span>
+      </div>
+      <div class="panel-body">
+        <p class="muted">Each trucking company keeps its own TruckerBooks subscription. These workspace plans are an additional management layer for accountants, dispatchers, consultants, and management teams.</p>
+        <div class="package-grid">
+          ${multiCompanyWorkspacePlans.map((workspacePlan) => `
+            <button class="package-option ${state.selectedWorkspacePlan === workspacePlan.id ? "active" : ""}" type="button" data-workspace-plan="${workspacePlan.id}">
+              <strong>${workspacePlan.name}</strong>
+              <span>${workspacePlan.companies} linked subscriber companies</span>
+              <em>${workspacePlan.price}</em>
+            </button>
+          `).join("")}
+        </div>
       </div>
     </section>
     <section class="panel">
@@ -1431,7 +1552,7 @@ function renderAccount() {
           </div>
         </div>
       </section>
-      <section class="panel">
+      <section class="panel account-access-panel">
         <div class="panel-header"><h2>Account Access</h2><span class="muted">Invite dispatch, accounting, payroll, compliance, drivers, and read-only users</span></div>
         <div class="panel-body">
           <form class="inline-form driver-form" id="driverForm">
@@ -1800,6 +1921,7 @@ function renderContent() {
   if (state.view === "reports") renderReports();
   if (state.view === "userManagement") renderAccount();
   if (state.view === "account") renderPaymentAccount();
+  if (state.view === "multiCompany") renderMultiCompanyWorkspace();
   if (state.view === "support") renderSupport();
   renderIcons(content);
 }
@@ -2172,6 +2294,14 @@ function updateInvitePermissionEditor(select) {
   editor.outerHTML = renderPermissionEditor(select.value);
 }
 
+function selectWorkspacePlan(planId) {
+  const plan = multiCompanyWorkspacePlans.find((item) => item.id === planId);
+  if (!plan) return;
+  state.selectedWorkspacePlan = plan.id;
+  state.accountMessage = `${plan.name} selected. Owner authorization is still required before linking any company.`;
+  renderContent();
+}
+
 async function removeTruck(id) {
   const payload = await api(`/api/trucks/${id}`, { method: "DELETE" });
   state.customer = payload.customer;
@@ -2518,6 +2648,7 @@ document.addEventListener("click", (event) => {
   const deleteButton = event.target.closest("[data-delete]");
   const authModeButton = event.target.closest("[data-auth-mode]");
   const planButton = event.target.closest("[data-plan]");
+  const workspacePlanButton = event.target.closest("[data-workspace-plan]");
   const deleteTruckButton = event.target.closest("[data-delete-truck]");
   const deleteDriverButton = event.target.closest("[data-delete-driver]");
   const resendDriverButton = event.target.closest("[data-resend-driver]");
@@ -2547,6 +2678,7 @@ document.addEventListener("click", (event) => {
   if (deleteButton) deleteEntry(deleteButton.dataset.delete);
   if (authModeButton) setAuthMode(authModeButton.dataset.authMode);
   if (planButton) updatePlan(planButton.dataset.plan);
+  if (workspacePlanButton) selectWorkspacePlan(workspacePlanButton.dataset.workspacePlan);
   if (deleteTruckButton) removeTruck(deleteTruckButton.dataset.deleteTruck);
   if (deleteDriverButton) removeDriver(deleteDriverButton.dataset.deleteDriver);
   if (resendDriverButton) resendDriverInvite(resendDriverButton.dataset.resendDriver);

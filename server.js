@@ -92,6 +92,8 @@ const accountAccessRoles = {
   driver: "Driver",
   bookkeeper: "Bookkeeper/Accountant",
   dispatcher: "Dispatcher",
+  consultant: "Consultant",
+  managementTeam: "Management Team",
   payrollManager: "Payroll Manager",
   complianceManager: "Compliance Manager",
   readOnly: "Read-Only User"
@@ -134,6 +136,8 @@ const roleDefaultPermissions = {
   driver: driverPermissionKeys,
   dispatcher: ["viewLoads", "createLoads", "editLoads", "assignDrivers"],
   bookkeeper: ["viewFinancialInformation", "createInvoices", "approveExpenses", "exportReports"],
+  consultant: ["viewLoads", "viewFinancialInformation", "viewPayroll", "viewDriverQualificationFiles", "exportReports"],
+  managementTeam: ["viewLoads", "createLoads", "editLoads", "assignDrivers", "viewFinancialInformation", "createInvoices", "approveExpenses", "processSettlements", "viewPayroll", "viewDriverQualificationFiles", "exportReports"],
   payrollManager: ["viewFinancialInformation", "processSettlements", "viewPayroll", "exportReports"],
   complianceManager: ["viewDriverQualificationFiles", "deleteDocuments", "exportReports"],
   readOnly: ["viewLoads", "viewFinancialInformation", "viewPayroll", "viewDriverQualificationFiles", "exportReports"],
@@ -299,7 +303,6 @@ function supportGrantDurationHours(value) {
 
 function normalizePermissions(role, requestedPermissions) {
   const defaults = roleDefaultPermissions[role] || roleDefaultPermissions.driver;
-  if (role === "driver") return [...driverPermissionKeys];
   if (!Array.isArray(requestedPermissions)) return [...defaults];
   const allowed = new Set(allPermissionKeys);
   const cleaned = requestedPermissions.filter((permission) => allowed.has(permission));
