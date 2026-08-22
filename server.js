@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
+const zlib = require("zlib");
 
 const port = Number(process.env.PORT || 3000);
 const rootDir = __dirname;
@@ -1660,14 +1661,17 @@ async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
     dates: local.dateCandidates?.map((item) => item.date) || [],
     dateCandidates: local.dateCandidates || []
   });
-  const narrowAiDate = bestLocalDate || bestAiDate
+  const pdfImageAiDate = bestLocalDate || bestAiDate || complianceType !== "dotPhysical" || !/pdf/i.test(mimeType || "")
+    ? ""
+    : await runOpenAiPdfImageExpirationScanner(buffer, scan.text, complianceType, openaiVisionModel).catch(() => "");
+  const narrowAiDate = bestLocalDate || bestAiDate || pdfImageAiDate
     ? ""
     : await runOpenAiExpirationOnlyScanner(buffer, mimeType, scan.text, complianceType, openaiVisionModel).catch(() => "");
   return {
     ...scan,
     extracted: {
       ...local,
-      expirationDate: bestLocalDate || bestAiDate || narrowAiDate || "",
+      expirationDate: bestLocalDate || bestAiDate || pdfImageAiDate || narrowAiDate || "",
       generic
     }
   };
@@ -1928,6 +1932,63 @@ async function runOpenAiExpirationOnlyScanner(buffer, mimeType, extractedText, c
   return normalizeDate(parsed.expirationDate || "");
 }
 
+async function runOpenAiPdfImageExpirationScanner(buffer, extractedText, complianceType = "", modelOverride = "") {
+  const openAiKey = getOpenAiKey();
+  if (!openAiKey || !openAiKey.startsWith("sk-")) return "";
+  const images = await extractPdfEmbeddedImages(buffer);
+  if (!images.length) return "";
+  const typeName = complianceTypeName(complianceType);
+  const imageInputs = [];
+  for (const image of images.slice(0, 2)) {
+    for (const rotation of [0, 90, 180, 270]) {
+      const png = imageDataToPng(image, rotation);
+      imageInputs.push({
+        type: "input_image",
+        image_url: `data:image/png;base64,${png.toString("base64")}`
+      });
+    }
+  }
+  const prompt = [
+    `This is a scanned image-only PDF for a ${typeName} compliance document.`,
+    "Inspect the attached page images visually. Some copies may be rotated; use the copy where the text is easiest to read.",
+    "Find the DOT Physical / Medical Examiner's Certificate expiration date.",
+    "On DOT medical cards, the target label is often Medical Examiner's Certificate Expiration Date, Medical Examiner Certificate Expiration, Medical Card Expires, Certificate Expires, Expiration Date, or Qualified Until.",
+    "Do not use the examination date, signature date, issue date, printed date, driver's license date, phone number, registry number, ZIP code, or any ID number.",
+    "If you see both Date Certificate Signed and Medical Examiner's Certificate Expiration Date, return the Medical Examiner's Certificate Expiration Date.",
+    "Return JSON only with this exact shape:",
+    "{\"expirationDate\":\"YYYY-MM-DD or null\",\"reason\":\"short explanation\"}",
+    extractedText ? `Any OCR text available:\n${extractedText.slice(0, 4000)}` : "No usable OCR text was available."
+  ].join("\n");
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${openAiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: modelOverride || openaiVisionModel,
+      input: [
+        {
+          role: "user",
+          content: [
+            ...imageInputs,
+            {
+              type: "input_text",
+              text: prompt
+            }
+          ]
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) return "";
+  const payload = await response.json();
+  const parsed = parseAiJson(responseText(payload));
+  return normalizeDate(parsed.expirationDate || "");
+}
+
 async function extractPdfText(buffer) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const document = await pdfjs.getDocument({ data: new Uint8Array(buffer), disableWorker: true }).promise;
@@ -1958,13 +2019,20 @@ function pixelAt(image, x, y) {
 
 function rotatedPixel(image, x, y, rotation) {
   if (rotation === 90) return pixelAt(image, y, image.height - 1 - x);
+  if (rotation === 180) return pixelAt(image, image.width - 1 - x, image.height - 1 - y);
   if (rotation === 270) return pixelAt(image, image.width - 1 - y, x);
   return pixelAt(image, x, y);
 }
 
+function orientedImageSize(image, rotation = 0) {
+  return {
+    width: rotation === 90 || rotation === 270 ? image.height : image.width,
+    height: rotation === 90 || rotation === 270 ? image.width : image.height
+  };
+}
+
 function imageDataToBmp(image, rotation = 0) {
-  const width = rotation === 90 || rotation === 270 ? image.height : image.width;
-  const height = rotation === 90 || rotation === 270 ? image.width : image.height;
+  const { width, height } = orientedImageSize(image, rotation);
   const rowSize = Math.ceil((width * 3) / 4) * 4;
   const pixelArraySize = rowSize * height;
   const fileSize = 54 + pixelArraySize;
@@ -1990,6 +2058,62 @@ function imageDataToBmp(image, rotation = 0) {
     }
   }
   return bmp;
+}
+
+let crcTable = null;
+
+function crc32(buffer) {
+  if (!crcTable) {
+    crcTable = Array.from({ length: 256 }, (_, index) => {
+      let crc = index;
+      for (let bit = 0; bit < 8; bit += 1) crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
+      return crc >>> 0;
+    });
+  }
+  let crc = 0xffffffff;
+  for (const byte of buffer) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type, data = Buffer.alloc(0)) {
+  const typeBuffer = Buffer.from(type, "ascii");
+  const chunk = Buffer.alloc(12 + data.length);
+  chunk.writeUInt32BE(data.length, 0);
+  typeBuffer.copy(chunk, 4);
+  data.copy(chunk, 8);
+  chunk.writeUInt32BE(crc32(Buffer.concat([typeBuffer, data])), 8 + data.length);
+  return chunk;
+}
+
+function imageDataToPng(image, rotation = 0) {
+  const width = rotation === 90 || rotation === 270 ? image.height : image.width;
+  const height = rotation === 90 || rotation === 270 ? image.width : image.height;
+  const raw = Buffer.alloc((width * 3 + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    const rowOffset = y * (width * 3 + 1);
+    raw[rowOffset] = 0;
+    for (let x = 0; x < width; x += 1) {
+      const [r, g, b] = rotatedPixel(image, x, y, rotation);
+      const offset = rowOffset + 1 + x * 3;
+      raw[offset] = r;
+      raw[offset + 1] = g;
+      raw[offset + 2] = b;
+    }
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 2;
+  header[10] = 0;
+  header[11] = 0;
+  header[12] = 0;
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", header),
+    pngChunk("IDAT", zlib.deflateSync(raw)),
+    pngChunk("IEND")
+  ]);
 }
 
 async function extractPdfEmbeddedImages(buffer) {
