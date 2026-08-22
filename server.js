@@ -22,6 +22,7 @@ const plaidSecret = String(process.env.PLAID_SECRET || "").trim();
 const plaidEnv = String(process.env.PLAID_ENV || "sandbox").trim().toLowerCase();
 const plaidProducts = String(process.env.PLAID_PRODUCTS || "transactions").split(",").map((item) => item.trim()).filter(Boolean);
 const plaidConfigured = Boolean(plaidClientId && plaidSecret);
+const mfaDisabled = String(process.env.DISABLE_MFA || "").trim().toLowerCase() === "true";
 const trialDays = 7;
 const sessionMaxAgeSeconds = 60 * 60 * 8;
 const rememberedSessionMaxAgeSeconds = 60 * 60 * 24 * 30;
@@ -748,6 +749,7 @@ function publicMfaStatus(user) {
 }
 
 function mfaRequiredForUser(user) {
+  if (mfaDisabled) return false;
   if ((user.role || "admin") === "admin") return true;
   if (["owner", "admin"].includes(user.adminRole)) return true;
   if (["bookkeeper", "payrollManager", "complianceManager"].includes(user.role)) return true;
