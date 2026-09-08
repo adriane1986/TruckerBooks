@@ -61,12 +61,31 @@ button {
 }
 
 .auth-logo {
-  width: 124px;
-  height: 124px;
-  object-fit: cover;
+  width: min(280px, 100%);
+  height: auto;
+  max-height: 118px;
+  object-fit: contain;
   border-radius: 8px;
   border: 1px solid var(--line);
   margin-bottom: 18px;
+  background: #fff;
+}
+
+.environment-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid #f2c94c;
+  border-radius: 8px;
+  background: #fff7d6;
+  color: #744d00;
+  font-size: 0.76rem;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .auth-card h1 {
@@ -166,12 +185,13 @@ button {
 }
 
 .brand-logo {
-  width: 56px;
-  height: 56px;
+  width: 150px;
+  height: 48px;
   border-radius: 8px;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
   background: #fff;
+  padding: 4px 6px;
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18);
 }
 
@@ -184,6 +204,13 @@ button {
 .sidebar-footer span {
   color: #d5e9f5;
   font-size: 0.82rem;
+}
+
+.brand .environment-badge {
+  margin-top: 6px;
+  border-color: rgba(242, 201, 76, 0.65);
+  background: rgba(255, 247, 214, 0.95);
+  color: #744d00;
 }
 
 .nav-list {
@@ -231,9 +258,14 @@ button {
 }
 
 .auth-policy-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   color: var(--accent);
   justify-content: center;
-  margin-top: 18px;
+  margin-top: -4px;
+  font-size: 0.86rem;
+  font-weight: 800;
 }
 
 .main {
@@ -913,8 +945,17 @@ button {
   margin-bottom: 14px;
 }
 
+.warning-banner {
+  border-color: rgba(242, 201, 76, 0.65);
+  background: #fff7d6;
+}
+
 .security-banner strong {
   color: var(--accent-dark);
+}
+
+.warning-banner strong {
+  color: #744d00;
 }
 
 .security-banner span {
@@ -941,6 +982,21 @@ button {
 
 .policy-copy p {
   margin: 0;
+}
+
+.policy-copy h2 {
+  margin: 10px 0 0;
+  font-size: 1.05rem;
+}
+
+.policy-copy ul,
+.policy-copy ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.policy-copy li {
+  margin: 7px 0;
 }
 
 .support-form {
@@ -1115,11 +1171,19 @@ button {
 
 .mini-date-form {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) auto;
+  grid-template-columns: minmax(170px, 1fr) auto;
   gap: 7px;
   align-items: center;
   margin-top: 8px;
-  max-width: 260px;
+  max-width: 310px;
+}
+
+.mini-date-form label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .mini-date-form input {
@@ -1388,3 +1452,4 @@ label select {
     grid-template-columns: 1fr;
   }
 }
+
