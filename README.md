@@ -1,11 +1,17 @@
-# TruckerBooks Web App
+# RUNVARA Web App
 
-TruckerBooks is now a local web app with a backend server.
+RUNVARA is now a local web app with a backend server.
 
 ## Run It
 
 ```powershell
 npm start
+```
+
+If `npm` is not recognized on this computer, run the app with the bundled Node runtime:
+
+```powershell
+& "C:\Users\Adriane Osborne\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe" "C:\Users\Adriane Osborne\Documents\Codex\2026-07-28\server.js"
 ```
 
 Then open:
@@ -14,14 +20,64 @@ Then open:
 http://localhost:3000
 ```
 
+## Beta Environment
+
+Run beta with its own database, sample data, backups, error logs, and visible Beta label:
+
+```powershell
+$env:APP_ENV="beta"
+$env:BETA_MODE="true"
+$env:BETA_SAMPLE_PASSWORD="BetaPassphrase2026!"
+$env:ENABLE_BETA_PAYMENT_TESTING="false"
+$env:BACKUP_INTERVAL_HOURS="24"
+& "C:\Users\Adriane Osborne\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe" "C:\Users\Adriane Osborne\Documents\Codex\2026-07-28\server.js"
+```
+
+Beta uses `data-beta/truckerbooks-beta-db.json` instead of the normal `data/truckerbooks-db.json`. On first run it creates fake preview companies only, so production customer data is not mixed into beta.
+
+Demo beta login:
+
+```text
+Email: owner@beta.runvara.local
+Password: BetaPassphrase2026!
+```
+
+Automated backups are stored in `data-beta/backups`, and server errors are written to `data-beta/logs/errors.log`. Keep real API keys in environment variables through the hosting provider or local shell, not in source files.
+
+## Beta Payment Safety
+
+For the first closed beta, subscription charges are turned off by default. Testers receive complimentary beta access and Stripe Checkout is blocked when `APP_ENV=beta` unless `ENABLE_BETA_PAYMENT_TESTING=true`.
+
+If payment testing is needed, use Stripe test mode only:
+
+```powershell
+$env:ENABLE_BETA_PAYMENT_TESTING="true"
+$env:STRIPE_SECRET_KEY="sk_test_..."
+```
+
+Never use a live Stripe key in beta. Beta checkout labels Stripe sessions as test checkout, stores test metadata, and blocks checkout unless the key starts with `sk_test_`. Verify subscription cancellation and failed-payment behavior in Stripe test mode before enabling any production payment flow.
+
+## Basic Beta Policies
+
+Before inviting testers, review and publish the starter policy pages served by the app:
+
+- Privacy Policy: `/privacy`
+- Terms of Use: `/terms`
+- Closed Beta Testing Agreement: `/beta-agreement`
+
+The beta agreement includes confidentiality, consent to collect usage and error data, data-retention and account-deletion language, and a disclaimer that beta features may contain errors, downtime, missing features, resets, or inaccurate results. These starter policies should be reviewed by counsel before external testers are invited.
+
 ## What It Supports
 
 - Company account registration with company name, DOT number, phone, address, subscription plan, first administrator, policy acceptance, and email verification
+- Dedicated beta mode with a separate sample-data database, automated backups, error logging, secure environment configuration, and an in-app Beta label
+- Complimentary beta access with Stripe Checkout blocked by default, plus test-mode-only payment testing safeguards
+- Starter Privacy Policy, Terms of Use, and Closed Beta Testing Agreement pages for beta tester onboarding
 - Secure login with email/password, show/hide password, remember-me sessions, generic login errors, account-lock protection, session expiration, and logout from all devices
 - NIST-aligned password rules: 12-character minimum, long passphrases supported, compromised/common password blocklist, no forced periodic password changes, hashed password storage, short-lived single-use reset links, and password-change notification records
 - Multi-factor authentication for internal administrators, company owners/admins, billing/payroll-style users, and users with financial-data access; starts with authenticator apps, temporary email codes, and recovery codes
 - Enterprise MFA roadmap: hardware security keys and company-wide enforced MFA
-- Phase 1 predefined user roles for company users, drivers, and TruckerBooks internal access
+- Phase 1 predefined user roles for company users, drivers, and RUNVARA internal access
 - Drivers cannot create themselves as company administrators; they must be invited by an existing company account
 - Customer sign-in and sign-out
 - Password hashing on the server
@@ -38,7 +94,7 @@ http://localhost:3000
 - Account Access administration table with user name, email, role, account status, last login, MFA status, invitation status, date added, who added the user, and access history
 - Account Access actions for changing roles, resetting MFA, suspending/reactivating access, forcing password resets, signing users out, removing users, and preserving users with activity as deactivated audit records
 - Company audit logs for successful and failed logins, password resets, MFA changes, invitations, role and permission changes, suspensions/reactivations, exports, integrations, financial approvals, document deletions, and support access
-- Controlled support access with customer-approved time windows, revocation, named TruckerBooks support accounts, sensitive-data restriction, and audit logging
+- Controlled support access with customer-approved time windows, revocation, named RUNVARA support accounts, sensitive-data restriction, and audit logging
 - Simplified driver mobile account for assigned loads, BOL/POD and receipt uploads, pickup/delivery details, expenses, detention or delay reports, settlement statements, limited profile updates, and the driver's own compliance expirations
 - Driver backend responses exclude other drivers' pay, company-wide financial reports, customer financial information, administrative settings, and other drivers' personnel files
 - Affiliate Program tab
@@ -70,8 +126,8 @@ http://localhost:3000
 | Compliance Manager | Driver files, expirations, and compliance documents |
 | Driver | Own loads, documents, expenses, and settlement statements |
 | Read-Only User | View permitted records without editing |
-| TruckerBooks Support | Limited, approved support access |
-| TruckerBooks Super Admin | Internal platform administration only |
+| RUNVARA Support | Limited, approved support access |
+| RUNVARA Super Admin | Internal platform administration only |
 
 Roles are presets. Access is enforced through individual permissions underneath each role, including:
 
@@ -113,7 +169,7 @@ Drivers cannot view audit logs, and each company only receives entries whose `co
 
 ## Support Access
 
-TruckerBooks support employees use separate named accounts configured in `SUPPORT_USERS`; do not use a shared support administrator login. Each configured support account needs its own email and password hash.
+RUNVARA support employees use separate named accounts configured in `SUPPORT_USERS`; do not use a shared support administrator login. Each configured support account needs its own email and password hash.
 
 Customers approve support access from the Support screen or through:
 
@@ -164,3 +220,15 @@ Without `OPENAI_API_KEY`, the app falls back to local OCR/text parsing for testi
 ## Owner Login Password Hash
 
 Set `OWNER_PASSWORD_HASH` instead of a readable owner password. Customer and partner passwords are also stored as hashes only.
+
+## Closed Beta Launch Requirements
+
+Do not invite testers until the launch gate at `/beta-launch` has passed. The checklist covers signup, login, password reset, HTTPS, document privacy, password hashing, financial calculation checks, backups, error logging, tester instructions, sample documents, support contact, privacy notices, and beta notices.
+
+The most important security test is account separation: Tester A must never be able to see Tester B's trucks, documents, financial data, or compliance records. Run that test through the UI and by trying direct document or record links while signed in as the wrong tester.
+
+The beta launch package should include the tester invitation, Closed Beta Testing Agreement, onboarding instructions, task checklist, feedback survey, bug tracker fields, sample documents, and launch-day checklist. The app exposes these at `/beta-launch`, with the legal pages at `/beta-agreement`, `/privacy`, and `/terms`.
+
+New customer accounts start with an empty dashboard. Trips, expenses, invoices, maintenance, documents, and compliance records appear only after the user uploads documents or adds records manually. The built-in beta demo account may still contain sample records for walkthrough testing.
+
+

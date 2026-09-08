@@ -1,7 +1,7 @@
 {
-  "name": "truckerbooks-web-app",
+  "name": "runvara-web-app",
   "version": "1.0.0",
-  "description": "TruckerBooks customer dashboard web app",
+  "description": "RUNVARA customer dashboard web app",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

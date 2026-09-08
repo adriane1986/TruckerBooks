@@ -70,7 +70,8 @@ const state = {
   accountMessage: "",
   selectedWorkspacePlan: "multiCompanyPro",
   pendingMfa: null,
-  mfaSetup: null
+  mfaSetup: null,
+  environment: { betaMode: false, label: "" }
 };
 
 const complianceTypes = {
@@ -168,6 +169,7 @@ const mfaChallenge = document.querySelector("#mfaChallenge");
 const mfaCode = document.querySelector("#mfaCode");
 const mfaMethod = document.querySelector("#mfaMethod");
 const verifyMfaBtn = document.querySelector("#verifyMfaBtn");
+const environmentBadges = document.querySelectorAll("[data-environment-badge]");
 const content = document.querySelector("#content");
 const navList = document.querySelector("#navList");
 const sectionTitle = document.querySelector("#sectionTitle");
@@ -203,6 +205,25 @@ function normalizeEmail(email) {
   return email.trim().toLowerCase();
 }
 
+function applyEnvironment(environment = {}) {
+  state.environment = { ...state.environment, ...environment };
+  const isBeta = Boolean(state.environment.betaMode);
+  document.body.classList.toggle("beta-mode", isBeta);
+  environmentBadges.forEach((badge) => {
+    badge.classList.toggle("hidden", !isBeta);
+    badge.textContent = state.environment.label || "Beta";
+  });
+}
+
+async function loadEnvironment() {
+  try {
+    const payload = await api("/api/environment");
+    applyEnvironment(payload.environment);
+  } catch {
+    applyEnvironment({});
+  }
+}
+
 function setAuthMode(mode) {
   state.authMode = mode;
   document.querySelectorAll("[data-auth-mode]").forEach((button) => {
@@ -221,6 +242,7 @@ function setAuthMode(mode) {
 }
 
 function showDashboard(account, records) {
+  if (account.environment) applyEnvironment(account.environment);
   state.customer = account;
   state.records = records ?? cloneStarterRecords();
   state.documents = account.documents || [];
@@ -633,6 +655,8 @@ function renderTableView(collection, title, columns) {
               ${columns.map((column) => `<td>${column.render(item)}</td>`).join("")}
               <td>
                 <div class="table-actions">
+                  ${item.sourceReceipt ? `<a class="ghost-button" href="/api/expenses/receipt/${item.id}">Download</a>` : ""}
+                  ${item.sourceReceipt ? `<a class="ghost-button" href="${receiptEmailHref(item)}">Email</a>` : ""}
                   <button class="icon-button" type="button" data-delete="${item.id}" title="Delete" aria-label="Delete">
                     <span data-icon="trash"></span>
                   </button>
@@ -710,6 +734,8 @@ function renderExpenses() {
               <td><span class="status ${item.status}">${item.status}</span></td>
               <td>
                 <div class="table-actions">
+                  ${item.sourceReceipt ? `<a class="ghost-button" href="/api/expenses/receipt/${item.id}">Download</a>` : ""}
+                  ${item.sourceReceipt ? `<a class="ghost-button" href="${receiptEmailHref(item)}">Email</a>` : ""}
                   <button class="icon-button" type="button" data-delete="${item.id}" title="Delete" aria-label="Delete">
                     <span data-icon="trash"></span>
                   </button>
@@ -1002,7 +1028,7 @@ function renderAccountAccessTable(drivers, trucks) {
             return `
               <tr>
                 <td><strong>${driver.name}</strong>${role === "driver" ? `<br><span class="muted">${assignedTruck ? assignedTruck.unitNumber : "No truck assigned"}</span>` : ""}</td>
-                <td>${driver.email}${driver.inviteLink ? `<br><a href="mailto:${driver.email}?subject=Your TruckerBooks access&body=${encodeURIComponent(`Use this secure one-time link to verify your email and set your TruckerBooks password: ${absoluteLink}`)}">Open email</a>` : ""}</td>
+                <td>${driver.email}${driver.inviteLink ? `<br><a href="mailto:${driver.email}?subject=Your RUNVARA access&body=${encodeURIComponent(`Use this secure one-time link to verify your email and set your RUNVARA password: ${absoluteLink}`)}">Open email</a>` : ""}</td>
                 <td>${accountRoleLabel(role)}<br><span class="muted">${permissionLabelList(driver.permissions || permissionsForInviteRole(role))}</span></td>
                 <td><span class="status Scheduled">${driver.status}</span></td>
                 <td>${driver.lastLoginAt ? new Date(driver.lastLoginAt).toLocaleString() : "Never"}</td>
@@ -1118,12 +1144,37 @@ function scanDetail(item) {
   return details.length ? details.join(" · ") : "AI scan complete";
 }
 
-function bolEmailHref(item) {
-  const downloadUrl = `${location.origin}/api/documents/${item.id}`;
-  const subject = encodeURIComponent(`BOL: ${item.fileName}`);
-  const body = encodeURIComponent(`Hello,\n\nHere is the BOL download link:\n\n${downloadUrl}\n\nThank you.`);
+function documentEmailHref({ fileName, downloadPath, label = "Document" }) {
+  const downloadUrl = `${location.origin}${downloadPath}`;
+  const subject = encodeURIComponent(`${label}: ${fileName}`);
+  const body = encodeURIComponent(`Hello,\n\nHere is the ${label.toLowerCase()} download link from RUNVARA:\n\n${downloadUrl}\n\nYou may need authorized RUNVARA access to open this private company document.\n\nThank you.`);
   return `mailto:?subject=${subject}&body=${body}`;
 }
+
+function loadDocumentEmailHref(item) {
+  return documentEmailHref({
+    fileName: item.fileName,
+    downloadPath: `/api/documents/${item.id}`,
+    label: documentLabel(item.type)
+  });
+}
+
+function complianceDocumentEmailHref(item) {
+  return documentEmailHref({
+    fileName: item.fileName,
+    downloadPath: `/api/compliance/${item.id}`,
+    label: complianceLabel(item.type, item.fileName)
+  });
+}
+
+function receiptEmailHref(item) {
+  return documentEmailHref({
+    fileName: item.sourceReceipt?.fileName || item.description || "Receipt",
+    downloadPath: `/api/expenses/receipt/${item.id}`,
+    label: "Receipt"
+  });
+}
+
 
 function renderDocuments() {
   const documents = state.documents || [];
@@ -1190,7 +1241,7 @@ function renderDocuments() {
               <td>
                 <div class="table-actions">
                   <a class="ghost-button" href="/api/documents/${item.id}">Download</a>
-                  ${item.type === "bol" ? `<a class="ghost-button" href="${bolEmailHref(item)}">Email</a>` : ""}
+                  <a class="ghost-button" href="${loadDocumentEmailHref(item)}">Email</a>
                   <button class="icon-button" type="button" data-delete-document="${item.id}" title="Delete document" aria-label="Delete document"><span data-icon="trash"></span></button>
                 </div>
               </td>
@@ -1321,6 +1372,7 @@ function renderCompliance() {
                 <td>
                   <div class="table-actions">
                     ${item.manualOnly ? "" : `<a class="ghost-button" href="/api/compliance/${item.id}">Download</a>`}
+                    ${item.manualOnly ? "" : `<a class="ghost-button" href="${complianceDocumentEmailHref(item)}">Email</a>`}
                     ${item.manualOnly ? "" : `<button class="ghost-button" type="button" data-rescan-compliance="${item.id}">Rescan</button>`}
                     <button class="icon-button" type="button" data-delete-compliance="${item.id}" title="Delete compliance document" aria-label="Delete compliance document"><span data-icon="trash"></span></button>
                   </div>
@@ -1394,11 +1446,11 @@ function renderMultiCompanyWorkspace() {
     </div>
     <section class="panel">
       <div class="panel-header">
-        <h2>TruckerBooks Multi-Company Workspace</h2>
+        <h2>RUNVARA Multi-Company Workspace</h2>
         <span class="muted">For accountants, dispatchers, consultants, and management teams</span>
       </div>
       <div class="panel-body">
-        <p class="muted">Manage all of your TruckerBooks client accounts from one secure dashboard. Each trucking company maintains its own TruckerBooks subscription, data, users, truck limits, billing, and reports.</p>
+        <p class="muted">Manage all of your RUNVARA client accounts from one secure dashboard. Each trucking company maintains its own RUNVARA subscription, data, users, truck limits, billing, and reports.</p>
         <p class="muted">Accountants, dispatchers, consultants, and management teams can see this workspace option after they gain authorized account access. They can only link a company after the owner approves it.</p>
         <div class="package-grid">
           ${multiCompanyWorkspacePlans.map((plan) => `
@@ -1422,7 +1474,7 @@ function renderMultiCompanyWorkspace() {
             <button class="primary-button" type="button">Request Access</button>
           </form>
           <div class="insight-list">
-            <article class="insight-item"><strong>1. Carrier subscribes first</strong><span>The trucking company keeps its own active TruckerBooks plan.</span></article>
+            <article class="insight-item"><strong>1. Carrier subscribes first</strong><span>The trucking company keeps its own active RUNVARA plan.</span></article>
             <article class="insight-item"><strong>2. Owner authorizes access</strong><span>The owner invites or approves the professional workspace user.</span></article>
             <article class="insight-item"><strong>3. Workspace links account</strong><span>The professional can switch into that company after approval.</span></article>
           </div>
@@ -1499,10 +1551,10 @@ function renderAccount() {
     <section class="panel">
       <div class="panel-header">
         <h2>Multi-Company Workspace Plans</h2>
-        <span class="muted">Add-on for managing multiple active TruckerBooks subscribers</span>
+        <span class="muted">Add-on for managing multiple active RUNVARA subscribers</span>
       </div>
       <div class="panel-body">
-        <p class="muted">Each trucking company keeps its own TruckerBooks subscription. These workspace plans are an additional management layer for accountants, dispatchers, consultants, and management teams.</p>
+        <p class="muted">Each trucking company keeps its own RUNVARA subscription. These workspace plans are an additional management layer for accountants, dispatchers, consultants, and management teams.</p>
         <div class="package-grid">
           ${multiCompanyWorkspacePlans.map((workspacePlan) => `
             <button class="package-option ${state.selectedWorkspacePlan === workspacePlan.id ? "active" : ""}" type="button" data-workspace-plan="${workspacePlan.id}">
@@ -1591,7 +1643,7 @@ function renderAccount() {
                     <span>${permissionLabelList(driver.permissions || permissionsForInviteRole(role))}</span>
                     <span>Expires ${driver.inviteExpiresAt ? new Date(driver.inviteExpiresAt).toLocaleDateString() : "not set"}${driver.inviteUsedAt ? ` · Accepted ${new Date(driver.inviteUsedAt).toLocaleDateString()}` : ""}</span>
                     <span>${driver.email}</span>
-                    ${driver.inviteLink ? `<a href="mailto:${driver.email}?subject=Your TruckerBooks access&body=${encodeURIComponent(`Use this secure one-time link to verify your email and set your TruckerBooks password: ${absoluteLink}`)}">Open email</a>` : ""}
+                    ${driver.inviteLink ? `<a href="mailto:${driver.email}?subject=Your RUNVARA access&body=${encodeURIComponent(`Use this secure one-time link to verify your email and set your RUNVARA password: ${absoluteLink}`)}">Open email</a>` : ""}
                   </div>
                   <div>
                     <span class="status Scheduled">${driver.status}</span>
@@ -1614,8 +1666,11 @@ function renderPaymentAccount() {
   const payment = customer.paymentInfo || {};
   const trial = customer.trial;
   const integrations = customer.integrations || {};
+  const paymentPolicy = customer.paymentPolicy || {};
   const paymentStatus = payment.providerStatus || integrations.stripe || "Stripe not connected";
-  const stripeConnected = integrations.stripe === "Connected";
+  const stripeConnected = String(integrations.stripe || "").startsWith("Connected");
+  const checkoutEnabled = stripeConnected && paymentPolicy.checkoutEnabled !== false;
+  const checkoutLabelPrefix = paymentPolicy.testCheckoutLabel ? "Test " : "Pay ";
   const plaidReady = integrations.plaid === "Connected";
   const bank = payment.bankConnection;
   const mfa = customer.mfa || {};
@@ -1635,7 +1690,11 @@ function renderPaymentAccount() {
       <div class="panel-body">
         <div class="security-banner">
           <strong>${paymentStatus}</strong>
-          <span>For security, customers should enter card details only through Stripe Checkout after Stripe is connected. TruckerBooks will not store full card numbers or CVV codes.</span>
+          <span>For security, customers should enter card details only through Stripe Checkout after Stripe is connected. RUNVARA will not store full card numbers or CVV codes.</span>
+        </div>
+        <div class="security-banner ${paymentPolicy.testCheckoutLabel ? "warning-banner" : ""}">
+          <strong>${paymentPolicy.complimentaryBetaAccess ? "Complimentary beta access" : paymentPolicy.testCheckoutLabel ? "Stripe test checkout only" : "Payment processing"}</strong>
+          <span>${paymentPolicy.message || "Use Stripe Checkout for subscription payments."}</span>
         </div>
         <form class="billing-form" id="paymentForm">
           <label>
@@ -1648,10 +1707,11 @@ function renderPaymentAccount() {
           </label>
           <div class="billing-actions">
             <button class="primary-button" type="submit">Save Billing Contact</button>
-            <button class="primary-button" type="button" data-stripe-checkout="month" ${stripeConnected ? "" : "disabled"}>Pay Monthly with Stripe</button>
-            <button class="ghost-button" type="button" data-stripe-checkout="year" ${stripeConnected ? "" : "disabled"}>Pay Annual with Stripe</button>
+            <button class="primary-button" type="button" data-stripe-checkout="month" ${checkoutEnabled ? "" : "disabled"}>${checkoutLabelPrefix}Monthly with Stripe</button>
+            <button class="ghost-button" type="button" data-stripe-checkout="year" ${checkoutEnabled ? "" : "disabled"}>${checkoutLabelPrefix}Annual with Stripe</button>
             <a class="chip-button" href="/terms" target="_blank" rel="noreferrer">Terms</a>
             <a class="chip-button" href="/privacy" target="_blank" rel="noreferrer">Privacy</a>
+            <a class="chip-button" href="/beta-agreement" target="_blank" rel="noreferrer">Beta Agreement</a>
           </div>
         </form>
         ${state.accountMessage ? `<p class="form-message">${state.accountMessage}</p>` : ""}
@@ -1689,7 +1749,7 @@ function renderPaymentAccount() {
       <div class="panel-body">
         <div class="security-banner">
           <strong>${bank?.status || integrations.plaid || "Plaid not connected"}</strong>
-          <span>${bank ? `${bank.institutionName || "Bank"} connected${bank.accountMasks?.length ? ` · ending ${bank.accountMasks.join(", ")}` : ""}` : "Users connect their bank through Plaid Link. TruckerBooks never asks for or saves bank usernames or passwords."}</span>
+          <span>${bank ? `${bank.institutionName || "Bank"} connected${bank.accountMasks?.length ? ` · ending ${bank.accountMasks.join(", ")}` : ""}` : "Users connect their bank through Plaid Link. RUNVARA never asks for or saves bank usernames or passwords."}</span>
         </div>
         <div class="billing-actions">
           <button class="primary-button" type="button" data-plaid-link ${plaidReady ? "" : "disabled"}>${bank ? "Reconnect Bank" : "Connect Bank Account"}</button>
@@ -1712,7 +1772,7 @@ function renderSupport() {
       <div class="panel-body">
         <div class="security-banner">
           <strong>${activeSupport ? "Support access approved" : "No active support access"}</strong>
-          <span>${activeSupport ? `Expires ${formatDate(activeSupport.expiresAt)}. Sensitive financial and payroll data ${activeSupport.restrictSensitiveData ? "remain restricted" : "are included for this support window"}.` : "TruckerBooks support can only review account details after you approve a limited access window."}</span>
+          <span>${activeSupport ? `Expires ${formatDate(activeSupport.expiresAt)}. Sensitive financial and payroll data ${activeSupport.restrictSensitiveData ? "remain restricted" : "are included for this support window"}.` : "RUNVARA support can only review account details after you approve a limited access window."}</span>
         </div>
         <div class="list">
           ${supportGrants.slice(0, 5).map((grant) => `
@@ -1732,8 +1792,11 @@ function renderSupport() {
   content.innerHTML = `
     <section class="panel">
       <div class="panel-header">
-        <h2>Report an Issue</h2>
-        <a class="ghost-button" href="mailto:info@thetruckerconsultant.com?subject=TruckerBooks Support Request">Contact Us</a>
+        <h2>Feedback and Bug Reports</h2>
+        <div class="billing-actions">
+          <a class="ghost-button" href="/beta-launch" target="_blank" rel="noreferrer">Beta Launch Checklist</a>
+          <a class="ghost-button" href="mailto:info@thetruckerconsultant.com?subject=RUNVARA Support Request">Contact Us</a>
+        </div>
       </div>
       <div class="panel-body">
         <form class="support-form" id="supportIssueForm">
@@ -2884,4 +2947,6 @@ document.addEventListener("change", (event) => {
 });
 
 renderIcons();
+loadEnvironment();
 restoreSession();
+

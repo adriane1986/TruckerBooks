@@ -6,25 +6,35 @@ const zlib = require("zlib");
 
 const port = Number(process.env.PORT || 3000);
 const rootDir = __dirname;
-const dataDir = path.join(rootDir, "data");
+const trueValues = new Set(["true", "1", "yes", "on"]);
+const appEnvironment = String(process.env.APP_ENV || process.env.NODE_ENV || "local").trim().toLowerCase();
+const betaMode = ["beta", "staging"].includes(appEnvironment) || trueValues.has(String(process.env.BETA_MODE || "").trim().toLowerCase());
+const dataDirectoryName = betaMode ? "data-beta" : "data";
+const dataDir = path.join(rootDir, dataDirectoryName);
+const backupDir = path.join(dataDir, "backups");
+const logDir = path.join(dataDir, "logs");
 const uploadDir = path.join(dataDir, "uploads");
-const dbPath = path.join(dataDir, "truckerbooks-db.json");
+const dbPath = path.join(dataDir, betaMode ? "truckerbooks-beta-db.json" : "truckerbooks-db.json");
 const openaiModel = process.env.OPENAI_MODEL || "gpt-5-mini";
 const openaiVisionModel = process.env.OPENAI_VISION_MODEL || "gpt-4o-mini";
-const ownerEmail = normalizeEmail(process.env.OWNER_EMAIL || "owner@truckerbooks.local");
+const ownerEmail = normalizeEmail(process.env.OWNER_EMAIL || "owner@runvara.local");
 const ownerPasswordHash = String(process.env.OWNER_PASSWORD_HASH || "").trim();
 const ownerAccessCode = String(process.env.OWNER_ACCESS_CODE || "").trim();
 const supportUsers = parseSupportUsers(process.env.SUPPORT_USERS || "");
 const stripeSecretKey = String(process.env.STRIPE_SECRET_KEY || "").trim();
 const stripePublishableKey = String(process.env.STRIPE_PUBLISHABLE_KEY || "").trim();
 const stripeConfigured = Boolean(stripeSecretKey);
+const stripeMode = stripeSecretKey.startsWith("sk_live_") ? "live" : stripeSecretKey.startsWith("sk_test_") ? "test" : stripeSecretKey ? "unknown" : "not_configured";
+const betaPaymentTestingEnabled = trueValues.has(String(process.env.ENABLE_BETA_PAYMENT_TESTING || "").trim().toLowerCase());
 const plaidClientId = String(process.env.PLAID_CLIENT_ID || "").trim();
 const plaidSecret = String(process.env.PLAID_SECRET || "").trim();
 const plaidEnv = String(process.env.PLAID_ENV || "sandbox").trim().toLowerCase();
 const plaidProducts = String(process.env.PLAID_PRODUCTS || "transactions").split(",").map((item) => item.trim()).filter(Boolean);
 const plaidConfigured = Boolean(plaidClientId && plaidSecret);
-const mfaDisabled = ["true", "1", "yes", "on"].includes(String(process.env.DISABLE_MFA || "").trim().toLowerCase());
-const emailVerificationDisabled = ["true", "1", "yes", "on"].includes(String(process.env.DISABLE_EMAIL_VERIFICATION || "").trim().toLowerCase());
+const mfaDisabled = trueValues.has(String(process.env.DISABLE_MFA || "").trim().toLowerCase());
+const emailVerificationDisabled = betaMode || trueValues.has(String(process.env.DISABLE_EMAIL_VERIFICATION || "").trim().toLowerCase());
+const betaSamplePassword = String(process.env.BETA_SAMPLE_PASSWORD || "BetaPassphrase2026!").trim();
+const backupIntervalHours = Number(process.env.BACKUP_INTERVAL_HOURS || 24);
 const trialDays = 7;
 const sessionMaxAgeSeconds = 60 * 60 * 8;
 const rememberedSessionMaxAgeSeconds = 60 * 60 * 24 * 30;
@@ -46,6 +56,7 @@ const blockedPasswords = new Set([
   "adminadmin",
   "welcome123",
   "truckerbooks",
+  "runvara",
   "trucking123",
   "company1234"
 ]);
@@ -109,8 +120,8 @@ const companyAdminRoles = {
 };
 
 const internalRoles = {
-  support: "TruckerBooks Support",
-  superAdmin: "TruckerBooks Super Admin"
+  support: "RUNVARA Support",
+  superAdmin: "RUNVARA Super Admin"
 };
 
 const permissionCatalog = {
@@ -171,8 +182,10 @@ const mimeTypes = {
 function ensureDb() {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
   if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+  if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
   if (!fs.existsSync(dbPath)) {
-    writeDb({ users: [], sessions: {} });
+    writeDb(betaMode ? createBetaSeedDb() : { users: [], sessions: {} });
   }
 }
 
@@ -192,6 +205,70 @@ function readDb() {
 
 function writeDb(db) {
   fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
+}
+
+function logError(error, context = {}) {
+  try {
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    const entry = {
+      at: new Date().toISOString(),
+      environment: appEnvironment,
+      betaMode,
+      message: error?.message || String(error),
+      stack: error?.stack || "",
+      context
+    };
+    fs.appendFileSync(path.join(logDir, "errors.log"), `${JSON.stringify(entry)}\n`);
+  } catch {
+    // Logging must never break the main request path.
+  }
+}
+
+function backupDb(reason = "manual") {
+  ensureDb();
+  if (!fs.existsSync(dbPath)) return "";
+  if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const prefix = betaMode ? "beta-truckerbooks" : "truckerbooks";
+  const backupPath = path.join(backupDir, `${prefix}-${reason}-${stamp}.json`);
+  fs.copyFileSync(dbPath, backupPath);
+  pruneBackups();
+  return backupPath;
+}
+
+function pruneBackups() {
+  const maxBackups = Math.max(1, Number(process.env.BACKUP_RETENTION_COUNT || 14));
+  const backups = fs.readdirSync(backupDir)
+    .filter((fileName) => fileName.endsWith(".json"))
+    .map((fileName) => {
+      const filePath = path.join(backupDir, fileName);
+      return { filePath, createdMs: fs.statSync(filePath).mtimeMs };
+    })
+    .sort((a, b) => b.createdMs - a.createdMs);
+  backups.slice(maxBackups).forEach((backup) => {
+    try {
+      fs.unlinkSync(backup.filePath);
+    } catch (error) {
+      logError(error, { phase: "backup-prune", filePath: backup.filePath });
+    }
+  });
+}
+
+function startAutomatedBackups() {
+  if (!Number.isFinite(backupIntervalHours) || backupIntervalHours <= 0) return;
+  try {
+    backupDb("startup");
+  } catch (error) {
+    logError(error, { phase: "startup-backup" });
+  }
+  const interval = setInterval(() => {
+    try {
+      backupDb("auto");
+    } catch (error) {
+      logError(error, { phase: "automated-backup" });
+    }
+  }, backupIntervalHours * 60 * 60 * 1000);
+  if (typeof interval.unref === "function") interval.unref();
 }
 
 function requestIp(req) {
@@ -241,7 +318,7 @@ function parseSupportUsers(value = "") {
       return parsed
         .map((item) => ({
           id: String(item.id || item.email || crypto.randomUUID()).trim(),
-          name: String(item.name || item.email || "TruckerBooks Support").trim(),
+          name: String(item.name || item.email || "RUNVARA Support").trim(),
           email: normalizeEmail(item.email),
           passwordHash: String(item.passwordHash || "").trim(),
           role: String(item.role || "support").trim() || "support"
@@ -255,7 +332,7 @@ function parseSupportUsers(value = "") {
     .map((entry) => entry.split("|"))
     .map(([email, passwordHash, name]) => ({
       id: normalizeEmail(email),
-      name: String(name || email || "TruckerBooks Support").trim(),
+      name: String(name || email || "RUNVARA Support").trim(),
       email: normalizeEmail(email),
       passwordHash: String(passwordHash || "").trim(),
       role: "support"
@@ -266,10 +343,10 @@ function parseSupportUsers(value = "") {
 function publicSupportUser(user = {}) {
   return {
     id: user.id || user.email || "",
-    name: user.name || user.email || "TruckerBooks Support",
+    name: user.name || user.email || "RUNVARA Support",
     email: user.email || "",
     role: user.role || "support",
-    roleLabel: internalRoles[user.role] || "TruckerBooks Support"
+    roleLabel: internalRoles[user.role] || "RUNVARA Support"
   };
 }
 
@@ -447,6 +524,7 @@ function driverCanAccessApi(req, pathname) {
   if (req.method === "POST" && ["/api/driver/detention-delay", "/api/route/location", "/api/route/location/stop", "/api/support/issues", "/api/documents", "/api/expenses/receipt"].includes(pathname)) return true;
   if (req.method === "GET" && pathname.startsWith("/api/documents/")) return true;
   if (req.method === "GET" && pathname.startsWith("/api/compliance/")) return true;
+  if (req.method === "GET" && pathname.startsWith("/api/expenses/receipt/")) return true;
   return false;
 }
 
@@ -514,6 +592,8 @@ function publicUser(user) {
     supportIssues: user.supportIssues || [],
     supportAccessGrants: (user.supportAccessGrants || []).map(supportAccessSummary),
     activeSupportAccess: activeGrant ? supportAccessSummary(activeGrant) : null,
+    environment: publicEnvironment(),
+    paymentPolicy: publicPaymentPolicy(),
     affiliateCode: user.affiliateCode,
     referredBy: user.referredBy || "",
     referralDiscount: referralDiscountSummary(user),
@@ -563,6 +643,8 @@ function publicDriverUser(company, driver) {
       .filter((item) => item.daysUntil !== null && item.daysUntil <= 45),
     paymentInfo: {},
     integrations: {},
+    environment: publicEnvironment(),
+    paymentPolicy: publicPaymentPolicy(),
     supportIssues: [],
     trial: null
   };
@@ -570,11 +652,45 @@ function publicDriverUser(company, driver) {
 
 function integrationStatus() {
   return {
-    stripe: stripeConfigured ? "Connected" : "Not connected",
+    stripe: stripeConfigured ? betaMode && betaPaymentTestingEnabled ? `Connected (${stripeMode} mode)` : "Connected" : "Not connected",
     stripePublishable: stripePublishableKey ? "Connected" : "Not connected",
     plaid: plaidConfigured ? "Connected" : "Not connected",
     documentStorage: "Private app storage",
     https: "Required on Railway/custom domain"
+  };
+}
+
+function publicEnvironment() {
+  return {
+    appEnvironment,
+    betaMode,
+    label: betaMode ? "Beta" : "",
+    dataStore: dataDirectoryName,
+    backupsEnabled: Number.isFinite(backupIntervalHours) && backupIntervalHours > 0,
+    backupIntervalHours: Number.isFinite(backupIntervalHours) && backupIntervalHours > 0 ? backupIntervalHours : 0,
+    errorLoggingEnabled: true,
+    openAiConfigured: Boolean(getOpenAiKey()),
+    stripeConfigured,
+    stripeMode,
+    betaPaymentTestingEnabled,
+    plaidConfigured
+  };
+}
+
+function publicPaymentPolicy() {
+  const complimentaryBetaAccess = betaMode && !betaPaymentTestingEnabled;
+  const checkoutEnabled = !complimentaryBetaAccess && (!betaMode || stripeMode === "test");
+  return {
+    complimentaryBetaAccess,
+    betaPaymentTestingEnabled,
+    checkoutEnabled,
+    stripeMode,
+    testCheckoutLabel: betaMode && betaPaymentTestingEnabled,
+    message: complimentaryBetaAccess
+      ? "Closed beta access is complimentary. Subscription charges are turned off."
+      : betaMode
+        ? "Beta payment testing is enabled. Use Stripe test mode only; do not process real charges."
+        : "Use Stripe Checkout for subscription payments."
   };
 }
 
@@ -583,7 +699,7 @@ function publicPaymentInfo(paymentInfo = {}) {
     billingName: paymentInfo.billingName || "",
     billingEmail: paymentInfo.billingEmail || "",
     provider: paymentInfo.provider || "Stripe",
-    providerStatus: stripeConfigured ? paymentInfo.providerStatus || "Ready to connect" : "Stripe not connected",
+    providerStatus: paymentInfo.providerStatus || (stripeConfigured ? "Ready to connect" : "Stripe not connected"),
     customerId: paymentInfo.customerId || "",
     subscriptionId: paymentInfo.subscriptionId || "",
     last4: paymentInfo.last4 || "",
@@ -632,6 +748,165 @@ function uploadActor(user) {
 
 function cloneStarterRecords() {
   return JSON.parse(JSON.stringify(sampleRecords));
+}
+
+function emptyRecords() {
+  return {
+    trips: [],
+    expenses: [],
+    invoices: [],
+    maintenance: []
+  };
+}
+
+function scopedStarterRecords(companyId) {
+  const records = cloneStarterRecords();
+  Object.keys(records).forEach((collection) => {
+    records[collection] = records[collection].map((record) => ({ ...record, companyId }));
+  });
+  return records;
+}
+
+function betaDemoCompany({
+  businessName,
+  dotNumber,
+  companyPhone,
+  companyAddress,
+  adminName,
+  email,
+  subscriptionTier,
+  truckCount
+}) {
+  const createdAt = new Date().toISOString();
+  const companyId = crypto.randomUUID();
+  const trucks = Array.from({ length: truckCount }, (_, index) => ({
+    id: crypto.randomUUID(),
+    companyId,
+    unitNumber: `BETA-${String(index + 1).padStart(2, "0")}`,
+    vin: `BETADEMO${String(index + 1).padStart(9, "0")}`,
+    plate: `BT${String(1000 + index)}`,
+    status: "Active",
+    addedAt: createdAt
+  }));
+  const drivers = [
+    {
+      id: crypto.randomUUID(),
+      companyId,
+      name: "Jordan Sample",
+      email: `driver.${companyId.slice(0, 8)}@beta.runvara.local`,
+      role: "driver",
+      roleLabel: "Driver",
+      permissions: normalizePermissions("driver"),
+      truckId: trucks[0]?.id || "",
+      truckNumber: trucks[0]?.unitNumber || "",
+      payType: "Per mile",
+      ratePerMile: 0.62,
+      weeklyRate: 0,
+      payPercentage: 0,
+      status: "Active",
+      emailVerified: true,
+      passwordHash: hashPassword(betaSamplePassword),
+      mfa: { enabled: false, recoveryCodes: [] },
+      addedBy: { name: adminName, email },
+      addedAt: createdAt,
+      createdAt
+    }
+  ];
+  return normalizeUser({
+    id: companyId,
+    companyId,
+    businessName,
+    dotNumber,
+    companyPhone,
+    companyAddress,
+    adminName,
+    adminRole: "owner",
+    email: normalizeEmail(email),
+    emailVerified: true,
+    emailVerifiedAt: createdAt,
+    acceptedPolicies: true,
+    acceptedPoliciesAt: createdAt,
+    passwordHash: hashPassword(betaSamplePassword),
+    role: "admin",
+    permissions: normalizePermissions("owner"),
+    subscriptionTier,
+    trucks,
+    drivers,
+    documents: [],
+    complianceDocuments: [],
+    supportIssues: [],
+    affiliateCode: `BETA${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+    referredBy: "",
+    referredByType: "",
+    firstMonthPaid: true,
+    trialStartedAt: createdAt,
+    trialEndsAt: addDaysIso(createdAt, trialDays),
+    trialStatus: "Active",
+    commissions: [],
+    records: scopedStarterRecords(companyId),
+    routeTracking: { enabled: false, currentLocation: null, history: [] },
+    paymentInfo: {},
+    integrations: {},
+    createdAt,
+    updatedAt: createdAt
+  });
+}
+
+function createBetaSeedDb() {
+  const seededAt = new Date().toISOString();
+  const users = [
+    betaDemoCompany({
+      businessName: "Beta Demo Logistics",
+      dotNumber: "BETA123456",
+      companyPhone: "(555) 010-2026",
+      companyAddress: "100 Demo Freight Lane, Dallas, TX 75201",
+      adminName: "Beta Owner",
+      email: "owner@beta.runvara.local",
+      subscriptionTier: "growthPlus",
+      truckCount: 12
+    }),
+    betaDemoCompany({
+      businessName: "Sample Small Fleet",
+      dotNumber: "BETA654321",
+      companyPhone: "(555) 010-2049",
+      companyAddress: "240 Preview Parkway, Atlanta, GA 30303",
+      adminName: "Sample Administrator",
+      email: "admin@beta.runvara.local",
+      subscriptionTier: "gold",
+      truckCount: 4
+    })
+  ];
+  return {
+    meta: {
+      environment: appEnvironment,
+      betaMode: true,
+      seededAt,
+      dataPolicy: "Sample beta records only. Do not copy production customer data into this database."
+    },
+    users,
+    partners: [],
+    sessions: {},
+    ownerSessions: {},
+    supportSessions: {},
+    partnerSessions: {},
+    security: { loginAttempts: {}, mfaChallenges: {} },
+    auditLogs: [{
+      id: crypto.randomUUID(),
+      companyId: "",
+      companyName: "RUNVARA Beta",
+      userId: "",
+      userName: "System",
+      userEmail: "",
+      userRole: "system",
+      action: "Beta database seeded",
+      status: "success",
+      dateTime: seededAt,
+      ipAddress: "",
+      device: "server",
+      affectedRecord: { type: "environment", label: "beta" },
+      details: "Separate beta database created with sample data only."
+    }]
+  };
 }
 
 function normalizeEmail(email = "") {
@@ -692,7 +967,7 @@ function recordPasswordChanged(user, req, source = "reset_link") {
     type: "password_changed",
     email: user.email,
     source,
-    message: "Your TruckerBooks password was changed.",
+    message: "Your RUNVARA password was changed.",
     ip: String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim(),
     createdAt: changedAt
   });
@@ -1004,34 +1279,173 @@ function secureHeaders(headers = {}) {
 
 function servePolicyPage(res, type) {
   const isPrivacy = type === "privacy";
+  const isBetaAgreement = type === "beta";
+  const title = isBetaAgreement ? "Closed Beta Testing Agreement" : isPrivacy ? "Privacy Policy" : "Terms of Use";
   res.writeHead(200, secureHeaders({ "Content-Type": "text/html; charset=utf-8" }));
   res.end(`<!doctype html>
     <html lang="en">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>${isPrivacy ? "Privacy Policy" : "Terms of Service"} - TruckerBooks</title>
+        <title>${title} - RUNVARA</title>
         <link rel="stylesheet" href="/styles.css" />
       </head>
       <body>
         <main class="policy-page">
           <section class="panel">
             <div class="panel-header">
-              <h1>${isPrivacy ? "Privacy Policy" : "Terms of Service"}</h1>
-              <a class="ghost-button" href="/">Back to TruckerBooks</a>
+              <h1>${title}</h1>
+              <a class="ghost-button" href="/">Back to RUNVARA</a>
             </div>
             <div class="panel-body policy-copy">
-              ${isPrivacy ? `
-                <p>TruckerBooks stores account details, uploaded trucking documents, scan results, support requests, and bookkeeping records so customers can manage their business dashboard.</p>
-                <p>Payment cards should be handled by Stripe once connected. Bank connections should be handled by Plaid once connected. TruckerBooks should not ask customers for bank login details or store full card numbers.</p>
+              <p><strong>Last updated:</strong> September 1, 2026</p>
+              ${isBetaAgreement ? `
+                <p>This Closed Beta Testing Agreement applies to invited testers who access beta versions of RUNVARA before general release. By creating or using a beta account, you agree to test the service only for evaluation and feedback.</p>
+                <h2>Confidentiality</h2>
+                <p>Beta features, screenshots, workflows, pricing experiments, product plans, beta links, and non-public documentation are confidential. Do not share them outside your company or with anyone who has not been approved for the beta unless RUNVARA gives written permission.</p>
+                <p>You may not share or forward beta access links, copy, reverse engineer, resell, sublicense, or redistribute the software, or publish screenshots, screen recordings, demos, reviews, posts, or public comments about the beta without written permission from RUNVARA.</p>
+                <h2>Usage and Error Data Consent</h2>
+                <p>You consent to RUNVARA collecting account activity, feature usage, device/browser details, IP address, uploaded test-document metadata, support messages, error logs, and diagnostic events so we can improve reliability, security, onboarding, and product quality.</p>
+                <h2>Sample and Test Data</h2>
+                <p>Use sample, redacted, or non-sensitive data whenever possible. Do not upload production customer, payroll, bank, tax, medical, or confidential driver records unless RUNVARA has confirmed that the beta environment is approved for that data.</p>
+                <h2>Data Retention and Account Deletion</h2>
+                <p>Beta account records may be retained during the beta and for a reasonable period afterward to maintain audit trails, investigate security or support issues, and improve the product. You may request account deactivation or deletion by contacting info@thetruckerconsultant.com. Records tied to audit, billing, compliance, settlement, or support activity may be retained where needed for legal, security, or operational reasons.</p>
+                <h2>Beta Disclaimer</h2>
+                <p>The beta may contain errors, incomplete features, incorrect scan results, missing integrations, downtime, data resets, or performance issues. Do not rely on beta output as the only source for compliance, payroll, tax, billing, safety, or legal decisions.</p>
+                <h2>Complimentary Beta Access and Payment Testing</h2>
+                <p>Closed beta access is complimentary unless RUNVARA separately approves payment testing. Testers should not enter real card or bank information in beta. If payment testing is enabled, it must use the payment provider's test mode, checkout must be clearly labeled as a test, and no real charges should be processed.</p>
+                <h2>Feedback</h2>
+                <p>You may provide feedback, bug reports, screenshots, ideas, and suggestions. RUNVARA may use that feedback to improve the product without owing compensation or attribution.</p>
+                <h2>Termination</h2>
+                <p>RUNVARA may suspend or end beta access at any time, including for misuse, security concerns, confidentiality concerns, or the end of the testing period.</p>
+              ` : isPrivacy ? `
+                <p>RUNVARA stores account details, uploaded trucking documents, scan results, support requests, and bookkeeping records so customers can manage their business dashboard.</p>
+                <p>Payment cards should be handled by Stripe once connected. Bank connections should be handled by Plaid once connected. RUNVARA should not ask customers for bank login details or store full card numbers.</p>
                 <p>Uploaded files are private app documents and are only shared through account access, owner support access, or customer-created carrier packet links.</p>
+                <p>For beta accounts, RUNVARA may collect feature usage, diagnostic events, IP address, device/browser details, failed request details, and error logs to troubleshoot problems and improve the service.</p>
+                <p>Beta account data may be retained while the beta is active and for a reasonable period afterward for audit, security, support, and product improvement. You may request deactivation or deletion at info@thetruckerconsultant.com; some records may be retained where needed for audit trails, legal obligations, security, billing, or compliance history.</p>
                 <p>For privacy questions, contact info@thetruckerconsultant.com.</p>
               ` : `
-                <p>TruckerBooks is provided to help trucking businesses organize documents, compliance renewals, expenses, rate confirmations, BOLs, reports, and account access.</p>
+                <p>RUNVARA is provided to help trucking businesses organize documents, compliance renewals, expenses, rate confirmations, BOLs, reports, and account access.</p>
                 <p>Customers are responsible for reviewing AI scan results before relying on them for compliance, bookkeeping, taxes, billing, or broker packets.</p>
                 <p>Trial, subscription, bank, and payment features should be finalized through Stripe and Plaid before accepting production payments or live bank connections.</p>
+                <p>Beta versions are provided for testing and may contain errors, downtime, missing features, data resets, or inaccurate results. Do not rely on beta output as the only source for compliance, tax, payroll, billing, legal, or safety decisions.</p>
+                <p>Closed beta access is complimentary by default. If RUNVARA enables payment testing, testers must use test payment methods only, checkout must be labeled as a test, and no real charges should be processed.</p>
+                <p>Invited beta testers must also follow the <a href="/beta-agreement">Closed Beta Testing Agreement</a>, including confidentiality, usage/error data consent, and beta data-retention terms.</p>
                 <p>For support, contact info@thetruckerconsultant.com.</p>
               `}
+            </div>
+          </section>
+        </main>
+      </body>
+    </html>`);
+}
+
+function serveBetaLaunchPage(res) {
+  res.writeHead(200, secureHeaders({ "Content-Type": "text/html; charset=utf-8" }));
+  res.end(`<!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Closed Beta Launch Requirements - RUNVARA</title>
+        <link rel="stylesheet" href="/styles.css" />
+      </head>
+      <body>
+        <main class="policy-page">
+          <section class="panel">
+            <div class="panel-header">
+              <h1>Closed Beta Launch Requirements</h1>
+              <a class="ghost-button" href="/">Back to RUNVARA</a>
+            </div>
+            <div class="panel-body policy-copy">
+              <p><strong>Last updated:</strong> September 1, 2026</p>
+              <p>Do not begin the closed beta until every launch requirement below has passed or has been formally held back from the beta scope.</p>
+              <h2>Go/No-Go Requirements</h2>
+              <ul>
+                <li>Signup, login, and password reset work end to end.</li>
+                <li>The Railway URL uses HTTPS.</li>
+                <li>Uploaded documents cannot be viewed by another user.</li>
+                <li>Passwords are securely hashed by the authentication system and are never stored as readable text.</li>
+                <li>Financial calculations have been manually verified.</li>
+                <li>The beta database is backed up automatically.</li>
+                <li>Error logging works.</li>
+                <li>Testers have onboarding instructions and sample documents.</li>
+                <li>A feedback form and support contact are available.</li>
+                <li>Privacy notices, Terms of Use, and the Closed Beta Testing Agreement are posted.</li>
+              </ul>
+              <h2>Required Security Test</h2>
+              <p><strong>Account separation is the most important beta security test.</strong> Tester A must never be able to see Tester B's trucks, documents, financial data, or compliance records.</p>
+              <ol>
+                <li>Create two separate beta company accounts: Tester A and Tester B.</li>
+                <li>Add unique trucks, drivers, loads, documents, financial records, and compliance records to Tester A.</li>
+                <li>Sign in as Tester B and confirm Tester A's records are not visible in the dashboard, exports, driver files, document lists, financial views, or compliance pages.</li>
+                <li>While signed in as Tester B, try to open a Tester A document or record by direct URL or copied identifier. The app must return not found or forbidden.</li>
+                <li>Repeat the test in the opposite direction by confirming Tester A cannot view Tester B's records.</li>
+                <li>Record the test date, tester accounts, records checked, result, and any fixes made before inviting additional testers.</li>
+              </ol>
+              <h2>Complete Beta Launch Package</h2>
+              <ul>
+                <li>Tester invitation.</li>
+                <li>Closed Beta Testing Agreement.</li>
+                <li>Onboarding instructions.</li>
+                <li>Task checklist.</li>
+                <li>Feedback survey.</li>
+                <li>Bug tracker process.</li>
+                <li>Sample documents.</li>
+                <li>Launch-day checklist.</li>
+              </ul>
+              <h2>Tester Invitation</h2>
+              <p><strong>Subject:</strong> Invitation to test the RUNVARA closed beta</p>
+              <p>Hello [Tester Name], you are invited to participate in the RUNVARA closed beta. Please use the secure beta link provided by RUNVARA, review the Terms of Use, Privacy Policy, and Closed Beta Testing Agreement, then create your company account or accept your invitation. Closed beta access is complimentary, and real payments should not be entered during testing.</p>
+              <p>Please do not share the beta link, copy the software, or publish screenshots, screen recordings, or public comments about the beta without written permission. Send feedback and bug reports through the Support page or by emailing info@thetruckerconsultant.com.</p>
+              <h2>Onboarding Instructions</h2>
+              <ol>
+                <li>Open the Railway beta URL and confirm the browser shows HTTPS.</li>
+                <li>Create a company owner account or accept the secure invitation from your company administrator.</li>
+                <li>Verify your email address, set up MFA if required, and save recovery codes.</li>
+                <li>Use sample or redacted trucking documents only unless RUNVARA approves real beta data.</li>
+                <li>Complete the task checklist and report any blocked, confusing, or incorrect workflow through Support.</li>
+              </ol>
+              <h2>Tester Task Checklist</h2>
+              <ul>
+                <li>Create or accept an account invitation.</li>
+                <li>Sign in, sign out, use remember me, and complete password reset.</li>
+                <li>Add drivers, trucks, customers, and basic company settings.</li>
+                <li>Upload sample BOL, POD, receipt, insurance, DOT physical, and Clearinghouse MVR documents.</li>
+                <li>Confirm Clearinghouse MVR compliance is marked for a 12-month renewal cycle.</li>
+                <li>Create a load, attach documents, enter an expense, create an invoice, and review reports.</li>
+                <li>Verify users only see records authorized for their role and company.</li>
+                <li>Submit at least one feedback item and one bug report, even if the bug is minor.</li>
+              </ul>
+              <h2>Feedback Survey</h2>
+              <ul>
+                <li>Your role and fleet size.</li>
+                <li>What worked well.</li>
+                <li>What was confusing, slow, or missing.</li>
+                <li>Any incorrect calculations, scan results, or compliance dates.</li>
+                <li>Bug severity, page, browser/device, steps to reproduce, expected result, and actual result.</li>
+                <li>Whether RUNVARA has permission to review attached screenshots or sample files for troubleshooting.</li>
+                <li>Overall readiness: not ready, limited beta, broader beta, or launch candidate.</li>
+              </ul>
+              <h2>Bug Tracker Fields</h2>
+              <ul>
+                <li>Title, severity, category, page or workflow, browser/device, tester email, company name, steps to reproduce, expected result, actual result, screenshot or file, data loss risk, security risk, and whether the issue blocks testing.</li>
+              </ul>
+              <h2>Sample Documents</h2>
+              <ul>
+                <li>Use redacted or fictional BOLs, PODs, fuel and repair receipts, insurance certificates, DOT physical cards, Clearinghouse MVR records, W-9 forms, and notice of assignment examples.</li>
+                <li>Do not upload real bank, payroll, tax, medical, customer, or driver personnel information until the beta environment has been approved for that data.</li>
+              </ul>
+              <h2>Launch-Day Checklist</h2>
+              <ul>
+                <li>Confirm beta mode label is visible in the app.</li>
+                <li>Confirm HTTPS, backups, error logging, support contact, privacy notices, and beta agreement links.</li>
+                <li>Run the account-separation test with Tester A and Tester B.</li>
+                <li>Confirm payments are disabled or clearly in provider test mode.</li>
+                <li>Send tester invitation, onboarding instructions, task checklist, feedback survey, and support contact.</li>
+                <li>Monitor support issues, failed logins, password resets, document uploads, exports, and error logs during launch day.</li>
+              </ul>
             </div>
           </section>
         </main>
@@ -1100,7 +1514,7 @@ async function createReferralStripeCoupon(user) {
     duration: "repeating",
     duration_in_months: String(Math.min(discount.monthsRemaining, discount.monthsTotal)),
     percent_off: String(discount.percent),
-    name: `TruckerBooks referral - ${discount.percent}% off ${discount.monthsTotal} months`,
+    name: `RUNVARA referral - ${discount.percent}% off ${discount.monthsTotal} months`,
     "metadata[userId]": user.id,
     "metadata[referralDiscount]": "true"
   });
@@ -1120,13 +1534,17 @@ async function createStripeCheckoutSession(req, user, interval = "month") {
     client_reference_id: user.id,
     "metadata[userId]": user.id,
     "metadata[plan]": plan.id,
+    "metadata[environment]": appEnvironment,
+    "metadata[testCheckout]": betaMode ? "true" : "false",
     "line_items[0][quantity]": "1",
     "line_items[0][price_data][currency]": "usd",
-    "line_items[0][price_data][product_data][name]": `${plan.name} - TruckerBooks`,
+    "line_items[0][price_data][product_data][name]": `${betaMode ? "[TEST] " : ""}${plan.name} - RUNVARA`,
     "line_items[0][price_data][recurring][interval]": isAnnual ? "year" : "month",
     "line_items[0][price_data][unit_amount]": String(amount),
     "subscription_data[metadata][userId]": user.id,
-    "subscription_data[metadata][plan]": plan.id
+    "subscription_data[metadata][plan]": plan.id,
+    "subscription_data[metadata][environment]": appEnvironment,
+    "subscription_data[metadata][testCheckout]": betaMode ? "true" : "false"
   };
   const referralDiscount = referralDiscountSummary(user);
   if (!isAnnual && referralDiscount) {
@@ -1781,7 +2199,7 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
   if (!openAiKey || !openAiKey.startsWith("sk-")) return null;
   const fileInput = await buildOpenAiFileInputWithUpload(openAiKey, buffer, mimeType, mimeType?.includes("pdf") ? "uploaded-document.pdf" : "uploaded-document");
   const prompt = [
-    "You are the AI document scanner for TruckerBooks.",
+    "You are the AI document scanner for RUNVARA.",
     "Extract structured trucking document data from the uploaded file.",
     documentContext,
     "Return JSON only, with these keys:",
@@ -2266,7 +2684,7 @@ function normalizeUser(user) {
     }
     return { ...document, type, uploadedBy };
   });
-  user.records = user.records || cloneStarterRecords();
+  user.records = user.records || emptyRecords();
   user.records.trips = scopeCompanyCollection(user, user.records.trips).map(normalizeTripRecord);
   user.records.invoices = scopeCompanyCollection(user, user.records.invoices);
   user.records.maintenance = scopeCompanyCollection(user, user.records.maintenance);
@@ -2701,6 +3119,10 @@ async function handleApi(req, res, pathname) {
     return fs.createReadStream(filePath).pipe(res);
   }
 
+  if (req.method === "GET" && pathname === "/api/environment") {
+    return sendJson(res, 200, { environment: publicEnvironment() });
+  }
+
   if (req.method === "POST" && pathname === "/api/signup") {
     const body = await readBody(req);
     const email = normalizeEmail(body.email);
@@ -2754,12 +3176,23 @@ async function handleApi(req, res, pathname) {
       affiliateCode: crypto.randomBytes(5).toString("hex"),
       referredBy: referrer ? String(body.referralCode || "").trim() : "",
       referredByType: referrer?.type || "",
-      firstMonthPaid: false,
+      firstMonthPaid: betaMode,
       trialStartedAt: createdAt,
       trialEndsAt: addDaysIso(createdAt, trialDays),
-      trialStatus: "Trial",
+      trialStatus: betaMode ? "Beta Access" : "Trial",
       commissions: [],
-      records: cloneStarterRecords(),
+      paymentInfo: betaMode ? {
+        provider: "Complimentary beta",
+        providerStatus: "Closed beta access - no subscription charge",
+        billingName: businessName,
+        billingEmail: email,
+        customerId: "",
+        subscriptionId: "",
+        last4: "",
+        cardBrand: "",
+        updatedAt: createdAt
+      } : {},
+      records: emptyRecords(),
       createdAt,
       updatedAt: createdAt
     };
@@ -2910,7 +3343,7 @@ async function handleApi(req, res, pathname) {
     writeDb(db);
     return sendJson(res, 200, {
       secret,
-      otpauthUrl: `otpauth://totp/TruckerBooks:${encodeURIComponent(user.email)}?secret=${secret}&issuer=TruckerBooks`
+      otpauthUrl: `otpauth://totp/RUNVARA:${encodeURIComponent(user.email)}?secret=${secret}&issuer=RUNVARA`
     });
   }
 
@@ -3048,7 +3481,7 @@ async function handleApi(req, res, pathname) {
   if (req.method === "POST" && pathname === "/api/support/login") {
     const body = await readBody(req);
     const email = normalizeEmail(body.email);
-    if (!supportUsers.length) return sendError(res, 503, "Named support accounts are not configured. Set SUPPORT_USERS with individual TruckerBooks employee accounts.");
+    if (!supportUsers.length) return sendError(res, 503, "Named support accounts are not configured. Set SUPPORT_USERS with individual RUNVARA employee accounts.");
     if (isLoginLocked(db, "support", email)) return sendError(res, 429, "Too many support sign in attempts. Please wait 15 minutes and try again.");
     const supportUser = supportUsers.find((item) => item.email === email);
     if (!supportUser || !verifyPassword(body.password || "", supportUser.passwordHash)) {
@@ -3059,7 +3492,7 @@ async function handleApi(req, res, pathname) {
     }
     clearLoginFailures(db, "support", email);
     setSupportSession(req, res, db, supportUser);
-    auditLog(db, req, { user: supportUser, action: "Successful login", affectedRecord: auditRecord("support_user", supportUser), details: "Named TruckerBooks support account login." });
+    auditLog(db, req, { user: supportUser, action: "Successful login", affectedRecord: auditRecord("support_user", supportUser), details: "Named RUNVARA support account login." });
     writeDb(db);
     return sendJson(res, 200, { supportUser: publicSupportUser(supportUser) });
   }
@@ -3240,7 +3673,7 @@ async function handleApi(req, res, pathname) {
     driver.inviteUsedAt = "";
     driver.status = "Access resent";
     driver.resentAt = new Date().toISOString();
-    addAccessHistory(driver, "Invitation resent", { id: ownerEmail, name: "TruckerBooks Owner", email: ownerEmail }, "Owner regenerated invite link");
+    addAccessHistory(driver, "Invitation resent", { id: ownerEmail, name: "RUNVARA Owner", email: ownerEmail }, "Owner regenerated invite link");
     customer.updatedAt = new Date().toISOString();
     auditLog(db, req, { company: customer, user: { email: ownerEmail, role: "owner" }, action: "User invitation resent", affectedRecord: auditRecord("account_access_user", driver), details: "Internal owner regenerated invite link." });
     writeDb(db);
@@ -3516,6 +3949,12 @@ async function handleApi(req, res, pathname) {
 
   if (req.method === "POST" && pathname === "/api/billing/stripe-checkout") {
     if (!requirePermission(user, res, "changeSubscription", "You do not have permission to change billing or subscription settings.")) return;
+    if (betaMode && !betaPaymentTestingEnabled) {
+      return sendError(res, 403, "Closed beta access is complimentary. Subscription charges are turned off.");
+    }
+    if (betaMode && stripeMode !== "test") {
+      return sendError(res, 403, "Beta checkout requires Stripe test mode. Set STRIPE_SECRET_KEY to a sk_test key before testing payments.");
+    }
     if (!stripeConfigured) return sendError(res, 503, "Stripe is not connected yet. Add STRIPE_SECRET_KEY in Railway.");
     const body = await readBody(req);
     const interval = body.interval === "year" ? "year" : "month";
@@ -3523,14 +3962,14 @@ async function handleApi(req, res, pathname) {
     user.paymentInfo = {
       ...(user.paymentInfo || {}),
       provider: "Stripe",
-      providerStatus: "Stripe checkout started",
+      providerStatus: betaMode ? "Stripe test checkout started" : "Stripe checkout started",
       pendingCheckoutSessionId: session.id,
       updatedAt: new Date().toISOString()
     };
     user.updatedAt = new Date().toISOString();
-    auditLog(db, req, { company: user, user, action: "Financial approval", affectedRecord: auditRecord("stripe_checkout", { id: session.id, label: interval }), details: "Stripe checkout started." });
+    auditLog(db, req, { company: user, user, action: "Financial approval", affectedRecord: auditRecord("stripe_checkout", { id: session.id, label: interval }), details: betaMode ? "Stripe TEST checkout started; no live charges permitted." : "Stripe checkout started." });
     writeDb(db);
-    return sendJson(res, 200, { url: session.url, sessionId: session.id, customer: publicUser(user) });
+    return sendJson(res, 200, { url: session.url, sessionId: session.id, testMode: betaMode, customer: publicUser(user) });
   }
 
   if (req.method === "POST" && pathname === "/api/billing/stripe-confirm") {
@@ -3549,7 +3988,7 @@ async function handleApi(req, res, pathname) {
     if (!requirePermission(user, res, "manageIntegrations", "You do not have permission to manage integrations.")) return;
     if (!plaidConfigured) return sendError(res, 503, "Plaid is not connected yet. Add PLAID_CLIENT_ID, PLAID_SECRET, and PLAID_ENV in Railway.");
     const token = await plaidRequest("/link/token/create", {
-      client_name: "TruckerBooks",
+      client_name: "RUNVARA",
       language: "en",
       country_codes: ["US"],
       products: plaidProducts,
@@ -4199,6 +4638,20 @@ async function handleApi(req, res, pathname) {
     return sendJson(res, 201, { expense: normalizedExpense, records: isDriverActor(actor) ? driverScopedRecords(user, actor) : user.records });
   }
 
+  if (req.method === "GET" && pathname.startsWith("/api/expenses/receipt/")) {
+    const expenseId = pathname.split("/")[4];
+    const expenses = isDriverActor(actor) ? driverScopedRecords(user, actor).expenses : user.records.expenses;
+    const expense = findCompanyRecord(user, expenses, expenseId);
+    const receipt = expense?.sourceReceipt;
+    if (!receipt) return sendError(res, 404, "Receipt not found.");
+    const filePath = path.join(uploadDir, receipt.storedName);
+    if (!fs.existsSync(filePath)) return sendError(res, 404, "Uploaded receipt is missing.");
+    res.writeHead(200, secureHeaders({
+      "Content-Type": receipt.mimeType || "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${String(receipt.fileName || "receipt").replace(/"/g, "")}"`
+    }));
+    return fs.createReadStream(filePath).pipe(res);
+  }
   if (req.method === "GET" && pathname.startsWith("/api/documents/")) {
     const id = pathname.split("/")[3];
     const document = findCompanyRecord(user, user.documents, id);
@@ -4271,7 +4724,7 @@ async function handleApi(req, res, pathname) {
   if (req.method === "GET" && pathname === "/api/export") {
     if (isDriverActor(actor)) return sendError(res, 403, "Drivers cannot export company-wide reports.");
     if (!requirePermission(user, res, "exportReports", "You do not have permission to export reports.")) return;
-    const fileName = `${user.businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "truckerbooks"}-records.json`;
+    const fileName = `${user.businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "runvara"}-records.json`;
     auditLog(db, req, { company: user, user, action: "Data exported", affectedRecord: auditRecord("company_records_export", { id: companyIdFor(user), label: fileName }), details: "Company records JSON exported." });
     writeDb(db);
     res.writeHead(200, secureHeaders({
@@ -4287,6 +4740,8 @@ async function handleApi(req, res, pathname) {
 function serveStatic(req, res, pathname) {
   if (pathname === "/privacy") return servePolicyPage(res, "privacy");
   if (pathname === "/terms") return servePolicyPage(res, "terms");
+  if (pathname === "/beta-agreement") return servePolicyPage(res, "beta");
+  if (pathname === "/beta-launch") return serveBetaLaunchPage(res);
   if (pathname.startsWith("/data/")) {
     res.writeHead(403, secureHeaders({ "Content-Type": "text/plain; charset=utf-8" }));
     res.end("Private app storage");
@@ -4325,7 +4780,7 @@ function serveEmailVerificationPage(req, res) {
   const verifiedAt = new Date().toISOString();
   const title = user ? "Email verified" : "Verification link invalid";
   const message = user
-    ? "Your administrator email has been verified. You can sign in to TruckerBooks."
+    ? "Your administrator email has been verified. You can sign in to RUNVARA."
     : "This verification link is invalid or has already been used.";
 
   if (user) {
@@ -4342,7 +4797,7 @@ function serveEmailVerificationPage(req, res) {
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>${escapeHtml(title)} - TruckerBooks</title>
+        <title>${escapeHtml(title)} - RUNVARA</title>
         <style>
           body{font-family:Arial,sans-serif;margin:0;background:#f5f7f8;color:#10222b}
           main{max-width:620px;margin:56px auto;background:#fff;border:1px solid #dbe4e7;border-radius:8px;padding:28px}
@@ -4371,7 +4826,7 @@ function servePasswordResetPage(req, res) {
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Password Reset - TruckerBooks</title>
+        <title>Password Reset - RUNVARA</title>
         <style>
           body{font-family:Arial,sans-serif;margin:0;background:#f5f7f8;color:#10222b}
           main{max-width:620px;margin:56px auto;background:#fff;border:1px solid #dbe4e7;border-radius:8px;padding:28px}
@@ -4429,7 +4884,7 @@ function serveAccountAccessPage(res, tokenValue) {
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Account Access - TruckerBooks</title>
+        <title>Account Access - RUNVARA</title>
         <style>
           body{font-family:Arial,sans-serif;margin:0;background:#f5f7f8;color:#10222b}
           main{max-width:620px;margin:56px auto;background:#fff;border:1px solid #dbe4e7;border-radius:8px;padding:28px}
@@ -4541,14 +4996,24 @@ const server = http.createServer(async (req, res) => {
     }
     serveStatic(req, res, decodeURIComponent(url.pathname));
   } catch (error) {
-    sendError(res, 500, error.message || "Server error.");
+    logError(error, { method: req.method, url: req.url });
+    sendError(res, 500, "Server error. The issue was logged.");
   }
 });
 
 rescanAllStoredDocuments()
-  .catch((error) => console.warn(`Document rescan skipped: ${error.message}`))
+  .catch((error) => {
+    logError(error, { phase: "startup-document-rescan" });
+    console.warn(`Document rescan skipped: ${error.message}`);
+  })
   .finally(() => {
+    startAutomatedBackups();
     server.listen(port, () => {
-      console.log(`TruckerBooks is running at http://localhost:${port}`);
+      console.log(`RUNVARA is running at http://localhost:${port}`);
+      if (betaMode) {
+        console.log(`Beta mode is active. Database: ${dbPath}`);
+      }
     });
   });
+
+
