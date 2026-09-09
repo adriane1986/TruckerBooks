@@ -67,6 +67,7 @@ const state = {
   reportYear: String(new Date().getFullYear()),
   dateRange: "all",
   dashboardRevenueView: "month",
+  dashboardRevenueYear: String(new Date().getFullYear()),
   gpsWatchId: null,
   accountMessage: "",
   selectedWorkspacePlan: "multiCompanyPro",
@@ -389,6 +390,11 @@ function reportYears() {
   return Array.from({ length: 5 }, (_, index) => String(currentYear - index));
 }
 
+function dashboardRevenueYears() {
+  const currentYear = new Date().getFullYear();
+  return Array.from({ length: 5 }, (_, index) => String(currentYear - index));
+}
+
 function recordsForYear(items, year) {
   return items.filter((item) => String(item.date || "").slice(0, 4) === String(year));
 }
@@ -422,19 +428,21 @@ function monthlyProfitRows(year, records = state.records) {
 function revenueChartAnchorDate() {
   const trips = state.records.trips || [];
   const today = new Date();
-  const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-  if (trips.some((item) => String(item.date || "").startsWith(currentMonthKey))) return today;
+  const selectedYear = state.dashboardRevenueYear || String(today.getFullYear());
+  const currentMonthKey = `${selectedYear}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  if (selectedYear === String(today.getFullYear()) && trips.some((item) => String(item.date || "").startsWith(currentMonthKey))) return today;
   const newestTrip = trips
-    .filter((item) => item.date)
+    .filter((item) => String(item.date || "").slice(0, 4) === selectedYear)
     .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
-  return newestTrip ? new Date(`${String(newestTrip.date).slice(0, 10)}T12:00:00`) : today;
+  if (newestTrip) return new Date(`${String(newestTrip.date).slice(0, 10)}T12:00:00`);
+  return new Date(Number(selectedYear), selectedYear === String(today.getFullYear()) ? today.getMonth() : 0, 1);
 }
 
 function dashboardRevenueRows() {
   const trips = state.records.trips || [];
   const today = revenueChartAnchorDate();
   if (state.dashboardRevenueView === "year") {
-    const year = String(today.getFullYear());
+    const year = state.dashboardRevenueYear || String(today.getFullYear());
     return {
       label: year,
       totalLabel: "Year total",
@@ -463,6 +471,8 @@ function dashboardRevenueRows() {
 }
 
 function revenueChart() {
+  const years = dashboardRevenueYears();
+  if (!years.includes(state.dashboardRevenueYear)) state.dashboardRevenueYear = years[0];
   const chart = dashboardRevenueRows();
   const maxAmount = Math.max(...chart.rows.map((item) => item.amount), 1);
   const total = chart.rows.reduce((amount, item) => amount + item.amount, 0);
@@ -478,6 +488,9 @@ function revenueChart() {
           <button class="${state.dashboardRevenueView === "month" ? "active" : ""}" type="button" data-revenue-view="month">Month</button>
           <button class="${state.dashboardRevenueView === "year" ? "active" : ""}" type="button" data-revenue-view="year">Year</button>
         </div>
+        <select class="chart-year-select" id="dashboardRevenueYear" aria-label="Gross revenue year">
+          ${years.map((year) => `<option value="${year}" ${state.dashboardRevenueYear === year ? "selected" : ""}>${year}</option>`).join("")}
+        </select>
       </div>
       <div class="panel-body">
         <div class="revenue-chart ${state.dashboardRevenueView === "month" ? "month-view" : "year-view"}">
@@ -497,6 +510,35 @@ function revenueChart() {
       </div>
     </section>
   `;
+}
+
+function isGpsTrackingActive() {
+  const location = state.customer?.routeTracking?.currentLocation;
+  return Boolean(state.gpsWatchId || state.customer?.routeTracking?.enabled || location?.active);
+}
+
+function distanceBetweenGpsPoints(start, end) {
+  const lat1 = Number(start?.latitude);
+  const lon1 = Number(start?.longitude);
+  const lat2 = Number(end?.latitude);
+  const lon2 = Number(end?.longitude);
+  if (![lat1, lon1, lat2, lon2].every(Number.isFinite)) return 0;
+  const radians = (value) => value * Math.PI / 180;
+  const earthMiles = 3958.8;
+  const dLat = radians(lat2 - lat1);
+  const dLon = radians(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(radians(lat1)) * Math.cos(radians(lat2)) * Math.sin(dLon / 2) ** 2;
+  return earthMiles * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function gpsTrackedMiles() {
+  if (!isGpsTrackingActive()) return 0;
+  const history = state.customer?.routeTracking?.history || [];
+  if (history.length < 2) return 0;
+  return history.reduce((total, point, index) => {
+    if (index === 0) return total;
+    return total + distanceBetweenGpsPoints(history[index - 1], point);
+  }, 0);
 }
 
 function expenseCategoryTotals(expenses) {
@@ -621,13 +663,15 @@ function renderDashboard() {
   const revenue = sum(state.records.trips);
   const expenses = sumExpenseAmounts(allExpenses());
   const miles = sum(state.records.trips, "miles");
-  const costPerMile = expenses / Math.max(miles, 1);
+  const trackedMiles = gpsTrackedMiles();
+  const trackingActive = isGpsTrackingActive();
+  const costPerMile = trackingActive && trackedMiles > 0 ? expenses / trackedMiles : 0;
   const nextAlert = state.complianceAlerts?.[0];
   const dashboardAlerts = state.complianceAlerts || [];
   const trial = state.customer?.trial;
   const insights = moneyInsights({ trips: state.records.trips || [], expenses: state.records.expenses || [], maintenance: state.records.maintenance || [] });
   const location = state.customer?.routeTracking?.currentLocation;
-  const isSharing = Boolean(state.gpsWatchId || location?.active);
+  const isSharing = trackingActive;
   const locationDetail = location?.latitude && location?.longitude
     ? `${Number(location.latitude).toFixed(4)}, ${Number(location.longitude).toFixed(4)}`
     : "No live location shared";
@@ -637,7 +681,7 @@ function renderDashboard() {
       ${metric("Gross revenue", money(revenue), "Rate Cons counted as revenue", "file-text")}
       ${metric("Net profit", money(netProfit()), "After tracked deductions", "bar-chart")}
       ${metric("Loaded miles", number(miles), `${money(revenue / Math.max(miles, 1))} per mile`, "route")}
-      ${metric("Cost per mile", money(costPerMile), "Expenses divided by loaded miles", "receipt")}
+      ${metric("Cost per mile", money(costPerMile), trackingActive ? `Expenses divided by ${number(Math.round(trackedMiles))} GPS miles` : "Start GPS sharing to calculate", "receipt")}
       ${metric("Trial", trialLabel(trial), trialDetail(trial), "credit-card")}
       ${metric("Compliance", state.complianceAlerts?.length || 0, nextAlert ? `${nextAlert.label} due ${formatDate(nextAlert.date)}` : "No urgent renewals", "shield")}
     </div>
@@ -2943,6 +2987,10 @@ document.addEventListener("change", (event) => {
   if (event.target.id === "reportYearFilter") {
     state.reportYear = event.target.value;
     renderContent();
+  }
+  if (event.target.id === "dashboardRevenueYear") {
+    state.dashboardRevenueYear = event.target.value;
+    renderDashboard();
   }
   if (event.target.matches("[data-cpm-input]")) updateCostPerMileCalculator();
   if (event.target.id === "entryType") toggleTripFields();

@@ -465,6 +465,16 @@ button {
   color: #fff;
 }
 
+.chart-year-select {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 850;
+  padding: 0 34px 0 12px;
+}
+
 .revenue-chart {
   min-height: 240px;
   display: grid;
