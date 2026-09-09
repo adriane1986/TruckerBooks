@@ -437,6 +437,85 @@ button {
   gap: 18px;
 }
 
+.revenue-chart-panel .panel-header > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.segmented-control {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(76px, 1fr));
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.segmented-control button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 850;
+  padding: 0 14px;
+}
+
+.segmented-control button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.revenue-chart {
+  min-height: 240px;
+  display: grid;
+  align-items: end;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.revenue-chart.month-view {
+  grid-template-columns: repeat(31, minmax(10px, 1fr));
+}
+
+.revenue-chart.year-view {
+  grid-template-columns: repeat(12, minmax(34px, 1fr));
+}
+
+.revenue-bar-item {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 8px;
+  align-items: end;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.revenue-bar-track {
+  height: 190px;
+  min-width: 0;
+  border-radius: 8px 8px 4px 4px;
+  background: linear-gradient(180deg, rgba(5, 189, 168, 0.12), rgba(8, 40, 90, 0.06));
+  display: flex;
+  align-items: end;
+  overflow: hidden;
+}
+
+.revenue-bar {
+  width: 100%;
+  min-height: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, var(--accent), var(--nav-soft));
+}
+
+.empty-chart {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .compliance-layout {
   display: grid;
   grid-template-columns: 1fr;
@@ -1362,6 +1441,15 @@ label select {
 
   .panel {
     overflow-x: auto;
+  }
+
+  .revenue-chart-panel .panel-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .revenue-chart {
+    min-width: 720px;
   }
 
   .route-tracking-card {

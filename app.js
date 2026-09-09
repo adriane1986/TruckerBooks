@@ -66,6 +66,7 @@ const state = {
   scannerStatus: null,
   reportYear: String(new Date().getFullYear()),
   dateRange: "all",
+  dashboardRevenueView: "month",
   gpsWatchId: null,
   accountMessage: "",
   selectedWorkspacePlan: "multiCompanyPro",
@@ -418,6 +419,86 @@ function monthlyProfitRows(year, records = state.records) {
   });
 }
 
+function revenueChartAnchorDate() {
+  const trips = state.records.trips || [];
+  const today = new Date();
+  const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  if (trips.some((item) => String(item.date || "").startsWith(currentMonthKey))) return today;
+  const newestTrip = trips
+    .filter((item) => item.date)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+  return newestTrip ? new Date(`${String(newestTrip.date).slice(0, 10)}T12:00:00`) : today;
+}
+
+function dashboardRevenueRows() {
+  const trips = state.records.trips || [];
+  const today = revenueChartAnchorDate();
+  if (state.dashboardRevenueView === "year") {
+    const year = String(today.getFullYear());
+    return {
+      label: year,
+      totalLabel: "Year total",
+      rows: Array.from({ length: 12 }, (_, month) => {
+        const key = `${year}-${String(month + 1).padStart(2, "0")}`;
+        return {
+          label: monthName(month),
+          amount: sum(trips.filter((item) => String(item.date || "").startsWith(key)))
+        };
+      })
+    };
+  }
+  const monthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  return {
+    label: today.toLocaleString("en-US", { month: "long", year: "numeric" }),
+    totalLabel: "Month total",
+    rows: Array.from({ length: daysInMonth }, (_, day) => {
+      const dateKey = `${monthKey}-${String(day + 1).padStart(2, "0")}`;
+      return {
+        label: String(day + 1),
+        amount: sum(trips.filter((item) => String(item.date || "").startsWith(dateKey)))
+      };
+    })
+  };
+}
+
+function revenueChart() {
+  const chart = dashboardRevenueRows();
+  const maxAmount = Math.max(...chart.rows.map((item) => item.amount), 1);
+  const total = chart.rows.reduce((amount, item) => amount + item.amount, 0);
+  const hasRevenue = total > 0;
+  return `
+    <section class="panel revenue-chart-panel">
+      <div class="panel-header">
+        <div>
+          <h2>Gross Revenue</h2>
+          <span class="muted">${chart.totalLabel}: ${money(total)} · ${chart.label}</span>
+        </div>
+        <div class="segmented-control" aria-label="Gross revenue chart view">
+          <button class="${state.dashboardRevenueView === "month" ? "active" : ""}" type="button" data-revenue-view="month">Month</button>
+          <button class="${state.dashboardRevenueView === "year" ? "active" : ""}" type="button" data-revenue-view="year">Year</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="revenue-chart ${state.dashboardRevenueView === "month" ? "month-view" : "year-view"}">
+          ${chart.rows.map((item) => {
+            const height = hasRevenue ? Math.max((item.amount / maxAmount) * 100, item.amount > 0 ? 8 : 0) : 0;
+            return `
+              <div class="revenue-bar-item">
+                <div class="revenue-bar-track" title="${escapeAttribute(item.label)}: ${escapeAttribute(money(item.amount))}">
+                  <span class="revenue-bar" style="height: ${height}%"></span>
+                </div>
+                <span>${item.label}</span>
+              </div>
+            `;
+          }).join("")}
+        </div>
+        ${hasRevenue ? "" : `<p class="empty-chart">No gross revenue has been added for this ${state.dashboardRevenueView} view yet.</p>`}
+      </div>
+    </section>
+  `;
+}
+
 function expenseCategoryTotals(expenses) {
   return expenses.reduce((totals, item) => {
     const category = displayExpenseCategory(item);
@@ -560,6 +641,7 @@ function renderDashboard() {
       ${metric("Trial", trialLabel(trial), trialDetail(trial), "credit-card")}
       ${metric("Compliance", state.complianceAlerts?.length || 0, nextAlert ? `${nextAlert.label} due ${formatDate(nextAlert.date)}` : "No urgent renewals", "shield")}
     </div>
+    ${revenueChart()}
     <div class="dashboard-grid">
       <section class="panel">
         <div class="panel-header"><h2>Active Route</h2><span class="status ${isSharing ? "Paid" : "Scheduled"}">${isSharing ? "GPS Active" : "Scheduled"}</span></div>
@@ -2739,6 +2821,7 @@ document.addEventListener("click", (event) => {
   const plaidLinkButton = event.target.closest("[data-plaid-link]");
   const mfaSetupButton = event.target.closest("[data-mfa-setup]");
   const gpsToggleButton = event.target.closest("[data-gps-toggle]");
+  const revenueViewButton = event.target.closest("[data-revenue-view]");
   const revokeSupportAccessButton = event.target.closest("[data-revoke-support-access]");
   if (navButton) setView(navButton.dataset.view);
   if (shortcut) setView(shortcut.dataset.viewShortcut);
@@ -2779,6 +2862,10 @@ document.addEventListener("click", (event) => {
   if (gpsToggleButton) {
     if (gpsToggleButton.dataset.gpsToggle === "start") startGpsSharing();
     if (gpsToggleButton.dataset.gpsToggle === "stop") stopGpsSharing();
+  }
+  if (revenueViewButton) {
+    state.dashboardRevenueView = revenueViewButton.dataset.revenueView;
+    renderDashboard();
   }
 });
 
