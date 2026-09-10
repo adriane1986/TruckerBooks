@@ -25,6 +25,7 @@ const icons = {
   upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5M12 3v12"/></svg>',
   "credit-card": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20M6 15h2M11 15h4"/></svg>',
   "help-circle": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 1 1 5.8 1c-.5 1.1-1.6 1.5-2.3 2.2-.4.4-.6.9-.6 1.8"/><path d="M12 17h.01"/></svg>',
+  menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 6h16M4 12h16M4 18h16"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5v14"/></svg>',
   save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>',
@@ -174,6 +175,8 @@ const verifyMfaBtn = document.querySelector("#verifyMfaBtn");
 const environmentBadges = document.querySelectorAll("[data-environment-badge]");
 const content = document.querySelector("#content");
 const navList = document.querySelector("#navList");
+const mobileMenuBtn = document.querySelector("#mobileMenuBtn");
+const mobileNavBackdrop = document.querySelector("#mobileNavBackdrop");
 const sectionTitle = document.querySelector("#sectionTitle");
 const sectionEyebrow = document.querySelector("#sectionEyebrow");
 const customerName = document.querySelector("#customerName");
@@ -627,8 +630,18 @@ function renderNav() {
       <span data-icon="${item.icon}"></span>
       ${item.label}
     </button>
-  `).join("");
+  `).join("") + `
+    <button class="nav-button signoff-button" type="button" data-sign-out>
+      <span data-icon="log-out"></span>
+      Sign Out
+    </button>
+  `;
   renderIcons(navList);
+}
+
+function setMobileNavOpen(isOpen) {
+  document.body.classList.toggle("mobile-nav-open", isOpen);
+  mobileMenuBtn?.setAttribute("aria-expanded", String(isOpen));
 }
 
 function setView(view) {
@@ -641,6 +654,7 @@ function setView(view) {
   sectionEyebrow.textContent = meta.eyebrow;
   renderNav();
   renderContent();
+  setMobileNavOpen(false);
 }
 
 function metric(label, value, delta, icon) {
@@ -2155,7 +2169,12 @@ function toggleTripFields() {
   });
 }
 
-async function addEntry() {
+async function addEntry(event) {
+  event?.preventDefault();
+  if (!entryForm.checkValidity()) {
+    entryForm.reportValidity();
+    return;
+  }
   const data = Object.fromEntries(new FormData(entryForm).entries());
   const collection = data.type === "maintenance" ? "maintenance" : `${data.type}s`;
   const base = {
@@ -2867,6 +2886,7 @@ document.addEventListener("click", (event) => {
   const gpsToggleButton = event.target.closest("[data-gps-toggle]");
   const revenueViewButton = event.target.closest("[data-revenue-view]");
   const revokeSupportAccessButton = event.target.closest("[data-revoke-support-access]");
+  const closeEntryDialogButton = event.target.closest("[data-close-entry-dialog]");
   if (navButton) setView(navButton.dataset.view);
   if (shortcut) setView(shortcut.dataset.viewShortcut);
   if (deleteButton) deleteEntry(deleteButton.dataset.delete);
@@ -2899,6 +2919,10 @@ document.addEventListener("click", (event) => {
   if (stripeCheckoutButton) startStripeCheckout(stripeCheckoutButton.dataset.stripeCheckout);
   if (plaidLinkButton) startPlaidLink();
   if (revokeSupportAccessButton) revokeSupportAccess(revokeSupportAccessButton.dataset.revokeSupportAccess);
+  if (event.target.closest("[data-sign-out]")) signOut();
+  if (event.target.closest("#mobileMenuBtn")) setMobileNavOpen(true);
+  if (event.target.closest("#mobileNavBackdrop")) setMobileNavOpen(false);
+  if (closeEntryDialogButton) dialog.close();
   if (mfaSetupButton) startMfaSetup().catch((error) => {
     state.accountMessage = error.message;
     renderContent();
@@ -2914,6 +2938,9 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("submit", (event) => {
+  if (event.target.id === "entryForm") {
+    addEntry(event);
+  }
   if (event.target.id === "truckForm") {
     event.preventDefault();
     addTruck(event.target);
@@ -2997,10 +3024,7 @@ document.addEventListener("change", (event) => {
 });
 
 document.querySelector("#quickAddBtn").addEventListener("click", () => openEntryDialog());
-document.querySelector("#saveEntryBtn").addEventListener("click", addEntry);
 document.querySelector("#exportBtn").addEventListener("click", exportRecords);
-document.querySelector("#logoutBtn").addEventListener("click", signOut);
-document.querySelector("#logoutAllBtn").addEventListener("click", signOutEverywhere);
 togglePassword.addEventListener("click", () => {
   const showing = authPassword.type === "text";
   authPassword.type = showing ? "password" : "text";
