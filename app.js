@@ -188,6 +188,16 @@ const referralCodeInput = document.querySelector("#referralCode");
 const incomingReferralCode = new URLSearchParams(location.search).get("ref") || "";
 if (referralCodeInput) referralCodeInput.value = incomingReferralCode;
 
+function syncMobileLayoutClass() {
+  const width = window.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth;
+  const isTouchDevice = navigator.maxTouchPoints > 0 || matchMedia("(pointer: coarse)").matches;
+  document.body.classList.toggle("force-mobile-layout", isTouchDevice && width <= 1200);
+}
+
+syncMobileLayoutClass();
+window.addEventListener("resize", syncMobileLayoutClass);
+window.visualViewport?.addEventListener("resize", syncMobileLayoutClass);
+
 function cloneStarterRecords() {
   return structuredClone(sampleData);
 }
