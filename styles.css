@@ -2115,3 +2115,107 @@ body.force-mobile-layout .panel-header {
     display: inline-grid !important;
   }
 }
+
+.auth-screen.hidden,
+.app-shell.hidden,
+body.force-mobile-layout .auth-screen.hidden,
+body.force-mobile-layout .app-shell.hidden {
+  display: none !important;
+}
+
+@media (max-width: 680px) {
+  .document-table {
+    display: block;
+    min-width: 0 !important;
+    width: 100% !important;
+    border-collapse: separate;
+  }
+
+  .document-table thead {
+    display: none;
+  }
+
+  .document-table tbody {
+    display: grid;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .document-table tr {
+    display: grid;
+    gap: 10px;
+    width: 100%;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  .document-table td {
+    display: grid;
+    grid-template-columns: 86px minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    width: 100%;
+    padding: 0;
+    border-bottom: 0;
+    overflow-wrap: normal;
+  }
+
+  .document-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0;
+    line-height: 1.25;
+    text-transform: uppercase;
+  }
+
+  .document-table td[colspan] {
+    display: block;
+  }
+
+  .document-table td[colspan]::before {
+    content: "";
+    display: none;
+  }
+
+  .document-table .file-name-cell {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .document-table .file-name-cell::before {
+    display: none;
+  }
+
+  .document-table .file-name-cell strong,
+  .document-table .file-name-cell input {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
+  .document-table .rename-file-form {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .document-table .rename-file-form .chip-button {
+    width: fit-content;
+  }
+
+  .document-table .table-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .document-table .table-actions .ghost-button,
+  .document-table .table-actions .icon-button {
+    width: 100%;
+    justify-content: center;
+  }
+}

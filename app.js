@@ -1376,19 +1376,19 @@ function renderDocuments() {
         <tbody>
           ${visibleDocuments.map((item) => `
             <tr>
-              <td><span class="status ${item.type === "bol" ? "Scheduled" : "Paid"}">${documentLabel(item.type)}</span></td>
-              <td>
+              <td data-label="Type"><span class="status ${item.type === "bol" ? "Scheduled" : "Paid"}">${documentLabel(item.type)}</span></td>
+              <td data-label="File" class="file-name-cell">
                 <form class="rename-file-form" data-rename-document="${item.id}">
                   <input name="fileName" value="${escapeAttribute(item.fileName)}" maxlength="120" required aria-label="File name" />
                   <button class="chip-button" type="submit">Save</button>
                 </form>
                 <span class="muted">${fileSize(item.size)} · ${item.mimeType}</span>
               </td>
-              <td><strong>${item.type === "bol" ? "Not required" : displayDocumentAmount(item) ? money(displayDocumentAmount(item)) : "Needs review"}</strong></td>
-              <td><strong>${item.scanStatus || "Stored"}</strong><br><span class="muted">${extractedSummary(item)}</span>${item.createdTripId ? `<br><button class="chip-button" type="button" data-open-trip="${item.createdTripId}">View trip</button>` : ""}</td>
-              <td><strong>${uploadedByLabel(item.uploadedBy)}</strong></td>
-              <td>${formatDate(item.uploadedAt.slice(0, 10))}</td>
-              <td>
+              <td data-label="Amount"><strong>${item.type === "bol" ? "Not required" : displayDocumentAmount(item) ? money(displayDocumentAmount(item)) : "Needs review"}</strong></td>
+              <td data-label="Scan"><strong>${item.scanStatus || "Stored"}</strong><br><span class="muted">${extractedSummary(item)}</span>${item.createdTripId ? `<br><button class="chip-button" type="button" data-open-trip="${item.createdTripId}">View trip</button>` : ""}</td>
+              <td data-label="Uploaded By"><strong>${uploadedByLabel(item.uploadedBy)}</strong></td>
+              <td data-label="Uploaded">${formatDate(item.uploadedAt.slice(0, 10))}</td>
+              <td data-label="Actions">
                 <div class="table-actions">
                   <a class="ghost-button" href="/api/documents/${item.id}">Download</a>
                   <a class="ghost-button" href="${loadDocumentEmailHref(item)}">Email</a>
@@ -1506,10 +1506,10 @@ function renderCompliance() {
           <tbody>
             ${documents.map((item) => `
               <tr>
-                <td><input type="checkbox" data-compliance-select="${item.id}" aria-label="Select ${complianceLabel(item.type, item.fileName)} ${item.fileName}" /></td>
-                <td><span class="status Paid">${complianceLabel(item.type, item.fileName)}</span></td>
-                <td><strong>${item.fileName}</strong><br><span class="muted">${item.manualOnly ? "Reminder only" : fileSize(item.size)}</span></td>
-                <td>
+                <td data-label="Select"><input type="checkbox" data-compliance-select="${item.id}" aria-label="Select ${complianceLabel(item.type, item.fileName)} ${item.fileName}" /></td>
+                <td data-label="Type"><span class="status Paid">${complianceLabel(item.type, item.fileName)}</span></td>
+                <td data-label="File" class="file-name-cell"><strong>${item.fileName}</strong><br><span class="muted">${item.manualOnly ? "Reminder only" : fileSize(item.size)}</span></td>
+                <td data-label="Renewal">
                   <strong>${isCarrierPacketDocument(item) ? "No renewal needed" : item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong>
                   ${item.expirationDate || isCarrierPacketDocument(item) ? "" : `
                     <form class="mini-date-form" data-expiration-form="${item.id}">
@@ -1518,8 +1518,8 @@ function renderCompliance() {
                     </form>
                   `}
                 </td>
-                <td><strong>${uploadedByLabel(item.uploadedBy)}</strong></td>
-                <td>
+                <td data-label="Uploaded By"><strong>${uploadedByLabel(item.uploadedBy)}</strong></td>
+                <td data-label="Actions">
                   <div class="table-actions">
                     ${item.manualOnly ? "" : `<a class="ghost-button" href="/api/compliance/${item.id}">Download</a>`}
                     ${item.manualOnly ? "" : `<a class="ghost-button" href="${complianceDocumentEmailHref(item)}">Email</a>`}
