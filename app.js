@@ -1508,7 +1508,12 @@ function renderCompliance() {
               <tr>
                 <td data-label="Select"><input type="checkbox" data-compliance-select="${item.id}" aria-label="Select ${complianceLabel(item.type, item.fileName)} ${item.fileName}" /></td>
                 <td data-label="Type"><span class="status Paid">${complianceLabel(item.type, item.fileName)}</span></td>
-                <td data-label="File" class="file-name-cell"><strong>${item.fileName}</strong><br><span class="muted">${item.manualOnly ? "Reminder only" : fileSize(item.size)}</span></td>
+                <td data-label="File" class="file-name-cell">
+                  ${item.manualOnly
+                    ? `<strong>${item.fileName}</strong>`
+                    : `<a class="document-name-link" href="/api/compliance/${item.id}" target="_blank" rel="noopener">${item.fileName}</a>`}
+                  <br><span class="muted">${item.manualOnly ? "Reminder only" : fileSize(item.size)}</span>
+                </td>
                 <td data-label="Renewal">
                   <strong>${isCarrierPacketDocument(item) ? "No renewal needed" : item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong>
                   ${item.expirationDate || isCarrierPacketDocument(item) ? "" : `
@@ -1521,9 +1526,7 @@ function renderCompliance() {
                 <td data-label="Uploaded By"><strong>${uploadedByLabel(item.uploadedBy)}</strong></td>
                 <td data-label="Actions">
                   <div class="table-actions">
-                    ${item.manualOnly ? "" : `<a class="ghost-button" href="/api/compliance/${item.id}">Download</a>`}
                     ${item.manualOnly ? "" : `<a class="ghost-button" href="${complianceDocumentEmailHref(item)}">Email</a>`}
-                    ${item.manualOnly ? "" : `<button class="ghost-button" type="button" data-rescan-compliance="${item.id}">Rescan</button>`}
                     <button class="icon-button" type="button" data-delete-compliance="${item.id}" title="Delete compliance document" aria-label="Delete compliance document"><span data-icon="trash"></span></button>
                   </div>
                 </td>

@@ -755,6 +755,18 @@ button {
   line-height: 1.25;
 }
 
+.document-name-link {
+  color: var(--primary);
+  font-weight: 900;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
+.document-name-link:hover {
+  color: var(--primary-dark);
+}
+
 .document-table .table-actions {
   gap: 6px;
 }
