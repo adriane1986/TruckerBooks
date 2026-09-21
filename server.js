@@ -1929,7 +1929,7 @@ function parseGenericDocumentText(text) {
 
 function categorizeExpense(text) {
   const clean = text.toLowerCase();
-  if (/(fuel|diesel|gas|pilot|flying j|love'?s|ta travel|petro|shell|bp|chevron|exxon|ta-petro)/i.test(clean)) return "Fuel";
+  if (/(fuel|diesel|def\s+fuel|gallons?|price\s*\/\s*gal|ppg|pump|maverik|pilot|flying j|love'?s|travelcenters|travel\s+centers|ta\s+travel|ta\s+greensboro|petro|shell|bp|chevron|exxon|ta-petro)/i.test(clean)) return "Fuel";
   if (/(postage|postal|usps|united states postal service|stamps?|shipping|shipstation|fedex|ups\b|mailing|mail\s|package|parcel)/i.test(clean)) return "Office and admin";
   if (/invoice\s+(?:for\s+)?truck\s+repair|invoice\s+1038|formula\s+truck\s+repair|truck\s+repair|trailer\s+body\s+repair|repair|service|oil|tire|brake|maintenance|mechanic|parts|body\s+shop|diagnostic|labor|welding/i.test(clean)) return "Maintenance";
   if (/(ifta|ucr|2290|permit|irp|registration|tax)/i.test(clean)) return "Permits and taxes";
@@ -2015,16 +2015,26 @@ function extractSimplePdfText(buffer) {
 
 function receiptTotalAmount(text) {
   const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
+  const lines = clean.split("\n").map((line) => line.trim()).filter(Boolean);
   const patterns = [
     /(?:total\s+purchases\s+(?:for\s+)?(?:this\s+)?account|total\s+purchases)\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
     /\*\*\s*total\s+purchases\s+(?:for\s+)?(?:this\s+)?account\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
     /total\s+gallons\s*:?\s*[0-9,]+(?:\.\d+)?\s*\*+\s*total\s+purchases\s+this\s+account\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
-    /\b(?:grand\s+total|invoice\s+total|amount\s+due|total\s+due|total\s+sale|total\s+paid|amount\s+paid|balance\s+due|total)\b\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/gi
+    /\b(?:total\s+amt|sale\s+total|sales\s+total|grand\s+total|invoice\s+total|amount\s+due|total\s+due|total\s+sale|total\s+paid|amount\s+paid|balance\s+due|received|total)\b\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/gi
   ];
   for (const pattern of patterns.slice(0, 3)) {
     const match = clean.match(pattern);
     if (match?.[1]) return match[1];
   }
+  const lineTotal = lines
+    .map((line) => {
+      const match = line.match(/\b(total\s+amt|sale\s+total|sales\s+total|grand\s+total|invoice\s+total|amount\s+due|total\s+due|total\s+paid|amount\s+paid|received|total)\b[^0-9$-]*\$?\s*([0-9,]+(?:\.\d{2})?)\b/i);
+      if (!match || /^sub\s*total/i.test(line)) return "";
+      return match[2];
+    })
+    .filter(Boolean)
+    .at(-1);
+  if (lineTotal) return lineTotal;
   const totalMatches = [...clean.matchAll(patterns[3])].filter((match) => {
     const before = clean.slice(Math.max(0, match.index - 12), match.index).toLowerCase();
     return !/sub\s*$/.test(before);
@@ -2037,15 +2047,21 @@ function parseReceiptText(text) {
   const generic = parseGenericDocumentText(clean);
   const totalAmount = receiptTotalAmount(clean) || firstMatch(clean, [/\$\s*([0-9,]+(?:\.\d{2})?)/]);
   const isPFleet = /\bp-?fleet\b|total\s+purchases\s+this\s+account/i.test(clean);
+  const fuelVendor = firstMatch(clean, [
+    /\b(Maverik)\b/i,
+    /\b(TravelCenters\s+of\s+America|TA(?:\s+[A-Za-z]+)?|Pilot|Love'?s|Flying\s+J|Petro)\b/i
+  ]);
   const vendor = firstMatch(clean, [
     
     /\b(P-?Fleet)\b/i,
+    /\b(Maverik)\b/i,
+    /\b(TravelCenters\s+of\s+America|TA(?:\s+[A-Za-z]+)?|Pilot|Love'?s|Flying\s+J|Petro)\b/i,
     /(?:merchant|vendor|store|supplier)\s*:?\s*([A-Za-z0-9 &'#.,-]{2,60})/i,
     /^([A-Za-z0-9 &'#.,-]{2,60})/m
   ]);
   const amount = Number(String(totalAmount || generic.amount || "").replace(/,/g, "")) || 0;
   const date = generic.dates?.[0] || new Date().toISOString().slice(0, 10);
-  const category = categorizeExpense(clean);
+  const category = fuelVendor ? "Fuel" : categorizeExpense(clean);
   return {
     date,
     amount,
@@ -2082,16 +2098,16 @@ async function scanDocument(buffer, mimeType, type) {
 }
 
 async function scanReceiptDocument(buffer, mimeType) {
-  const scan = await runAiScanner(buffer, mimeType, "This is an expense receipt or fuel card summary. Prioritize merchant/vendor name, purchase date, total amount paid, and trucking expense category such as Fuel, Road costs, Maintenance, Insurance, or General. For fuel card summary reports, use the line labeled Total Purchases This Account or Total Purchases for this Account as the expense amount, not an individual transaction amount.");
+  const scan = await runAiScanner(buffer, mimeType, "This is an expense receipt or fuel card summary. For fuel receipts from Maverik, TA / TravelCenters of America, Love's, Pilot, Flying J, or Petro, categorize as Fuel. Prioritize purchase date, vendor name, and the final total paid. Use labels like Total Amt, Sale Total, Total, Received, Total Purchases This Account, or Total Purchases for this Account as the amount. Do not use gallons, price per gallon, pump number, points, phone number, invoice number, vehicle ID, or authorization number as the amount.");
   const local = parseReceiptText(scan.text);
   const generic = scan.extracted || {};
-  const category = categorizeExpense(`${scan.text} ${generic.notes || ""} ${generic.documentType || ""}`);
+  const category = categorizeExpense(`${scan.text} ${local.description || ""} ${generic.notes || ""} ${generic.documentType || ""}`);
   return {
     ...scan,
     extracted: {
       ...local,
       date: generic.dates?.[0] || local.date,
-      amount: local.amount || generic.amount || 0,
+      amount: local.amount || (Number(generic.amount || 0) > 0 && Number(generic.amount || 0) < 10000 ? Number(generic.amount || 0) : 0),
       category: category || local.category,
       description: (category || local.category) === "Maintenance"
         ? local.description
