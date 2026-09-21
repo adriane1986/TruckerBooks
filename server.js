@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
+const { pathToFileURL } = require("url");
 const zlib = require("zlib");
 
 const port = Number(process.env.PORT || 3000);
@@ -1658,23 +1659,50 @@ function moneyNumber(value) {
   return Number(String(value || "").replace(/[$,\s]/g, "")) || 0;
 }
 
+function amountCandidatesFromText(text, definitions) {
+  const clean = String(text || "").replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
+  const candidates = [];
+  for (const definition of definitions) {
+    for (const match of clean.matchAll(definition.pattern)) {
+      const amount = moneyNumber(match[1]);
+      if (!amount || amount >= (definition.max || 50000)) continue;
+      const contextStart = Math.max(0, match.index - 120);
+      const contextEnd = Math.min(clean.length, match.index + match[0].length + 120);
+      const context = clean.slice(contextStart, contextEnd);
+      const lowerContext = context.toLowerCase();
+      if (/(cargo\s+value|declared\s+value|shipment\s+value|value\s+\$|insurance|liability|deducted|deduction|fine|penalty|claim|escrow|deposit|advance|lumper\s+prepaid|prepaid\s+lumper)/i.test(lowerContext)) continue;
+      candidates.push({
+        amount,
+        score: definition.score,
+        index: match.index,
+        label: definition.label,
+        context: context.replace(/\s+/g, " ").trim()
+      });
+    }
+  }
+  return candidates.sort((a, b) => b.score - a.score || b.index - a.index);
+}
+
 function extractRateConAmount(text) {
   const clean = String(text || "").replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
-  const chargesSection = clean.match(/\bcharges\b[\s\S]{0,1800}?(?=\bcontact\b|\bsend invoices\b|\bplease contact\b|\bagreement\b|\bbroker\b|$)/i)?.[0] || "";
-  const totalFromCharges = [...chargesSection.matchAll(/\btotal\b\s*(?:USD|US\$)?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/gi)]
-    .map((match) => moneyNumber(match[1]))
-    .filter((amount) => amount > 0 && amount < 50000)
-    .at(-1);
-  if (totalFromCharges) return totalFromCharges;
+  const chargesSection = clean.match(/\b(?:charges|charge\s+details|rate\s+details|pay\s+summary|carrier\s+pay)\b[\s\S]{0,2400}?(?=\bagreement\b|\bterms\b|\bcarrier\s+certifies\b|\bsignature\b|$)/i)?.[0] || "";
+  const definitions = [
+    { label: "totalCarrierPay", score: 120, pattern: /\btotal\s+carrier\s+pay\b\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/gi },
+    { label: "carrierPay", score: 115, pattern: /\b(?:carrier\s+pay|carrier\s+rate|pay\s+to\s+carrier|rate\s+to\s+carrier|agreed\s+rate|agreed\s+amount|load\s+pay|contract\s+rate|freight\s+charge|freight\s+pay)\b\s*(?:amount|pay|rate)?\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/gi },
+    { label: "totalUsd", score: 110, pattern: /\btotal\s+(?:USD|US\$|carrier|pay)\b\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/gi },
+    { label: "chargesTotal", score: 105, pattern: /\b(?:total\s+charges|charges\s+total|total\s+rate|total\s+amount|amount\s+due|total\s+due|invoice\s+total|grand\s+total)\b\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/gi },
+    { label: "linehaul", score: 88, pattern: /\b(?:line\s*haul|linehaul|flat\s+rate|fuel\s+surcharge|fsc)\b[^\n$]{0,80}\$?\s*([0-9,]+(?:\.\d{2})?)/gi }
+  ];
+  const sectionCandidates = amountCandidatesFromText(chargesSection, definitions).map((candidate) => ({ ...candidate, score: candidate.score + 12 }));
+  const fullCandidates = amountCandidatesFromText(clean, definitions);
+  const totalCandidate = [...sectionCandidates, ...fullCandidates].sort((a, b) => b.score - a.score || b.index - a.index)[0];
+  if (totalCandidate) return totalCandidate.amount;
 
-  const labeledAmount = firstMatch(clean, [
-    /(?:carrier pay|carrier rate|agreed rate|load pay|total pay|line haul|linehaul|freight charge|total due|total amount|amount due)\s*(?:amount|pay|rate)?\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
-    /(?:pay|rate)\s+to\s+carrier\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i
+  const lineItems = amountCandidatesFromText(chargesSection || clean, [
+    { label: "lineItem", score: 40, pattern: /\b(?:line\s*haul|linehaul|flat\s+rate|fuel\s+surcharge|fsc|accessorial|detention|tonu|layover)\b[^\n$]{0,100}\$?\s*([0-9,]+(?:\.\d{2})?)/gi }
   ]);
-  const labeledNumber = moneyNumber(labeledAmount);
-  if (labeledNumber > 0 && labeledNumber < 50000) return labeledNumber;
-
-  return 0;
+  const lineItemTotal = lineItems.reduce((total, item) => total + item.amount, 0);
+  return lineItemTotal > 0 && lineItemTotal < 50000 ? Number(lineItemTotal.toFixed(2)) : 0;
 }
 
 function normalizeDate(value) {
@@ -1835,6 +1863,9 @@ function parseDocumentText(text, type) {
     /to\s*:?\s*([A-Za-z .'-]+,\s*[A-Z]{2})/i
   ]);
   const loadNumber = firstMatch(clean, [
+    /\bFB#\s*:?\s*([A-Z0-9-]+)/i,
+    /\bLoad\s+([0-9]{5,})\b/i,
+    /\bLoad\s*(?:#|Number|No\.?)\s*:?\s*([A-Z0-9-]+)/i,
     /(?:load|pro|bol|shipment)\s*(?:#|number|no\.?)?\s*:?\s*([A-Z0-9-]+)/i
   ]);
 
@@ -1876,18 +1907,15 @@ function parseComplianceText(text, type = "") {
 
 function parseGenericDocumentText(text) {
   const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
+  const receiptAmount = receiptTotalAmount(clean);
   const dates = extractDateCandidates(clean);
-  const amount = firstMatch(clean, [
-    /(?:carrier pay|carrier rate|agreed rate|load pay|total pay|line haul|linehaul|freight charge|total due|total amount|amount due|rate|total|amount)\s*(?:amount|pay|rate)?\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
-    /(?:pay|rate)\s+to\s+carrier\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
-    /\$\s*([0-9,]+(?:\.\d{2})?)/
-  ]);
+  const amount = receiptAmount || extractRateConAmount(clean);
   const compliance = parseComplianceText(clean);
   const load = parseDocumentText(clean, "document");
   return {
     dates,
     dateCandidates: extractLabeledDateCandidates(clean),
-    amount: Number(String(amount).replace(/,/g, "")) || load.amount || 0,
+    amount: moneyNumber(amount) || load.amount || 0,
     expirationDate: compliance.expirationDate,
     dateDetection: compliance.dateDetection,
     loadNumber: load.loadNumber,
@@ -1902,6 +1930,7 @@ function parseGenericDocumentText(text) {
 function categorizeExpense(text) {
   const clean = text.toLowerCase();
   if (/(fuel|diesel|gas|pilot|flying j|love'?s|ta travel|petro|shell|bp|chevron|exxon|ta-petro)/i.test(clean)) return "Fuel";
+  if (/(postage|postal|usps|united states postal service|stamps?|shipping|shipstation|fedex|ups\b|mailing|mail\s|package|parcel)/i.test(clean)) return "Office and admin";
   if (/invoice\s+(?:for\s+)?truck\s+repair|invoice\s+1038|formula\s+truck\s+repair|truck\s+repair|trailer\s+body\s+repair|repair|service|oil|tire|brake|maintenance|mechanic|parts|body\s+shop|diagnostic|labor|welding/i.test(clean)) return "Maintenance";
   if (/(ifta|ucr|2290|permit|irp|registration|tax)/i.test(clean)) return "Permits and taxes";
   if (/(factoring|bank fee|wire fee|ach fee|transaction fee|service charge)/i.test(clean)) return "Factoring and bank fees";
@@ -1914,8 +1943,9 @@ function categorizeExpense(text) {
 function normalizeExpenseRecord(expense) {
   const text = `${expense.description || ""} ${expense.category || ""} ${expense.sourceReceipt?.fileName || ""}`;
   const detectedCategory = categorizeExpense(text);
-  const repairText = /invoice\s+(?:for\s+)?truck\s+repair|invoice\s+1038|formula\s+truck\s+repair|truck\s+repair|trailer\s+body\s+repair|repair|service|oil|tire|brake|maintenance|mechanic|parts|body\s+shop|diagnostic|labor|welding/i.test(text);
-  const category = repairText ? "Maintenance" : expense.category || detectedCategory || "General";
+  const postageText = /(postage|postal|usps|united states postal service|stamps?|shipping|shipstation|fedex|ups\b|mailing|mail\s|package|parcel)/i.test(text);
+  const repairText = !postageText && /invoice\s+(?:for\s+)?truck\s+repair|invoice\s+1038|formula\s+truck\s+repair|truck\s+repair|trailer\s+body\s+repair|repair|service|oil|tire|brake|maintenance|mechanic|parts|body\s+shop|diagnostic|labor|welding/i.test(text);
+  const category = postageText ? "Office and admin" : repairText ? "Maintenance" : expense.category || detectedCategory || "General";
   const correctedAmount = /invoice\s+(?:for\s+)?truck\s+repair|invoice\s+1038|formula\s+truck\s+repair/i.test(text) ? 1108.85 : Number(expense.amount || 0);
   const categoryPrefix = /^(Fuel|Road costs|Maintenance|Insurance|Permits and taxes|Factoring and bank fees|Office and admin|General)\s*-\s*/i;
   let cleanDescription = String(expense.description || "Expense");
@@ -1939,9 +1969,6 @@ function normalizeLoadDocumentRecord(document) {
   } else if (/invoice\s+(?:for\s+)?truck\s+repair|invoice\s+1038|formula\s+truck\s+repair/.test(cleanText)) {
     extracted.amount = 1108.85;
     if (generic && typeof generic === "object") generic.amount = 1108.85;
-  } else if (/28176108/.test(cleanText)) {
-    extracted.amount = 1500;
-    if (generic && typeof generic === "object") generic.amount = 1500;
   } else if (Number(extracted.amount || 0) >= 50000) {
     extracted.amount = 0;
   }
@@ -1955,11 +1982,35 @@ function normalizeLoadDocumentRecord(document) {
 }
 
 function normalizeTripRecord(trip) {
-  const cleanText = `${trip.description || ""} ${trip.loadNumber || ""}`.toLowerCase();
-  if (/28176108/.test(cleanText) && Number(trip.amount || 0) >= 50000) {
-    return { ...trip, amount: 1500 };
-  }
   return trip;
+}
+
+function unescapePdfLiteralText(value) {
+  return String(value || "")
+    .replace(/\\([nrtbf()\\])/g, (_, character) => {
+      if (character === "n") return "\n";
+      if (character === "r") return "\r";
+      if (character === "t") return "\t";
+      if (character === "b") return "\b";
+      if (character === "f") return "\f";
+      return character;
+    })
+    .replace(/\\([0-7]{1,3})/g, (_, octal) => String.fromCharCode(parseInt(octal, 8)));
+}
+
+function extractSimplePdfText(buffer) {
+  const raw = buffer.toString("latin1");
+  const textParts = [];
+  for (const match of raw.matchAll(/\(((?:\\.|[^\\)])*)\)\s*Tj/g)) {
+    textParts.push(unescapePdfLiteralText(match[1]));
+  }
+  for (const match of raw.matchAll(/\[((?:.|\n|\r)*?)\]\s*TJ/g)) {
+    const arrayText = [...match[1].matchAll(/\(((?:\\.|[^\\)])*)\)/g)]
+      .map((part) => unescapePdfLiteralText(part[1]))
+      .join("");
+    if (arrayText) textParts.push(arrayText);
+  }
+  return textParts.join("\n");
 }
 
 function receiptTotalAmount(text) {
@@ -1967,13 +2018,14 @@ function receiptTotalAmount(text) {
   const patterns = [
     /(?:total\s+purchases\s+(?:for\s+)?(?:this\s+)?account|total\s+purchases)\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
     /\*\*\s*total\s+purchases\s+(?:for\s+)?(?:this\s+)?account\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
+    /total\s+gallons\s*:?\s*[0-9,]+(?:\.\d+)?\s*\*+\s*total\s+purchases\s+this\s+account\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
     /\b(?:grand\s+total|invoice\s+total|amount\s+due|total\s+due|total\s+sale|total\s+paid|amount\s+paid|balance\s+due|total)\b\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/gi
   ];
-  for (const pattern of patterns.slice(0, 2)) {
+  for (const pattern of patterns.slice(0, 3)) {
     const match = clean.match(pattern);
     if (match?.[1]) return match[1];
   }
-  const totalMatches = [...clean.matchAll(patterns[2])].filter((match) => {
+  const totalMatches = [...clean.matchAll(patterns[3])].filter((match) => {
     const before = clean.slice(Math.max(0, match.index - 12), match.index).toLowerCase();
     return !/sub\s*$/.test(before);
   });
@@ -1984,7 +2036,10 @@ function parseReceiptText(text) {
   const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
   const generic = parseGenericDocumentText(clean);
   const totalAmount = receiptTotalAmount(clean) || firstMatch(clean, [/\$\s*([0-9,]+(?:\.\d{2})?)/]);
+  const isPFleet = /\bp-?fleet\b|total\s+purchases\s+this\s+account/i.test(clean);
   const vendor = firstMatch(clean, [
+    
+    /\b(P-?Fleet)\b/i,
     /(?:merchant|vendor|store|supplier)\s*:?\s*([A-Za-z0-9 &'#.,-]{2,60})/i,
     /^([A-Za-z0-9 &'#.,-]{2,60})/m
   ]);
@@ -1995,7 +2050,7 @@ function parseReceiptText(text) {
     date,
     amount,
     category,
-    description: vendor ? `${category} - ${vendor.trim()}` : `${category} receipt`,
+    description: isPFleet ? `${category} - P-Fleet fuel report` : vendor ? `${category} - ${vendor.trim()}` : `${category} receipt`,
     textPreview: clean.slice(0, 800)
   };
 }
@@ -2040,7 +2095,9 @@ async function scanReceiptDocument(buffer, mimeType) {
       category: category || local.category,
       description: (category || local.category) === "Maintenance"
         ? local.description
-        : generic.notes ? `${category || local.category} - ${generic.notes.slice(0, 50)}` : local.description,
+        : /p-?fleet|total\s+purchases\s+this\s+account/i.test(`${scan.text} ${local.description}`)
+          ? `${category || local.category} - P-Fleet fuel report`
+          : generic.notes ? `${category || local.category} - ${generic.notes.slice(0, 50)}` : local.description,
       generic
     }
   };
@@ -2408,15 +2465,30 @@ async function runOpenAiPdfImageExpirationScanner(buffer, extractedText, complia
 }
 
 async function extractPdfText(buffer) {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const document = await pdfjs.getDocument({ data: new Uint8Array(buffer), disableWorker: true }).promise;
-  let text = "";
-  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
-    const page = await document.getPage(pageNumber);
-    const content = await page.getTextContent();
-    text += `${content.items.map((item) => item.str).join(" ")}\n`;
+  try {
+    const pdfjs = await loadPdfJs();
+    const document = await pdfjs.getDocument({ data: new Uint8Array(buffer), disableWorker: true }).promise;
+    let text = "";
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const content = await page.getTextContent();
+      text += `${content.items.map((item) => item.str).join(" ")}\n`;
+    }
+    if (text.trim()) return text;
+  } catch {
+    // Fall back below for simple text-based PDFs when the PDF library is unavailable.
   }
-  return text;
+  return extractSimplePdfText(buffer);
+}
+
+async function loadPdfJs() {
+  try {
+    return await import("pdfjs-dist/legacy/build/pdf.mjs");
+  } catch {
+    const bundledNodeModules = path.resolve(path.dirname(process.execPath), "..", "node_modules");
+    const pdfJsPath = require.resolve("pdfjs-dist/legacy/build/pdf.mjs", { paths: [bundledNodeModules] });
+    return import(pathToFileURL(pdfJsPath).href);
+  }
 }
 
 function pixelAt(image, x, y) {

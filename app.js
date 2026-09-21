@@ -564,6 +564,7 @@ function expenseCategoryTotals(expenses) {
 
 function displayExpenseCategory(item) {
   const text = `${item?.description || ""} ${item?.category || ""} ${item?.sourceReceipt?.fileName || ""}`.toLowerCase();
+  if (/(postage|postal|usps|united states postal service|stamps?|shipping|shipstation|fedex|ups\b|mailing|mail\s|package|parcel)/i.test(text)) return "Office and admin";
   if (/invoice\s+(?:for\s+)?truck\s+repair|invoice\s+1038|formula\s+truck\s+repair|truck\s+repair|trailer\s+body\s+repair|repair|service|oil|tire|brake|maintenance|mechanic|parts|body\s+shop|diagnostic|labor|welding/i.test(text)) return "Maintenance";
   return item?.category || "General";
 }
