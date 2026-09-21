@@ -1363,17 +1363,19 @@ function renderDocuments() {
       <div class="panel-header">
         <h2>Document Library</h2>
         <div class="filters">
+          <button class="primary-button" type="button" data-email-selected-documents>Email Selected</button>
           <input id="searchInput" type="search" value="${state.query}" placeholder="Search documents" />
           ${dateRangeSelect()}
         </div>
       </div>
       <table class="data-table document-table">
         <thead>
-          <tr><th>Type</th><th>File</th><th>Amount</th><th>Scan</th><th>Uploaded By</th><th>Uploaded</th><th></th></tr>
+          <tr><th></th><th>Type</th><th>File</th><th>Amount</th><th>Scan</th><th>Uploaded By</th><th>Uploaded</th><th></th></tr>
         </thead>
         <tbody>
           ${visibleDocuments.map((item) => `
             <tr>
+              <td data-label="Select"><input type="checkbox" data-document-select="${item.id}" aria-label="Select ${documentLabel(item.type)} ${item.fileName}" /></td>
               <td data-label="Type"><span class="status ${item.type === "bol" ? "Scheduled" : "Paid"}">${documentLabel(item.type)}</span></td>
               <td data-label="File" class="file-name-cell">
                 <a class="document-name-link" href="/api/documents/${item.id}" target="_blank" rel="noopener">${item.fileName}</a>
@@ -1394,7 +1396,7 @@ function renderDocuments() {
                 </div>
               </td>
             </tr>
-          `).join("") || `<tr><td colspan="7">No Rate Cons or BOLs match this date range.</td></tr>`}
+          `).join("") || `<tr><td colspan="8">No Rate Cons or BOLs match this date range.</td></tr>`}
         </tbody>
       </table>
     </section>
@@ -2772,6 +2774,24 @@ async function shareSelectedComplianceDocuments() {
   }
 }
 
+function emailSelectedLoadDocuments() {
+  try {
+    const selectedIds = [...document.querySelectorAll("[data-document-select]:checked")].map((item) => item.dataset.documentSelect);
+    if (!selectedIds.length) throw new Error("Select at least one Rate Con or BOL to email.");
+    const selectedDocuments = (state.documents || []).filter((item) => selectedIds.includes(item.id));
+    if (!selectedDocuments.length) throw new Error("Selected documents were not found.");
+    const subject = encodeURIComponent(`${state.customer?.businessName || "Carrier"} Rate Cons/BOLs`);
+    const lines = selectedDocuments.map((item) => `${documentLabel(item.type)} - ${item.fileName}\n${location.origin}/api/documents/${item.id}`);
+    const body = encodeURIComponent(`Hello,\n\nHere are the selected Rate Cons/BOL documents:\n\n${lines.join("\n\n")}\n\nThank you.`);
+    state.accountMessage = `${selectedDocuments.length} document${selectedDocuments.length === 1 ? "" : "s"} selected. Your email draft is opening.`;
+    renderContent();
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
 async function completeComplianceAlert(alertId) {
   try {
     const payload = await api("/api/compliance-alerts/complete", {
@@ -2887,6 +2907,7 @@ document.addEventListener("click", (event) => {
   const deleteComplianceButton = event.target.closest("[data-delete-compliance]");
   const rescanComplianceButton = event.target.closest("[data-rescan-compliance]");
   const shareComplianceButton = event.target.closest("[data-share-compliance]");
+  const emailSelectedDocumentsButton = event.target.closest("[data-email-selected-documents]");
   const completeAlertButton = event.target.closest("[data-complete-alert]");
   const openTripButton = event.target.closest("[data-open-trip]");
   const copyReferralButton = event.target.closest("[data-copy-referral]");
@@ -2919,6 +2940,7 @@ document.addEventListener("click", (event) => {
   if (deleteComplianceButton) removeComplianceDocument(deleteComplianceButton.dataset.deleteCompliance);
   if (rescanComplianceButton) rescanComplianceDocument(rescanComplianceButton.dataset.rescanCompliance);
   if (shareComplianceButton) shareSelectedComplianceDocuments();
+  if (emailSelectedDocumentsButton) emailSelectedLoadDocuments();
   if (completeAlertButton) completeComplianceAlert(completeAlertButton.dataset.completeAlert);
   if (openTripButton) setView("rateCons");
   if (copyReferralButton) {
