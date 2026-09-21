@@ -805,7 +805,6 @@ function renderTableView(collection, title, columns) {
               ${columns.map((column) => `<td>${column.render(item)}</td>`).join("")}
               <td>
                 <div class="table-actions">
-                  ${item.sourceReceipt ? `<a class="ghost-button" href="/api/expenses/receipt/${item.id}">Download</a>` : ""}
                   ${item.sourceReceipt ? `<a class="ghost-button" href="${receiptEmailHref(item)}">Email</a>` : ""}
                   <button class="icon-button" type="button" data-delete="${item.id}" title="Delete" aria-label="Delete">
                     <span data-icon="trash"></span>
@@ -877,14 +876,13 @@ function renderExpenses() {
               <td>${formatDate(item.date)}</td>
               <td>
                 <strong>${displayExpenseDescription(item)}</strong><br>
-                <span class="muted">${displayExpenseCategory(item)}${item.sourceReceipt ? ` · Receipt scanned · ${item.sourceReceipt.fileName}` : ""}</span>
+                <span class="muted">${displayExpenseCategory(item)}${item.sourceReceipt ? ` · Receipt scanned · <a class="document-name-link inline-document-link" href="/api/expenses/receipt/${item.id}" target="_blank" rel="noopener">${item.sourceReceipt.fileName}</a>` : ""}</span>
               </td>
               <td><strong>${uploadedByLabel(item.sourceReceipt?.uploadedBy)}</strong></td>
               <td>${money(displayExpenseAmount(item))}</td>
               <td><span class="status ${item.status}">${item.status}</span></td>
               <td>
                 <div class="table-actions">
-                  ${item.sourceReceipt ? `<a class="ghost-button" href="/api/expenses/receipt/${item.id}">Download</a>` : ""}
                   ${item.sourceReceipt ? `<a class="ghost-button" href="${receiptEmailHref(item)}">Email</a>` : ""}
                   <button class="icon-button" type="button" data-delete="${item.id}" title="Delete" aria-label="Delete">
                     <span data-icon="trash"></span>
@@ -1378,6 +1376,7 @@ function renderDocuments() {
             <tr>
               <td data-label="Type"><span class="status ${item.type === "bol" ? "Scheduled" : "Paid"}">${documentLabel(item.type)}</span></td>
               <td data-label="File" class="file-name-cell">
+                <a class="document-name-link" href="/api/documents/${item.id}" target="_blank" rel="noopener">${item.fileName}</a>
                 <form class="rename-file-form" data-rename-document="${item.id}">
                   <input name="fileName" value="${escapeAttribute(item.fileName)}" maxlength="120" required aria-label="File name" />
                   <button class="chip-button" type="submit">Save</button>
@@ -1390,7 +1389,6 @@ function renderDocuments() {
               <td data-label="Uploaded">${formatDate(item.uploadedAt.slice(0, 10))}</td>
               <td data-label="Actions">
                 <div class="table-actions">
-                  <a class="ghost-button" href="/api/documents/${item.id}">Download</a>
                   <a class="ghost-button" href="${loadDocumentEmailHref(item)}">Email</a>
                   <button class="icon-button" type="button" data-delete-document="${item.id}" title="Delete document" aria-label="Delete document"><span data-icon="trash"></span></button>
                 </div>
