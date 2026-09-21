@@ -1929,6 +1929,7 @@ function parseGenericDocumentText(text) {
 
 function categorizeExpense(text) {
   const clean = text.toLowerCase();
+  if (/(truck\s+service|work\s+order|repair\s+order|standard\s+service\s+labor|service\s+labor|labor\s+only|replace\s+(?:one\s+)?fuel\s+filter|fuel\s+filter\s+(?:kit|change)|air\/?elec|electrical\s+line\s+assembly|shop\s+supply|environmental\s+fee)/i.test(clean)) return "Maintenance";
   if (/(fuel|diesel|def\s+fuel|gallons?|price\s*\/\s*gal|ppg|pump|maverik|pilot|flying j|love'?s|travelcenters|travel\s+centers|ta\s+travel|ta\s+greensboro|petro|shell|bp|chevron|exxon|ta-petro)/i.test(clean)) return "Fuel";
   if (/(postage|postal|usps|united states postal service|stamps?|shipping|shipstation|fedex|ups\b|mailing|mail\s|package|parcel)/i.test(clean)) return "Office and admin";
   if (/invoice\s+(?:for\s+)?truck\s+repair|invoice\s+1038|formula\s+truck\s+repair|truck\s+repair|trailer\s+body\s+repair|repair|service|oil|tire|brake|maintenance|mechanic|parts|body\s+shop|diagnostic|labor|welding/i.test(clean)) return "Maintenance";
@@ -1944,7 +1945,7 @@ function normalizeExpenseRecord(expense) {
   const text = `${expense.description || ""} ${expense.category || ""} ${expense.sourceReceipt?.fileName || ""}`;
   const detectedCategory = categorizeExpense(text);
   const postageText = /(postage|postal|usps|united states postal service|stamps?|shipping|shipstation|fedex|ups\b|mailing|mail\s|package|parcel)/i.test(text);
-  const repairText = !postageText && /invoice\s+(?:for\s+)?truck\s+repair|invoice\s+1038|formula\s+truck\s+repair|truck\s+repair|trailer\s+body\s+repair|repair|service|oil|tire|brake|maintenance|mechanic|parts|body\s+shop|diagnostic|labor|welding/i.test(text);
+  const repairText = !postageText && /(truck\s+service|work\s+order|repair\s+order|standard\s+service\s+labor|service\s+labor|labor\s+only|replace\s+(?:one\s+)?fuel\s+filter|fuel\s+filter\s+(?:kit|change)|air\/?elec|electrical\s+line\s+assembly|shop\s+supply|environmental\s+fee|invoice\s+(?:for\s+)?truck\s+repair|invoice\s+1038|formula\s+truck\s+repair|truck\s+repair|trailer\s+body\s+repair|repair|service|oil|tire|brake|maintenance|mechanic|parts|body\s+shop|diagnostic|labor|welding)/i.test(text);
   const category = postageText ? "Office and admin" : repairText ? "Maintenance" : expense.category || detectedCategory || "General";
   const correctedAmount = /invoice\s+(?:for\s+)?truck\s+repair|invoice\s+1038|formula\s+truck\s+repair/i.test(text) ? 1108.85 : Number(expense.amount || 0);
   const categoryPrefix = /^(Fuel|Road costs|Maintenance|Insurance|Permits and taxes|Factoring and bank fees|Office and admin|General)\s*-\s*/i;
