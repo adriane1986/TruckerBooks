@@ -1845,6 +1845,28 @@ function chooseBestComplianceDate({ type, expirationDate, dates = [], dateCandid
   return [...new Set(cleanDates)].sort().at(-1) || "";
 }
 
+function latestNormalizedDate(values = []) {
+  return [...new Set(values.map(normalizeDate).filter(Boolean))].sort().at(-1) || "";
+}
+
+function chooseDotPhysicalExpirationDate({ local = {}, generic = {}, bestLocalDate = "", bestAiDate = "", pdfImageAiDate = "", narrowAiDate = "" }) {
+  const aiDateCandidates = Array.isArray(generic.dateCandidates) ? generic.dateCandidates : [];
+  const genericDates = Array.isArray(generic.dates) ? generic.dates : [];
+  const narrowDates = Array.isArray(generic.allDates) ? generic.allDates : [];
+  return latestNormalizedDate([
+    bestLocalDate,
+    bestAiDate,
+    pdfImageAiDate,
+    narrowAiDate,
+    local.expirationDate,
+    generic.expirationDate,
+    ...genericDates,
+    ...narrowDates,
+    ...((local.dateCandidates || []).map((item) => item.date)),
+    ...(aiDateCandidates.map((item) => item.date))
+  ]);
+}
+
 function parseDocumentText(text, type) {
   const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
   const amount = type === "bol" ? 0 : extractRateConAmount(clean);
@@ -2134,7 +2156,7 @@ async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
     };
   }
   const dotPhysicalContext = complianceType === "dotPhysical"
-    ? "This is a DOT Physical / Medical Examiner's Certificate upload. Read the card visually if the PDF has no text layer. Use the date labeled Medical Examiner's Certificate Expiration Date, Medical Examiner Certificate Expiration, Medical Card Expires, Certificate Expires, Expiration Date, or Qualified Until. Do not use the examination date, signature date, issue date, registry number, or driver's license date. If the card has an examination date and an expiration date, choose the later date."
+    ? "This is a DOT Physical / Medical Examiner's Certificate upload. The card may be a sideways phone photo or an image-only PDF, so inspect it visually and mentally rotate it if needed. Use the date labeled Medical Examiner's Certificate Expiration Date, Medical Examiner Certificate Expiration, Medical Card Expires, Certificate Expires, Expiration Date, or Qualified Until. Do not use the examination date, Date Certificate Signed, signature date, issue date, registry number, or driver's license date. If the card has Date Certificate Signed and Medical Examiner's Certificate Expiration Date, choose the Medical Examiner's Certificate Expiration Date, which is usually the later date."
     : "";
   const scan = await runAiScanner(buffer, mimeType, `This is a Compliance upload. Prioritize renewal, expiration, valid-through, policy end, coverage end, Policy Exp., DOT physical expiration, UCR, 2290 tax period, IRP Cab Card validity period end date, and Clearinghouse MVR report/run dates. ${dotPhysicalContext} Clearinghouse MVR should be run every 12 months, so use the report/run/completed/query date plus 12 months as the renewal date when no expiration is printed.`, openaiVisionModel);
   const local = parseComplianceText(scan.text, complianceType);
@@ -2153,17 +2175,22 @@ async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
     dates: local.dateCandidates?.map((item) => item.date) || [],
     dateCandidates: local.dateCandidates || []
   });
-  const pdfImageAiDate = bestLocalDate || bestAiDate || complianceType !== "dotPhysical" || !/pdf/i.test(mimeType || "")
-    ? ""
-    : await runOpenAiPdfImageExpirationScanner(buffer, scan.text, complianceType, openaiVisionModel).catch(() => "");
-  const narrowAiDate = bestLocalDate || bestAiDate || pdfImageAiDate
-    ? ""
-    : await runOpenAiExpirationOnlyScanner(buffer, mimeType, scan.text, complianceType, openaiVisionModel).catch(() => "");
+  const isDotPhysical = complianceType === "dotPhysical";
+  const pdfImageAiDate = isDotPhysical && /pdf/i.test(mimeType || "")
+    ? await runOpenAiPdfImageExpirationScanner(buffer, scan.text, complianceType, openaiVisionModel).catch(() => "")
+    : "";
+  const narrowAiDate = isDotPhysical || !(bestLocalDate || bestAiDate || pdfImageAiDate)
+    ? await runOpenAiExpirationOnlyScanner(buffer, mimeType, scan.text, complianceType, openaiVisionModel).catch(() => "")
+    : "";
+  const dotPhysicalDate = isDotPhysical
+    ? chooseDotPhysicalExpirationDate({ local, generic, bestLocalDate, bestAiDate, pdfImageAiDate, narrowAiDate })
+    : "";
   return {
     ...scan,
     extracted: {
       ...local,
-      expirationDate: bestLocalDate || bestAiDate || pdfImageAiDate || narrowAiDate || "",
+      expirationDate: dotPhysicalDate || bestLocalDate || bestAiDate || pdfImageAiDate || narrowAiDate || "",
+      dateDetection: dotPhysicalDate ? "dot_physical_certificate_expiration" : local.dateDetection,
       generic
     }
   };
@@ -2283,7 +2310,7 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
     "Dates must be ISO YYYY-MM-DD. Amount must be a number.",
     "For compliance documents, expirationDate should be the renewal/expiration date.",
     "For Insurance, DOT Physical, UCR, 2290, or Clearinghouse MVR documents, prioritize labels like Expiration Date, Expires, Valid Until, Policy Exp., Policy Period end date, Coverage End Date, Medical Examiner's Certificate Expiration Date, Medical Card Expires, Certificate Expires, Qualified Until, UCR year end, Form 2290 tax period ending date, MVR report date, Clearinghouse query date, ran date, completed date, and check date.",
-    "For DOT Physical / Medical Examiner's Certificate cards, expirationDate must be the medical certificate expiration date. Do not use the examination date, signature date, issue date, or driver's license date. If the card shows multiple dates, choose the date labeled Medical Examiner's Certificate Expiration Date or the later certificate expiration date.",
+    "For DOT Physical / Medical Examiner's Certificate cards, expirationDate must be the medical certificate expiration date. The image may be sideways or rotated. Do not use the examination date, Date Certificate Signed, signature date, issue date, or driver's license date. If the card shows multiple dates, choose the date labeled Medical Examiner's Certificate Expiration Date or the later certificate expiration date.",
     "Clearinghouse MVR should be run every 12 months. If no expiration date is printed, set expirationDate to 12 months after the report/run/completed/query date.",
     "For ACORD insurance certificates, read Policy Exp., the insurance table columns labeled EFF and EXP, or policy period end. Use the Policy Exp. or EXP date, not the EFF date.",
     "For IRP-Cab Card documents, use the ending date in the Validity Period/date range as expirationDate.",
@@ -2382,8 +2409,8 @@ async function runOpenAiExpirationOnlyScanner(buffer, mimeType, extractedText, c
   const prompt = [
     `This is a ${typeName} compliance document for a trucking business.`,
     "Find the document expiration, renewal, valid-through, coverage end, policy end, DOT physical expiration, UCR year end, 2290 tax period ending date, or Clearinghouse MVR report/run date.",
-    "For DOT Physical / Medical Examiner's Certificate cards, read the card visually if the PDF has no text layer. Return the date labeled Medical Examiner's Certificate Expiration Date, Medical Examiner Certificate Expiration, Medical Card Expires, Certificate Expires, Expiration Date, or Qualified Until.",
-    "For DOT Physical cards, do not return the examination date, signature date, issue date, or driver's license date. If the card has an examination date and an expiration date, return the later certificate expiration date.",
+    "For DOT Physical / Medical Examiner's Certificate cards, read the card visually if the PDF has no text layer or the upload is a phone photo. The document may be sideways or rotated, so mentally rotate it and inspect all orientations. Return the date labeled Medical Examiner's Certificate Expiration Date, Medical Examiner Certificate Expiration, Medical Card Expires, Certificate Expires, Expiration Date, or Qualified Until.",
+    "For DOT Physical cards, do not return the examination date, Date Certificate Signed, signature date, issue date, or driver's license date. If Date Certificate Signed and Medical Examiner's Certificate Expiration Date are both visible, return the Medical Examiner's Certificate Expiration Date. Example: a signed date like 07/03/2026 is not the answer when an expiration date like 07/03/2027 is also visible.",
     "Clearinghouse MVR should be run every 12 months. If this is a Clearinghouse MVR document and no expiration date is printed, return a renewal date 12 months after the report/run/completed/query date.",
     "For ACORD certificates of liability insurance, read Policy Exp., the table columns labeled EFF and EXP, or policy period end. Use the Policy Exp. or EXP date as the expiration date.",
     "Insurance certificates often show dates in compact MM/DD/YYYY boxes near policy numbers. Use the later date in the EFF/EXP pair.",
