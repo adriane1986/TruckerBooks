@@ -2681,9 +2681,12 @@ async function uploadComplianceDocument(form) {
       state.customer.complianceDocuments = payload.complianceDocuments;
       state.customer.complianceAlerts = payload.complianceAlerts;
     }
+    const scanIssue = payload.complianceDocument?.extracted?.aiError || payload.complianceDocument?.aiScan?.aiError || "";
     state.accountMessage = payload.complianceDocument?.expirationDate
       ? `Expiration detected: ${formatDate(payload.complianceDocument.expirationDate)}.`
-      : "Document uploaded. No expiration date was detected.";
+      : scanIssue
+        ? `Document uploaded, but scanner needs review: ${scanIssue}`
+        : "Document uploaded. No expiration date was detected.";
     renderContent();
   } catch (error) {
     state.accountMessage = error.message;

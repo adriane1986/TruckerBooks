@@ -2251,6 +2251,24 @@ async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
   };
 }
 
+async function safeScanComplianceDocument(buffer, mimeType, complianceType = "", context = {}) {
+  try {
+    return await scanComplianceDocument(buffer, mimeType, complianceType);
+  } catch (error) {
+    logError(error, { phase: "compliance-scan", complianceType, mimeType, ...context });
+    return {
+      scanStatus: "Stored - scanner error",
+      text: "",
+      extracted: {
+        expirationDate: "",
+        dateDetection: "scanner_error",
+        aiUsed: false,
+        aiError: error?.message || "Scanner failed before completion."
+      }
+    };
+  }
+}
+
 async function runAiScanner(buffer, mimeType, documentContext = "", modelOverride = "") {
   let text = "";
   let scanStatus = "Scanned";
@@ -4647,7 +4665,7 @@ async function handleApi(req, res, pathname) {
     const id = crypto.randomUUID();
     const storedName = `${user.id}-${id}-${fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
     fs.writeFileSync(path.join(uploadDir, storedName), buffer);
-    const scan = await scanComplianceDocument(buffer, mimeType, type);
+    const scan = await safeScanComplianceDocument(buffer, mimeType, type, { fileName, documentId: id });
     const complianceDocument = {
       id,
       companyId: companyIdFor(user),
@@ -4797,7 +4815,7 @@ async function handleApi(req, res, pathname) {
     if (document.manualOnly) return sendError(res, 400, "This reminder does not have a document to rescan.");
     const filePath = path.join(uploadDir, document.storedName);
     if (!fs.existsSync(filePath)) return sendError(res, 404, "Uploaded file is missing.");
-    const scan = await scanComplianceDocument(fs.readFileSync(filePath), document.mimeType, document.type);
+    const scan = await safeScanComplianceDocument(fs.readFileSync(filePath), document.mimeType, document.type, { fileName: document.fileName, documentId: id });
     document.scanStatus = scan.scanStatus;
     document.expirationDate = scan.extracted.expirationDate;
     document.extracted = scan.extracted;
