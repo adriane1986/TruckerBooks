@@ -2228,6 +2228,10 @@ async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
     dateCandidates: local.dateCandidates || []
   });
   const isDotPhysical = complianceType === "dotPhysical";
+  const isClearinghouseMvr = complianceType === "clearinghouseMvr";
+  const clearinghouseVision = isClearinghouseMvr
+    ? await runOpenAiClearinghouseCompletedDateScanner(buffer, mimeType, scan.text, openaiVisionModel).catch(() => ({}))
+    : {};
   const pdfImageAiDate = isDotPhysical && /pdf/i.test(mimeType || "")
     ? await runOpenAiPdfImageExpirationScanner(buffer, scan.text, complianceType, openaiVisionModel).catch(() => "")
     : "";
@@ -2240,12 +2244,16 @@ async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
   const dotPhysicalDate = isDotPhysical
     ? chooseDotPhysicalExpirationDate({ local, generic, bestLocalDate, bestAiDate, pdfImageAiDate, imageVisionAiDate, narrowAiDate })
     : "";
+  const clearinghouseDate = isClearinghouseMvr
+    ? clearinghouseVision.expirationDate || bestLocalDate || bestAiDate || narrowAiDate || ""
+    : "";
   return {
     ...scan,
     extracted: {
       ...local,
-      expirationDate: dotPhysicalDate || bestLocalDate || bestAiDate || pdfImageAiDate || imageVisionAiDate || narrowAiDate || "",
-      dateDetection: dotPhysicalDate ? "dot_physical_certificate_expiration" : local.dateDetection,
+      expirationDate: clearinghouseDate || dotPhysicalDate || bestLocalDate || bestAiDate || pdfImageAiDate || imageVisionAiDate || narrowAiDate || "",
+      completedDate: clearinghouseVision.completedDate || local.completedDate || "",
+      dateDetection: clearinghouseVision.completedDate ? "query_status_completed_plus_1_year" : dotPhysicalDate ? "dot_physical_certificate_expiration" : local.dateDetection,
       generic
     }
   };
@@ -2287,7 +2295,7 @@ async function runAiScanner(buffer, mimeType, documentContext = "", modelOverrid
   } else if (/pdf/i.test(mimeType)) {
     try {
       text = await extractPdfText(buffer);
-      if (text.trim()) {
+      if (text.trim() && !textLooksGarbled(text)) {
         scanStatus = "Scanned";
       } else {
         text = await extractPdfImageOcrText(buffer).catch(() => "");
@@ -2311,6 +2319,13 @@ async function runAiScanner(buffer, mimeType, documentContext = "", modelOverrid
     text,
     extracted: { ...extracted, aiError }
   };
+}
+
+function textLooksGarbled(text = "") {
+  const sample = String(text).slice(0, 4000);
+  const slashCodeCount = (sample.match(/\/(?:i?\d{1,3})\b/g) || []).length;
+  const wordCount = (sample.match(/[A-Za-z]{3,}/g) || []).length;
+  return slashCodeCount > 30 && slashCodeCount > wordCount * 2;
 }
 
 function responseText(payload) {
@@ -2393,7 +2408,7 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
     "If multiple dates appear, choose the most likely future renewal/expiration/end date, not the issue date.",
     "For Rate Cons/BOLs, amount should be carrier pay, total carrier pay, linehaul plus fuel, or agreed rate.",
     "Do not guess wildly; use confidence from 0 to 1.",
-    extractedText ? `OCR/text layer already extracted:\n${extractedText.slice(0, 6000)}` : "No text layer was available; inspect the file visually if possible."
+    extractedText && !textLooksGarbled(extractedText) ? `OCR/text layer already extracted:\n${extractedText.slice(0, 6000)}` : "No readable text layer was available; inspect the file visually if possible."
   ].join("\n");
 
   const response = await fetch("https://api.openai.com/v1/responses", {
@@ -2530,6 +2545,53 @@ async function runOpenAiExpirationOnlyScanner(buffer, mimeType, extractedText, c
     ]);
   }
   return normalizeDate(parsed.expirationDate || "");
+}
+
+async function runOpenAiClearinghouseCompletedDateScanner(buffer, mimeType, extractedText, modelOverride = "") {
+  const openAiKey = getOpenAiKey();
+  if (!openAiKey || !openAiKey.startsWith("sk-")) return {};
+  const fileInput = await buildOpenAiFileInputWithUpload(openAiKey, buffer, mimeType, mimeType?.includes("pdf") ? "clearinghouse-document.pdf" : "clearinghouse-document");
+  const prompt = [
+    "This is an FMCSA Clearinghouse / MVR compliance document.",
+    "Find the date labeled exactly or nearly as Query Status Completed.",
+    "Do not use the query requested date, printed date, report generated date, driver date of birth, license date, or any ID number.",
+    "The renewal/expiration date is exactly 1 year after the Query Status Completed date.",
+    "Return JSON only with this exact shape:",
+    "{\"completedDate\":\"YYYY-MM-DD or null\",\"expirationDate\":\"YYYY-MM-DD or null\",\"reason\":\"short explanation\"}",
+    extractedText && !textLooksGarbled(extractedText) ? `Text extracted from the PDF:\n${extractedText.slice(0, 6000)}` : "The PDF text layer may be unreadable; inspect the uploaded file visually."
+  ].join("\n");
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${openAiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: modelOverride || openaiVisionModel,
+      input: [
+        {
+          role: "user",
+          content: [
+            fileInput,
+            {
+              type: "input_text",
+              text: prompt
+            }
+          ]
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) return {};
+  const payload = await response.json();
+  const parsed = parseAiJson(responseText(payload));
+  const completedDate = normalizeDate(parsed.completedDate || "");
+  return {
+    completedDate,
+    expirationDate: completedDate ? addMonthsIsoDate(completedDate, 12) : normalizeDate(parsed.expirationDate || "")
+  };
 }
 
 async function runOpenAiImageRotationExpirationScanner(buffer, mimeType, extractedText, complianceType = "", modelOverride = "") {
