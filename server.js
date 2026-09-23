@@ -2551,6 +2551,11 @@ async function runOpenAiClearinghouseCompletedDateScanner(buffer, mimeType, extr
   const openAiKey = getOpenAiKey();
   if (!openAiKey || !openAiKey.startsWith("sk-")) return {};
   const fileInput = await buildOpenAiFileInputWithUpload(openAiKey, buffer, mimeType, mimeType?.includes("pdf") ? "clearinghouse-document.pdf" : "clearinghouse-document");
+  const renderedImages = /pdf/i.test(mimeType || "") ? await renderPdfPageImages(buffer, { maxPages: 2, scale: 2 }).catch(() => []) : [];
+  const renderedImageInputs = renderedImages.map((image) => ({
+    type: "input_image",
+    image_url: `data:image/png;base64,${image.toString("base64")}`
+  }));
   const prompt = [
     "This is an FMCSA Clearinghouse / MVR compliance document.",
     "Find the date labeled exactly or nearly as Query Status Completed.",
@@ -2573,7 +2578,7 @@ async function runOpenAiClearinghouseCompletedDateScanner(buffer, mimeType, extr
         {
           role: "user",
           content: [
-            fileInput,
+            ...(renderedImageInputs.length ? renderedImageInputs : [fileInput]),
             {
               type: "input_text",
               text: prompt
@@ -2895,7 +2900,33 @@ async function extractPdfImageOcrText(buffer) {
       if (text.trim()) textParts.push(text);
     }
   }
+  const renderedPages = await renderPdfPageImages(buffer, { maxPages: 3, scale: 2 }).catch(() => []);
+  for (const pageImage of renderedPages) {
+    try {
+      const result = await tesseract.recognize(pageImage, "eng");
+      const text = result?.data?.text || "";
+      if (text.trim()) textParts.push(text);
+    } catch {
+      // Keep OCR best-effort when a rendered page fails.
+    }
+  }
   return textParts.join("\n");
+}
+
+async function renderPdfPageImages(buffer, { maxPages = 2, scale = 2 } = {}) {
+  const pdfjs = await loadPdfJs();
+  const { createCanvas } = require("@napi-rs/canvas");
+  const document = await pdfjs.getDocument({ data: new Uint8Array(buffer), disableWorker: true }).promise;
+  const pages = [];
+  for (let pageNumber = 1; pageNumber <= Math.min(document.numPages, maxPages); pageNumber += 1) {
+    const page = await document.getPage(pageNumber);
+    const viewport = page.getViewport({ scale });
+    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+    const canvasContext = canvas.getContext("2d");
+    await page.render({ canvasContext, viewport }).promise;
+    pages.push(canvas.toBuffer("image/png"));
+  }
+  return pages;
 }
 
 async function extractImageOcrText(buffer) {
