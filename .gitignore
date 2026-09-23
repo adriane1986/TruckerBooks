@@ -3,6 +3,7 @@ npm-debug.log*
 
 # Local customer data and uploaded documents
 data/
+data-beta/
 
 # Local verification artifacts
 verification*.png
