@@ -1849,7 +1849,7 @@ function latestNormalizedDate(values = []) {
   return [...new Set(values.map(normalizeDate).filter(Boolean))].sort().at(-1) || "";
 }
 
-function chooseDotPhysicalExpirationDate({ local = {}, generic = {}, bestLocalDate = "", bestAiDate = "", pdfImageAiDate = "", narrowAiDate = "" }) {
+function chooseDotPhysicalExpirationDate({ local = {}, generic = {}, bestLocalDate = "", bestAiDate = "", pdfImageAiDate = "", imageVisionAiDate = "", narrowAiDate = "" }) {
   const aiDateCandidates = Array.isArray(generic.dateCandidates) ? generic.dateCandidates : [];
   const genericDates = Array.isArray(generic.dates) ? generic.dates : [];
   const narrowDates = Array.isArray(generic.allDates) ? generic.allDates : [];
@@ -1857,6 +1857,7 @@ function chooseDotPhysicalExpirationDate({ local = {}, generic = {}, bestLocalDa
     bestLocalDate,
     bestAiDate,
     pdfImageAiDate,
+    imageVisionAiDate,
     narrowAiDate,
     local.expirationDate,
     generic.expirationDate,
@@ -2179,17 +2180,20 @@ async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
   const pdfImageAiDate = isDotPhysical && /pdf/i.test(mimeType || "")
     ? await runOpenAiPdfImageExpirationScanner(buffer, scan.text, complianceType, openaiVisionModel).catch(() => "")
     : "";
+  const imageVisionAiDate = isDotPhysical && /^image\//i.test(mimeType || "")
+    ? await runOpenAiImageRotationExpirationScanner(buffer, mimeType, scan.text, complianceType, openaiVisionModel).catch(() => "")
+    : "";
   const narrowAiDate = isDotPhysical || !(bestLocalDate || bestAiDate || pdfImageAiDate)
     ? await runOpenAiExpirationOnlyScanner(buffer, mimeType, scan.text, complianceType, openaiVisionModel).catch(() => "")
     : "";
   const dotPhysicalDate = isDotPhysical
-    ? chooseDotPhysicalExpirationDate({ local, generic, bestLocalDate, bestAiDate, pdfImageAiDate, narrowAiDate })
+    ? chooseDotPhysicalExpirationDate({ local, generic, bestLocalDate, bestAiDate, pdfImageAiDate, imageVisionAiDate, narrowAiDate })
     : "";
   return {
     ...scan,
     extracted: {
       ...local,
-      expirationDate: dotPhysicalDate || bestLocalDate || bestAiDate || pdfImageAiDate || narrowAiDate || "",
+      expirationDate: dotPhysicalDate || bestLocalDate || bestAiDate || pdfImageAiDate || imageVisionAiDate || narrowAiDate || "",
       dateDetection: dotPhysicalDate ? "dot_physical_certificate_expiration" : local.dateDetection,
       generic
     }
@@ -2448,7 +2452,80 @@ async function runOpenAiExpirationOnlyScanner(buffer, mimeType, extractedText, c
   const payload = await response.json();
   const text = responseText(payload);
   const parsed = parseAiJson(text);
+  if (complianceType === "dotPhysical") {
+    return latestNormalizedDate([
+      parsed.expirationDate,
+      ...(Array.isArray(parsed.allDates) ? parsed.allDates : [])
+    ]);
+  }
   return normalizeDate(parsed.expirationDate || "");
+}
+
+async function runOpenAiImageRotationExpirationScanner(buffer, mimeType, extractedText, complianceType = "", modelOverride = "") {
+  const openAiKey = getOpenAiKey();
+  if (!openAiKey || !openAiKey.startsWith("sk-")) return "";
+  let sharp;
+  try {
+    sharp = require("sharp");
+  } catch {
+    return "";
+  }
+  const typeName = complianceTypeName(complianceType);
+  const imageInputs = [];
+  for (const rotation of [0, 90, 180, 270]) {
+    const image = await sharp(buffer)
+      .rotate(rotation)
+      .resize({ width: 1800, height: 1800, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 92 })
+      .toBuffer();
+    imageInputs.push({
+      type: "input_image",
+      image_url: `data:image/jpeg;base64,${image.toString("base64")}`
+    });
+  }
+  const prompt = [
+    `This is a phone-photo upload for a ${typeName} compliance document.`,
+    "Inspect all four attached orientations and use the copy where the text is easiest to read.",
+    "Find the DOT Physical / Medical Examiner's Certificate expiration date.",
+    "The target label may appear near the lower/right side of the card as Medical Examiner's Certificate Expiration Date.",
+    "Do not use Date Certificate Signed, examination date, signature date, issue date, driver's license date, phone number, registry number, ZIP code, or ID number.",
+    "If you see Date Certificate Signed 07/03/2026 and Medical Examiner's Certificate Expiration Date 07/03/2027, return 2027-07-03.",
+    "Return JSON only with this exact shape:",
+    "{\"expirationDate\":\"YYYY-MM-DD or null\",\"allDates\":[\"YYYY-MM-DD\"],\"reason\":\"short explanation\"}",
+    extractedText ? `Any OCR text available:\n${extractedText.slice(0, 4000)}` : "No usable OCR text was available."
+  ].join("\n");
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${openAiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: modelOverride || openaiVisionModel,
+      input: [
+        {
+          role: "user",
+          content: [
+            ...imageInputs,
+            {
+              type: "input_text",
+              text: prompt
+            }
+          ]
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) return "";
+  const payload = await response.json();
+  const text = responseText(payload);
+  const parsed = parseAiJson(text);
+  return latestNormalizedDate([
+    parsed.expirationDate,
+    ...(Array.isArray(parsed.allDates) ? parsed.allDates : [])
+  ]);
 }
 
 async function runOpenAiPdfImageExpirationScanner(buffer, extractedText, complianceType = "", modelOverride = "") {
