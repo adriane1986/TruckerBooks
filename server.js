@@ -1707,7 +1707,15 @@ function extractRateConAmount(text) {
 
 function normalizeDate(value) {
   if (!value) return "";
-  const parsed = new Date(value);
+  const raw = String(value).trim();
+  const iso = raw.match(/\b(20\d{2}|19\d{2})-(\d{1,2})-(\d{1,2})\b/);
+  if (iso) {
+    const year = iso[1];
+    const month = iso[2].padStart(2, "0");
+    const day = iso[3].padStart(2, "0");
+    if (isValidIsoDate(`${year}-${month}-${day}`)) return `${year}-${month}-${day}`;
+  }
+  const parsed = new Date(raw);
   if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
   const monthMap = {
     jan: "01",
@@ -1735,16 +1743,28 @@ function normalizeDate(value) {
     dec: "12",
     december: "12"
   };
-  const dmy = String(value).match(/\b(\d{1,2})[-\s](Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)[-\s](\d{2,4})\b/i);
+  const dmy = raw.match(/\b(\d{1,2})[-\s](Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)[-\s](\d{2,4})\b/i);
   if (dmy) {
     const year = dmy[3].length === 2 ? `20${dmy[3]}` : dmy[3];
     const month = monthMap[dmy[2].toLowerCase().replace(".", "")];
-    if (month) return `${year}-${month}-${dmy[1].padStart(2, "0")}`;
+    const day = dmy[1].padStart(2, "0");
+    if (month && isValidIsoDate(`${year}-${month}-${day}`)) return `${year}-${month}-${day}`;
   }
-  const parts = value.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
+  const parts = raw.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
   if (!parts) return "";
   const year = parts[3].length === 2 ? `20${parts[3]}` : parts[3];
-  return `${year}-${parts[1].padStart(2, "0")}-${parts[2].padStart(2, "0")}`;
+  const date = `${year}-${parts[1].padStart(2, "0")}-${parts[2].padStart(2, "0")}`;
+  return isValidIsoDate(date) ? date : "";
+}
+
+function isValidIsoDate(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const date = new Date(`${value}T12:00:00Z`);
+  return !Number.isNaN(date.getTime())
+    && date.getUTCFullYear() === Number(match[1])
+    && date.getUTCMonth() + 1 === Number(match[2])
+    && date.getUTCDate() === Number(match[3]);
 }
 
 function extractDateCandidates(text) {

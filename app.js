@@ -784,7 +784,13 @@ function listItem(item) {
 }
 
 function formatDate(date) {
-  return new Date(`${date}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  if (!date) return "Not detected";
+  const raw = String(date).trim();
+  const iso = raw.match(/\b\d{4}-\d{2}-\d{2}\b/);
+  const value = iso ? `${iso[0]}T12:00:00` : raw;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Not detected";
+  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function renderTableView(collection, title, columns) {
