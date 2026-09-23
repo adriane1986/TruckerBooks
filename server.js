@@ -1794,18 +1794,42 @@ function extractLabeledDateCandidates(text) {
     .filter(Boolean);
 }
 
+function extractClearinghouseCompletedDate(text) {
+  const datePattern = "(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{1,2},?\\s+\\d{4}|\\d{1,2}[-\\s](?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)[-\\s]\\d{2,4}|\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|\\d{4}-\\d{1,2}-\\d{1,2})";
+  const patterns = [
+    new RegExp(`query\\s+status\\s+completed\\s*:?\\s*(${datePattern})`, "i"),
+    new RegExp(`query\\s+status\\s*:?\\s*completed[\\s\\S]{0,120}?(${datePattern})`, "i"),
+    new RegExp(`completed\\s+date\\s*:?\\s*(${datePattern})`, "i"),
+    new RegExp(`date\\s+completed\\s*:?\\s*(${datePattern})`, "i")
+  ];
+  return normalizeDate(firstMatch(text, patterns));
+}
+
 function chooseBestComplianceDate({ type, expirationDate, dates = [], dateCandidates = [] }) {
   const labeled = dateCandidates
     .map((item) => ({ date: normalizeDate(item.date), label: String(item.label || "").toLowerCase() }))
     .filter((item) => item.date);
 
   if (type === "clearinghouseMvr") {
-    const completedWords = /(mvr|clearinghouse|query|report|run|ran|completed|completion|check|checked|date|result)/i;
-    const completedDate = labeled
-      .filter((item) => completedWords.test(item.label))
+    const exactCompletedWords = /(query\s+status\s+completed|status\s+completed|completed\s+date|date\s+completed)/i;
+    const exactCompletedDate = labeled
+      .filter((item) => exactCompletedWords.test(item.label))
       .sort((a, b) => a.date.localeCompare(b.date))
-      .at(-1)?.date || normalizeDate(expirationDate || "") || [...dates.map(normalizeDate).filter(Boolean)].sort().at(-1);
-    if (completedDate) return addMonthsIsoDate(completedDate, 12);
+      .at(-1)?.date;
+    if (exactCompletedDate) return addMonthsIsoDate(exactCompletedDate, 12);
+
+    const broadCompletedWords = /(query|completed|completion|run|ran|checked|check)/i;
+    const broadCompletedDate = labeled
+      .filter((item) => broadCompletedWords.test(item.label))
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .at(-1)?.date;
+    if (broadCompletedDate) return addMonthsIsoDate(broadCompletedDate, 12);
+
+    const explicitRenewal = normalizeDate(expirationDate || "");
+    if (explicitRenewal) return explicitRenewal;
+
+    const latestPossibleCompletedDate = [...dates.map(normalizeDate).filter(Boolean)].sort().at(-1);
+    if (latestPossibleCompletedDate) return addMonthsIsoDate(latestPossibleCompletedDate, 12);
   }
 
   if (type === "irpCabCard") {
@@ -1926,6 +1950,7 @@ function parseDocumentText(text, type) {
 
 function parseComplianceText(text, type = "") {
   const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
+  const clearinghouseCompletedDate = type === "clearinghouseMvr" ? extractClearinghouseCompletedDate(clean) : "";
   const dotPhysicalExpiration = type === "dotPhysical" ? firstMatch(clean, [
     /medical\s+examiner'?s?\s+certificate\s+expiration\s+date[\s\S]{0,80}?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
     /certificate\s+expiration\s+date[\s\S]{0,80}?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
@@ -1941,13 +1966,14 @@ function parseComplianceText(text, type = "") {
   const labeledCandidates = extractLabeledDateCandidates(clean);
   const expirationDate = chooseBestComplianceDate({
     type,
-    expirationDate: normalizeDate(dotPhysicalExpiration || expiration),
+    expirationDate: clearinghouseCompletedDate || normalizeDate(dotPhysicalExpiration || expiration),
     dates: candidates,
     dateCandidates: labeledCandidates
   });
   return {
     expirationDate,
-    dateDetection: normalizeDate(dotPhysicalExpiration) ? "dot_physical_ocr_label" : normalizeDate(expiration) ? "labeled_expiration" : expirationDate ? "latest_document_date" : "not_found",
+    completedDate: clearinghouseCompletedDate,
+    dateDetection: clearinghouseCompletedDate ? "query_status_completed_plus_1_year" : normalizeDate(dotPhysicalExpiration) ? "dot_physical_ocr_label" : normalizeDate(expiration) ? "labeled_expiration" : expirationDate ? "latest_document_date" : "not_found",
     dateCandidates: labeledCandidates,
     textPreview: clean.slice(0, 800)
   };
@@ -2184,7 +2210,7 @@ async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
   const dotPhysicalContext = complianceType === "dotPhysical"
     ? "This is a DOT Physical / Medical Examiner's Certificate upload. The card may be a sideways phone photo or an image-only PDF, so inspect it visually and mentally rotate it if needed. Use the date labeled Medical Examiner's Certificate Expiration Date, Medical Examiner Certificate Expiration, Medical Card Expires, Certificate Expires, Expiration Date, or Qualified Until. Do not use the examination date, Date Certificate Signed, signature date, issue date, registry number, or driver's license date. If the card has Date Certificate Signed and Medical Examiner's Certificate Expiration Date, choose the Medical Examiner's Certificate Expiration Date, which is usually the later date."
     : "";
-  const scan = await runAiScanner(buffer, mimeType, `This is a Compliance upload. Prioritize renewal, expiration, valid-through, policy end, coverage end, Policy Exp., DOT physical expiration, UCR, 2290 tax period, IRP Cab Card validity period end date, and Clearinghouse MVR report/run dates. ${dotPhysicalContext} Clearinghouse MVR should be run every 12 months, so use the report/run/completed/query date plus 12 months as the renewal date when no expiration is printed.`, openaiVisionModel);
+  const scan = await runAiScanner(buffer, mimeType, `This is a Compliance upload. Prioritize renewal, expiration, valid-through, policy end, coverage end, Policy Exp., DOT physical expiration, UCR, 2290 tax period, IRP Cab Card validity period end date, and Clearinghouse MVR dates. ${dotPhysicalContext} For Clearinghouse MVR documents, find the date labeled Query Status Completed first, then set the renewal date to exactly 12 months after that completed date.`, openaiVisionModel);
   const local = parseComplianceText(scan.text, complianceType);
   const generic = scan.extracted || {};
   const aiExpiration = normalizeDate(generic.expirationDate || "");
@@ -2340,9 +2366,9 @@ async function runOpenAiDocumentScanner(buffer, mimeType, extractedText, documen
     "dateCandidates must be an array of objects like {date: 'YYYY-MM-DD', label: 'nearby text label or context'} for every visible date.",
     "Dates must be ISO YYYY-MM-DD. Amount must be a number.",
     "For compliance documents, expirationDate should be the renewal/expiration date.",
-    "For Insurance, DOT Physical, UCR, 2290, or Clearinghouse MVR documents, prioritize labels like Expiration Date, Expires, Valid Until, Policy Exp., Policy Period end date, Coverage End Date, Medical Examiner's Certificate Expiration Date, Medical Card Expires, Certificate Expires, Qualified Until, UCR year end, Form 2290 tax period ending date, MVR report date, Clearinghouse query date, ran date, completed date, and check date.",
+    "For Insurance, DOT Physical, UCR, 2290, or Clearinghouse MVR documents, prioritize labels like Expiration Date, Expires, Valid Until, Policy Exp., Policy Period end date, Coverage End Date, Medical Examiner's Certificate Expiration Date, Medical Card Expires, Certificate Expires, Qualified Until, UCR year end, Form 2290 tax period ending date, MVR report date, Clearinghouse Query Status Completed date, ran date, completed date, and check date.",
     "For DOT Physical / Medical Examiner's Certificate cards, expirationDate must be the medical certificate expiration date. The image may be sideways or rotated. Do not use the examination date, Date Certificate Signed, signature date, issue date, or driver's license date. If the card shows multiple dates, choose the date labeled Medical Examiner's Certificate Expiration Date or the later certificate expiration date.",
-    "Clearinghouse MVR should be run every 12 months. If no expiration date is printed, set expirationDate to 12 months after the report/run/completed/query date.",
+    "Clearinghouse MVR should be run every 12 months. For Clearinghouse documents, use the date labeled Query Status Completed as the completed date, then set expirationDate to exactly 12 months after that date.",
     "For ACORD insurance certificates, read Policy Exp., the insurance table columns labeled EFF and EXP, or policy period end. Use the Policy Exp. or EXP date, not the EFF date.",
     "For IRP-Cab Card documents, use the ending date in the Validity Period/date range as expirationDate.",
     "If no explicit expiration label exists but there is a date range, use the later/end date as expirationDate.",
@@ -2442,7 +2468,7 @@ async function runOpenAiExpirationOnlyScanner(buffer, mimeType, extractedText, c
     "Find the document expiration, renewal, valid-through, coverage end, policy end, DOT physical expiration, UCR year end, 2290 tax period ending date, or Clearinghouse MVR report/run date.",
     "For DOT Physical / Medical Examiner's Certificate cards, read the card visually if the PDF has no text layer or the upload is a phone photo. The document may be sideways or rotated, so mentally rotate it and inspect all orientations. Return the date labeled Medical Examiner's Certificate Expiration Date, Medical Examiner Certificate Expiration, Medical Card Expires, Certificate Expires, Expiration Date, or Qualified Until.",
     "For DOT Physical cards, do not return the examination date, Date Certificate Signed, signature date, issue date, or driver's license date. If Date Certificate Signed and Medical Examiner's Certificate Expiration Date are both visible, return the Medical Examiner's Certificate Expiration Date. Example: a signed date like 07/03/2026 is not the answer when an expiration date like 07/03/2027 is also visible.",
-    "Clearinghouse MVR should be run every 12 months. If this is a Clearinghouse MVR document and no expiration date is printed, return a renewal date 12 months after the report/run/completed/query date.",
+    "Clearinghouse MVR should be run every 12 months. If this is a Clearinghouse MVR document, use the date labeled Query Status Completed as the completed date and return a renewal date exactly 12 months after that date.",
     "For ACORD certificates of liability insurance, read Policy Exp., the table columns labeled EFF and EXP, or policy period end. Use the Policy Exp. or EXP date as the expiration date.",
     "Insurance certificates often show dates in compact MM/DD/YYYY boxes near policy numbers. Use the later date in the EFF/EXP pair.",
     "Return JSON only with this exact shape:",
