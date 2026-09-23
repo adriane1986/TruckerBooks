@@ -1926,6 +1926,11 @@ function parseDocumentText(text, type) {
 
 function parseComplianceText(text, type = "") {
   const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
+  const dotPhysicalExpiration = type === "dotPhysical" ? firstMatch(clean, [
+    /medical\s+examiner'?s?\s+certificate\s+expiration\s+date[\s\S]{0,80}?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
+    /certificate\s+expiration\s+date[\s\S]{0,80}?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
+    /medical\s+examiner'?s?\s+certificate[\s\S]{0,80}?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i
+  ]) : "";
   const expiration = firstMatch(clean, [
     /(?:medical examiner'?s?\s+certificate\s+expiration\s+date|medical examiner\s+certificate\s+expiration|medical certificate expiration|certificate expires|qualified until|expiration date|expiration|expires on|expires|expiry date|valid until|medical card expires|policy exp\.?|policy expires|policy expiration|coverage end date|coverage ends|policy end date|end date|valid through|thru|through)\s*:?\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
     /(?:exp\.?|expires)\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
@@ -1936,13 +1941,13 @@ function parseComplianceText(text, type = "") {
   const labeledCandidates = extractLabeledDateCandidates(clean);
   const expirationDate = chooseBestComplianceDate({
     type,
-    expirationDate: normalizeDate(expiration),
+    expirationDate: normalizeDate(dotPhysicalExpiration || expiration),
     dates: candidates,
     dateCandidates: labeledCandidates
   });
   return {
     expirationDate,
-    dateDetection: normalizeDate(expiration) ? "labeled_expiration" : expirationDate ? "latest_document_date" : "not_found",
+    dateDetection: normalizeDate(dotPhysicalExpiration) ? "dot_physical_ocr_label" : normalizeDate(expiration) ? "labeled_expiration" : expirationDate ? "latest_document_date" : "not_found",
     dateCandidates: labeledCandidates,
     textPreview: clean.slice(0, 800)
   };
@@ -2230,6 +2235,8 @@ async function runAiScanner(buffer, mimeType, documentContext = "", modelOverrid
       const tesseract = require("tesseract.js");
       const result = await tesseract.recognize(buffer, "eng");
       text = result?.data?.text || "";
+      const rotatedText = await extractImageOcrText(buffer).catch(() => "");
+      if (rotatedText.trim()) text = [text, rotatedText].filter((part) => part && part.trim()).join("\n");
     } catch {
       scanStatus = "Stored - OCR unavailable";
     }
@@ -2780,6 +2787,29 @@ async function extractPdfImageOcrText(buffer) {
       const result = await tesseract.recognize(bmp, "eng");
       const text = result?.data?.text || "";
       if (text.trim()) textParts.push(text);
+    }
+  }
+  return textParts.join("\n");
+}
+
+async function extractImageOcrText(buffer) {
+  const tesseract = require("tesseract.js");
+  const sharp = require("sharp");
+  const textParts = [];
+  for (const rotation of [90, 180, 270]) {
+    try {
+      const image = await sharp(buffer)
+        .rotate(rotation)
+        .resize({ width: 2200, height: 2200, fit: "inside", withoutEnlargement: true })
+        .grayscale()
+        .normalize()
+        .png()
+        .toBuffer();
+      const result = await tesseract.recognize(image, "eng");
+      const text = result?.data?.text || "";
+      if (text.trim()) textParts.push(text);
+    } catch {
+      // Keep scanning other orientations when one pass fails.
     }
   }
   return textParts.join("\n");
