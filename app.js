@@ -1526,10 +1526,11 @@ function renderCompliance() {
                 </td>
                 <td data-label="Renewal">
                   <strong>${isCarrierPacketDocument(item) ? "No renewal needed" : item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong>
+                  ${item.extracted?.completedDate ? `<br><span class="muted">Completed date: ${formatDate(item.extracted.completedDate)}</span>` : ""}
                   ${item.extracted?.aiError || item.aiScan?.aiError ? `<br><span class="muted">Scanner issue: ${(item.extracted?.aiError || item.aiScan?.aiError).slice(0, 90)}</span>` : ""}
                   ${item.expirationDate || isCarrierPacketDocument(item) ? "" : `
                     <form class="mini-date-form" data-expiration-form="${item.id}">
-                      <label>${item.type === "clearinghouseMvr" ? "Completed date" : "Expiration date"}<input type="date" name="expirationDate" required /></label>
+                      <label>${item.type === "clearinghouseMvr" ? "Completed date" : "Expiration date"}<input type="${item.type === "clearinghouseMvr" ? "text" : "date"}" name="expirationDate" ${item.type === "clearinghouseMvr" ? 'inputmode="numeric" placeholder="1/20/2025"' : ""} required /></label>
                       <button class="chip-button" type="submit">Save</button>
                     </form>
                   `}

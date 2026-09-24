@@ -1,0 +1,2705 @@
+{
+  "meta": {
+    "environment": "beta",
+    "betaMode": true,
+    "seededAt": "2026-09-01T13:49:36.875Z",
+    "dataPolicy": "Sample beta records only. Do not copy production customer data into this database."
+  },
+  "users": [
+    {
+      "id": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "businessName": "Beta Demo Logistics",
+      "dotNumber": "BETA123456",
+      "companyPhone": "(555) 010-2026",
+      "companyAddress": "100 Demo Freight Lane, Dallas, TX 75201",
+      "adminName": "Beta Owner",
+      "adminRole": "owner",
+      "email": "owner@beta.truckerbooks.local",
+      "emailVerified": true,
+      "emailVerifiedAt": "2026-09-01T13:49:36.876Z",
+      "acceptedPolicies": true,
+      "acceptedPoliciesAt": "2026-09-01T13:49:36.876Z",
+      "passwordHash": "fc2ef7b0191de102ba3ed2671a7a04a9:5b374c9cb1f12fdee37134818da44a8e45574e42ced879ee51765668c29661e960a8fbac23f23b03f4c69e9894ca733592f44ecf78d855370241f455cb3c0e9c",
+      "role": "admin",
+      "permissions": [
+        "viewLoads",
+        "createLoads",
+        "editLoads",
+        "assignDrivers",
+        "viewFinancialInformation",
+        "createInvoices",
+        "approveExpenses",
+        "processSettlements",
+        "viewPayroll",
+        "manageCompanyUsers",
+        "manageIntegrations",
+        "changeSubscription",
+        "exportReports",
+        "deleteDocuments",
+        "viewDriverQualificationFiles"
+      ],
+      "subscriptionTier": "growthPlus",
+      "trucks": [
+        {
+          "id": "d128cd0d-409c-4b20-870d-ff99d776b08e",
+          "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+          "unitNumber": "BETA-01",
+          "vin": "BETADEMO000000001",
+          "plate": "BT1000",
+          "status": "Active",
+          "addedAt": "2026-09-01T13:49:36.876Z"
+        },
+        {
+          "id": "961a2121-be1f-40dc-9829-c4122363f17c",
+          "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+          "unitNumber": "BETA-02",
+          "vin": "BETADEMO000000002",
+          "plate": "BT1001",
+          "status": "Active",
+          "addedAt": "2026-09-01T13:49:36.876Z"
+        },
+        {
+          "id": "f5db626b-adb5-49f1-881b-9b3107ad4e04",
+          "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+          "unitNumber": "BETA-03",
+          "vin": "BETADEMO000000003",
+          "plate": "BT1002",
+          "status": "Active",
+          "addedAt": "2026-09-01T13:49:36.876Z"
+        },
+        {
+          "id": "f7419888-bb4f-44f3-b2cb-09f01a889cdc",
+          "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+          "unitNumber": "BETA-04",
+          "vin": "BETADEMO000000004",
+          "plate": "BT1003",
+          "status": "Active",
+          "addedAt": "2026-09-01T13:49:36.876Z"
+        },
+        {
+          "id": "79cf829f-2c9d-4753-8da8-208613e781d4",
+          "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+          "unitNumber": "BETA-05",
+          "vin": "BETADEMO000000005",
+          "plate": "BT1004",
+          "status": "Active",
+          "addedAt": "2026-09-01T13:49:36.876Z"
+        },
+        {
+          "id": "3a1211b0-4ffa-460d-a70d-21c9800252e3",
+          "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+          "unitNumber": "BETA-06",
+          "vin": "BETADEMO000000006",
+          "plate": "BT1005",
+          "status": "Active",
+          "addedAt": "2026-09-01T13:49:36.876Z"
+        },
+        {
+          "id": "2be37a49-da9f-4276-87c2-f58f88e27f83",
+          "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+          "unitNumber": "BETA-07",
+          "vin": "BETADEMO000000007",
+          "plate": "BT1006",
+          "status": "Active",
+          "addedAt": "2026-09-01T13:49:36.876Z"
+        },
+        {
+          "id": "509e5cbf-96f2-4206-95ca-6f8db17d05c9",
+          "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+          "unitNumber": "BETA-08",
+          "vin": "BETADEMO000000008",
+          "plate": "BT1007",
+          "status": "Active",
+          "addedAt": "2026-09-01T13:49:36.876Z"
+        },
+        {
+          "id": "ebbf7f00-b8da-48cc-8552-e0bd88401cb2",
+          "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+          "unitNumber": "BETA-09",
+          "vin": "BETADEMO000000009",
+          "plate": "BT1008",
+          "status": "Active",
+          "addedAt": "2026-09-01T13:49:36.876Z"
+        },
+        {
+          "id": "707a17ad-8c62-46d1-875e-628a9683676a",
+          "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+          "unitNumber": "BETA-10",
+          "vin": "BETADEMO000000010",
+          "plate": "BT1009",
+          "status": "Active",
+          "addedAt": "2026-09-01T13:49:36.876Z"
+        },
+        {
+          "id": "10e8d207-8b75-4b47-a1d9-923d7a2a0fe1",
+          "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+          "unitNumber": "BETA-11",
+          "vin": "BETADEMO000000011",
+          "plate": "BT1010",
+          "status": "Active",
+          "addedAt": "2026-09-01T13:49:36.876Z"
+        },
+        {
+          "id": "b7a71bbf-4a66-4662-a22e-c0f8d9c2de8d",
+          "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+          "unitNumber": "BETA-12",
+          "vin": "BETADEMO000000012",
+          "plate": "BT1011",
+          "status": "Active",
+          "addedAt": "2026-09-01T13:49:36.876Z"
+        }
+      ],
+      "drivers": [
+        {
+          "id": "7942ded9-a04a-4658-96ef-30f314c2d4c8",
+          "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+          "name": "Jordan Sample",
+          "email": "driver.fedbe83c@beta.truckerbooks.local",
+          "role": "driver",
+          "roleLabel": "Driver",
+          "permissions": [
+            "viewLoads",
+            "createLoads",
+            "approveExpenses",
+            "viewPayroll",
+            "viewDriverQualificationFiles"
+          ],
+          "truckId": "d128cd0d-409c-4b20-870d-ff99d776b08e",
+          "truckNumber": "BETA-01",
+          "payType": "Per mile",
+          "ratePerMile": 0.62,
+          "weeklyRate": 0,
+          "payPercentage": 0,
+          "status": "Active",
+          "emailVerified": true,
+          "passwordHash": "196c41e33af5471e6cd2e49318ec4f84:5975fea857d12bf2cff125801d5228d0a62f02171415921b4d1a09c033638796c6ba474519a23665177f5452a5ecc4d87b4f014546858b491a2723ca12a55a82",
+          "mfa": {
+            "enabled": false,
+            "recoveryCodes": []
+          },
+          "addedBy": {
+            "name": "Beta Owner",
+            "email": "owner@beta.truckerbooks.local"
+          },
+          "addedAt": "2026-09-01T13:49:36.876Z",
+          "createdAt": "2026-09-01T13:49:36.876Z",
+          "inviteExpiresAt": "2026-09-08T13:49:36.955Z",
+          "inviteUsedAt": "",
+          "lastLoginAt": "",
+          "accessHistory": [],
+          "forcePasswordReset": false
+        }
+      ],
+      "documents": [],
+      "complianceDocuments": [],
+      "supportIssues": [],
+      "affiliateCode": "BETA32B1",
+      "referredBy": "",
+      "referredByType": "",
+      "firstMonthPaid": true,
+      "trialStartedAt": "2026-09-01T13:49:36.876Z",
+      "trialEndsAt": "2026-09-08T13:49:36.876Z",
+      "trialStatus": "Active",
+      "commissions": [],
+      "records": {
+        "trips": [
+          {
+            "id": "1212eff8-9580-4823-8c7a-e2c6e1ba6bfa",
+            "date": "2026-04-03",
+            "description": "Fresh produce load",
+            "origin": "Savannah, GA",
+            "destination": "Nashville, TN",
+            "miles": 498,
+            "amount": 2450,
+            "status": "Paid",
+            "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d"
+          },
+          {
+            "id": "5c5b3809-3b74-416b-bcb3-fd1dec2c4fe1",
+            "date": "2026-04-12",
+            "description": "Dry van retail freight",
+            "origin": "Charlotte, NC",
+            "destination": "Columbus, OH",
+            "miles": 430,
+            "amount": 1985,
+            "status": "Pending",
+            "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d"
+          },
+          {
+            "id": "200db310-6a13-48b5-956a-ad4b0d16e376",
+            "date": "2026-04-23",
+            "description": "Machinery parts",
+            "origin": "Detroit, MI",
+            "destination": "Birmingham, AL",
+            "miles": 738,
+            "amount": 3320,
+            "status": "Scheduled",
+            "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d"
+          }
+        ],
+        "expenses": [
+          {
+            "id": "63af866c-85c0-4aea-bfdc-7e71273449b0",
+            "date": "2026-04-04",
+            "description": "Fuel - I-75 stop",
+            "amount": 612.44,
+            "category": "Fuel",
+            "status": "Paid",
+            "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d"
+          },
+          {
+            "id": "ffd924a2-cf30-4767-9c7b-02b8bfb14ed7",
+            "date": "2026-04-08",
+            "description": "Insurance - Truck insurance",
+            "amount": 890,
+            "category": "Insurance",
+            "status": "Paid",
+            "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d"
+          },
+          {
+            "id": "e1601c37-01ed-4967-a411-29ddd4d17db7",
+            "date": "2026-04-20",
+            "description": "Road costs - Scale ticket and tolls",
+            "amount": 76.8,
+            "category": "Road costs",
+            "status": "Paid",
+            "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d"
+          }
+        ],
+        "invoices": [
+          {
+            "id": "0fdd5ccd-85db-47e7-a11c-c8e29fcbabcc",
+            "date": "2026-04-05",
+            "description": "Invoice 1042 - Coastal Foods",
+            "amount": 2450,
+            "status": "Paid",
+            "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d"
+          },
+          {
+            "id": "edd107e4-43c0-44bc-a607-37f82974c4b2",
+            "date": "2026-04-13",
+            "description": "Invoice 1043 - Northline Logistics",
+            "amount": 1985,
+            "status": "Pending",
+            "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d"
+          }
+        ],
+        "maintenance": [
+          {
+            "id": "66dc64f1-d750-4537-a1b6-6c497202ce36",
+            "date": "2026-04-09",
+            "description": "Oil change and inspection",
+            "amount": 385,
+            "status": "Paid",
+            "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d"
+          },
+          {
+            "id": "92d6df5e-40c6-4dc8-8680-f43cf7d35fdc",
+            "date": "2026-04-28",
+            "description": "Steer tire replacement",
+            "amount": 925,
+            "status": "Scheduled",
+            "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d"
+          }
+        ]
+      },
+      "routeTracking": {
+        "enabled": false,
+        "currentLocation": null,
+        "history": []
+      },
+      "paymentInfo": {},
+      "integrations": {},
+      "createdAt": "2026-09-01T13:49:36.876Z",
+      "updatedAt": "2026-09-09T17:49:25.323Z",
+      "emailVerificationToken": "",
+      "emailVerificationSentAt": "",
+      "passwordReset": null,
+      "passwordChangedAt": "",
+      "securityNotifications": [],
+      "mfa": {
+        "required": true,
+        "emailEnabled": true,
+        "recoveryCodes": [],
+        "authenticator": {
+          "enabled": false,
+          "secret": ""
+        }
+      },
+      "complianceShares": [],
+      "completedComplianceAlerts": [],
+      "referralDiscount": null,
+      "supportAccessGrants": [],
+      "lastLoginAt": "2026-09-09T17:49:25.026Z"
+    },
+    {
+      "id": "4a95dd28-464a-4787-98b9-6c6d3aedb807",
+      "companyId": "4a95dd28-464a-4787-98b9-6c6d3aedb807",
+      "businessName": "Sample Small Fleet",
+      "dotNumber": "BETA654321",
+      "companyPhone": "(555) 010-2049",
+      "companyAddress": "240 Preview Parkway, Atlanta, GA 30303",
+      "adminName": "Sample Administrator",
+      "adminRole": "owner",
+      "email": "admin@beta.truckerbooks.local",
+      "emailVerified": true,
+      "emailVerifiedAt": "2026-09-01T13:49:36.955Z",
+      "acceptedPolicies": true,
+      "acceptedPoliciesAt": "2026-09-01T13:49:36.955Z",
+      "passwordHash": "717d05434d878310255089a1647e12a8:aca2e09aa1239a06301d1463a1b8611f64871ec42ebcbfebfeca7569c8285c7c9444d7c683548e0b4aa40c03c788c48ddf2446119472c2f6bff147385dfe9bbe",
+      "role": "admin",
+      "permissions": [
+        "viewLoads",
+        "createLoads",
+        "editLoads",
+        "assignDrivers",
+        "viewFinancialInformation",
+        "createInvoices",
+        "approveExpenses",
+        "processSettlements",
+        "viewPayroll",
+        "manageCompanyUsers",
+        "manageIntegrations",
+        "changeSubscription",
+        "exportReports",
+        "deleteDocuments",
+        "viewDriverQualificationFiles"
+      ],
+      "subscriptionTier": "gold",
+      "trucks": [
+        {
+          "id": "0b983298-759f-4ee9-bd75-63a1bae9f593",
+          "companyId": "4a95dd28-464a-4787-98b9-6c6d3aedb807",
+          "unitNumber": "BETA-01",
+          "vin": "BETADEMO000000001",
+          "plate": "BT1000",
+          "status": "Active",
+          "addedAt": "2026-09-01T13:49:36.955Z"
+        },
+        {
+          "id": "15507a00-a6ed-4fc4-b7d9-7a717a4947af",
+          "companyId": "4a95dd28-464a-4787-98b9-6c6d3aedb807",
+          "unitNumber": "BETA-02",
+          "vin": "BETADEMO000000002",
+          "plate": "BT1001",
+          "status": "Active",
+          "addedAt": "2026-09-01T13:49:36.955Z"
+        },
+        {
+          "id": "b48687ae-3a6c-4fcf-a774-f54b766c64bf",
+          "companyId": "4a95dd28-464a-4787-98b9-6c6d3aedb807",
+          "unitNumber": "BETA-03",
+          "vin": "BETADEMO000000003",
+          "plate": "BT1002",
+          "status": "Active",
+          "addedAt": "2026-09-01T13:49:36.955Z"
+        },
+        {
+          "id": "8687315c-d278-4852-9966-5feb9dd46190",
+          "companyId": "4a95dd28-464a-4787-98b9-6c6d3aedb807",
+          "unitNumber": "BETA-04",
+          "vin": "BETADEMO000000004",
+          "plate": "BT1003",
+          "status": "Active",
+          "addedAt": "2026-09-01T13:49:36.955Z"
+        }
+      ],
+      "drivers": [
+        {
+          "id": "10bab7e4-4977-422f-bcad-3dcea432bb4d",
+          "companyId": "4a95dd28-464a-4787-98b9-6c6d3aedb807",
+          "name": "Jordan Sample",
+          "email": "driver.4a95dd28@beta.truckerbooks.local",
+          "role": "driver",
+          "roleLabel": "Driver",
+          "permissions": [
+            "viewLoads",
+            "createLoads",
+            "approveExpenses",
+            "viewPayroll",
+            "viewDriverQualificationFiles"
+          ],
+          "truckId": "0b983298-759f-4ee9-bd75-63a1bae9f593",
+          "truckNumber": "BETA-01",
+          "payType": "Per mile",
+          "ratePerMile": 0.62,
+          "weeklyRate": 0,
+          "payPercentage": 0,
+          "status": "Active",
+          "emailVerified": true,
+          "passwordHash": "a41e83f5846479d4307a116e1b5154a6:284ff51a34b3f48818484453eecc8d3314e43114ef272e0b47d102df6a4d0770eb90f8796591546aaf068f610f4ee47f37b50839ce20c88f1ce29de782d24466",
+          "mfa": {
+            "enabled": false,
+            "recoveryCodes": []
+          },
+          "addedBy": {
+            "name": "Sample Administrator",
+            "email": "admin@beta.truckerbooks.local"
+          },
+          "addedAt": "2026-09-01T13:49:36.955Z",
+          "createdAt": "2026-09-01T13:49:36.955Z",
+          "inviteExpiresAt": "2026-09-08T13:49:37.033Z",
+          "inviteUsedAt": "",
+          "lastLoginAt": "",
+          "accessHistory": [],
+          "forcePasswordReset": false
+        }
+      ],
+      "documents": [],
+      "complianceDocuments": [],
+      "supportIssues": [],
+      "affiliateCode": "BETA419A",
+      "referredBy": "",
+      "referredByType": "",
+      "firstMonthPaid": true,
+      "trialStartedAt": "2026-09-01T13:49:36.955Z",
+      "trialEndsAt": "2026-09-08T13:49:36.955Z",
+      "trialStatus": "Active",
+      "commissions": [],
+      "records": {
+        "trips": [
+          {
+            "id": "1212eff8-9580-4823-8c7a-e2c6e1ba6bfa",
+            "date": "2026-04-03",
+            "description": "Fresh produce load",
+            "origin": "Savannah, GA",
+            "destination": "Nashville, TN",
+            "miles": 498,
+            "amount": 2450,
+            "status": "Paid",
+            "companyId": "4a95dd28-464a-4787-98b9-6c6d3aedb807"
+          },
+          {
+            "id": "5c5b3809-3b74-416b-bcb3-fd1dec2c4fe1",
+            "date": "2026-04-12",
+            "description": "Dry van retail freight",
+            "origin": "Charlotte, NC",
+            "destination": "Columbus, OH",
+            "miles": 430,
+            "amount": 1985,
+            "status": "Pending",
+            "companyId": "4a95dd28-464a-4787-98b9-6c6d3aedb807"
+          },
+          {
+            "id": "200db310-6a13-48b5-956a-ad4b0d16e376",
+            "date": "2026-04-23",
+            "description": "Machinery parts",
+            "origin": "Detroit, MI",
+            "destination": "Birmingham, AL",
+            "miles": 738,
+            "amount": 3320,
+            "status": "Scheduled",
+            "companyId": "4a95dd28-464a-4787-98b9-6c6d3aedb807"
+          }
+        ],
+        "expenses": [
+          {
+            "id": "63af866c-85c0-4aea-bfdc-7e71273449b0",
+            "date": "2026-04-04",
+            "description": "Fuel - I-75 stop",
+            "amount": 612.44,
+            "category": "Fuel",
+            "status": "Paid",
+            "companyId": "4a95dd28-464a-4787-98b9-6c6d3aedb807"
+          },
+          {
+            "id": "ffd924a2-cf30-4767-9c7b-02b8bfb14ed7",
+            "date": "2026-04-08",
+            "description": "Insurance - Truck insurance",
+            "amount": 890,
+            "category": "Insurance",
+            "status": "Paid",
+            "companyId": "4a95dd28-464a-4787-98b9-6c6d3aedb807"
+          },
+          {
+            "id": "e1601c37-01ed-4967-a411-29ddd4d17db7",
+            "date": "2026-04-20",
+            "description": "Road costs - Scale ticket and tolls",
+            "amount": 76.8,
+            "category": "Road costs",
+            "status": "Paid",
+            "companyId": "4a95dd28-464a-4787-98b9-6c6d3aedb807"
+          }
+        ],
+        "invoices": [
+          {
+            "id": "0fdd5ccd-85db-47e7-a11c-c8e29fcbabcc",
+            "date": "2026-04-05",
+            "description": "Invoice 1042 - Coastal Foods",
+            "amount": 2450,
+            "status": "Paid",
+            "companyId": "4a95dd28-464a-4787-98b9-6c6d3aedb807"
+          },
+          {
+            "id": "edd107e4-43c0-44bc-a607-37f82974c4b2",
+            "date": "2026-04-13",
+            "description": "Invoice 1043 - Northline Logistics",
+            "amount": 1985,
+            "status": "Pending",
+            "companyId": "4a95dd28-464a-4787-98b9-6c6d3aedb807"
+          }
+        ],
+        "maintenance": [
+          {
+            "id": "66dc64f1-d750-4537-a1b6-6c497202ce36",
+            "date": "2026-04-09",
+            "description": "Oil change and inspection",
+            "amount": 385,
+            "status": "Paid",
+            "companyId": "4a95dd28-464a-4787-98b9-6c6d3aedb807"
+          },
+          {
+            "id": "92d6df5e-40c6-4dc8-8680-f43cf7d35fdc",
+            "date": "2026-04-28",
+            "description": "Steer tire replacement",
+            "amount": 925,
+            "status": "Scheduled",
+            "companyId": "4a95dd28-464a-4787-98b9-6c6d3aedb807"
+          }
+        ]
+      },
+      "routeTracking": {
+        "enabled": false,
+        "currentLocation": null,
+        "history": []
+      },
+      "paymentInfo": {},
+      "integrations": {},
+      "createdAt": "2026-09-01T13:49:36.955Z",
+      "updatedAt": "2026-09-01T13:49:36.955Z",
+      "emailVerificationToken": "",
+      "emailVerificationSentAt": "",
+      "passwordReset": null,
+      "passwordChangedAt": "",
+      "securityNotifications": [],
+      "mfa": {
+        "required": true,
+        "emailEnabled": true,
+        "recoveryCodes": [],
+        "authenticator": {
+          "enabled": false,
+          "secret": ""
+        }
+      },
+      "complianceShares": [],
+      "completedComplianceAlerts": [],
+      "referralDiscount": null,
+      "supportAccessGrants": []
+    },
+    {
+      "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "businessName": "ClearPoint Business Support Inc.",
+      "dotNumber": "123456",
+      "companyPhone": "8885891257",
+      "companyAddress": "123 harbor ln",
+      "adminName": "Adriane Osborne",
+      "adminRole": "owner",
+      "email": "adrianeosborne@gmail.com",
+      "emailVerified": true,
+      "emailVerifiedAt": "2026-09-01T14:49:10.823Z",
+      "emailVerificationToken": "",
+      "emailVerificationSentAt": "2026-09-01T14:28:29.584Z",
+      "acceptedPolicies": true,
+      "acceptedPoliciesAt": "2026-09-01T14:28:29.584Z",
+      "passwordHash": "d4ae18c70c531a5dc10d00da30ae20a1:f9f34cbbf15d4b8932bf428b1ba12d037ae98331f60fb0adbeefee62a0fb2a47ec5b5eb55a10f11e59628dbba4ab8e5828ce6204741bfb84b2a987d001f0e02c",
+      "role": "admin",
+      "permissions": [
+        "viewLoads",
+        "createLoads",
+        "editLoads",
+        "assignDrivers",
+        "viewFinancialInformation",
+        "createInvoices",
+        "approveExpenses",
+        "processSettlements",
+        "viewPayroll",
+        "manageCompanyUsers",
+        "manageIntegrations",
+        "changeSubscription",
+        "exportReports",
+        "deleteDocuments",
+        "viewDriverQualificationFiles"
+      ],
+      "subscriptionTier": "silver",
+      "trucks": [],
+      "drivers": [],
+      "documents": [
+        {
+          "id": "cd493cd8-8a53-47f9-ae9a-93b5a4da3d26",
+          "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+          "type": "rateCon",
+          "fileName": "CarrierConfirmation_2010774.pdf",
+          "mimeType": "application/pdf",
+          "storedName": "19062915-27f3-4280-94c3-e4b86c39b90a-cd493cd8-8a53-47f9-ae9a-93b5a4da3d26-CarrierConfirmation_2010774.pdf",
+          "size": 74173,
+          "scanStatus": "Scanned - local fallback",
+          "extracted": {
+            "type": "rateCon",
+            "loadNumber": "2010774",
+            "date": "2025-09-24",
+            "origin": "ating in, de",
+            "destination": "hear from you. In order to document and properly handle your issue, pl",
+            "miles": 0,
+            "amount": 3400,
+            "textPreview": "CHECK CALLS REQUIRED IN AND OUT TIMES ARE REQUIRED AT EACH LOCATION TEXT: 940-310-8505 (Easiest Method, Just Text 'A' for Arrive and 'D' for Depart. That's it!. All other info is linked to your Tel#) CALL: 940-310-8505 EMAIL: dfm@gtrucking.com QUESTIONS / PROBLEMS? CALL: 940-310-8505 TEXT: 940-310-8505 EMERGENCY: 706-403-0172 (Mon-Fri Midnight to 9PM and Sat/Sun/Holidays 8AM to 8PM CST) NEED TO CANCEL? YOU MUST SPEAK TO A LIVE PERSON AND RECEIVE A CANCELATION CONFIRMATION BY EMAIL CALL: 940-310-8505 EMERGENCY: 706-403-0172 (Mon-Fri Midnight to 9PM and Sat/Sun/Holidays 8AM to 8PM CST) HAVE A COMPLAINT? It’s trucking, things do go wrong. However, if you feel that you were treated unfairly, we want to hear from you. In order to document and properly handle your issue, please email your concer",
+            "generic": {
+              "dates": [
+                "2025-09-24",
+                "2025-09-26",
+                "2025-09-29"
+              ],
+              "dateCandidates": [
+                {
+                  "date": "2025-09-24",
+                  "label": "RTICULAR LOAD LANDSTAR LOAD CONFIRMATION FB#: 2010774 Effective Date: 9/24/2025 Carrier: Landstar BCO Equipment: Van Driver: MELVEN JONES Commodity:"
+                },
+                {
+                  "date": "2025-09-26",
+                  "label": "atch instructions below differ from bill of lading! Pickup: Live Load 09/26/2025 08:30 - 15:30 (military time) Contact: Address: DOW CHEMICAL CO Phone"
+                },
+                {
+                  "date": "2025-09-26",
+                  "label": "1644|DOW CHEMICAL CO|WILMINGTON|IL|USA PO #: 0008105257 Ready DTTM #: 2025-09-26 08:30|US/Central SID #: SC31409665 Ultimate Consignee #: 3318688|SRS"
+                },
+                {
+                  "date": "2025-09-29",
+                  "label": "318688|SRS - SBP - ORLANDO NORTH|ORLANDO|FL|USA Delivery: Live Unload 09/29/2025 07:00 - 15:00 (military time) Contact: Address: SRS - SBP - ORLANDO N"
+                }
+              ],
+              "amount": 3400,
+              "expirationDate": "2025-09-26",
+              "dateDetection": "latest_document_date",
+              "loadNumber": "2010774",
+              "origin": "ating in, de",
+              "destination": "hear from you. In order to document and properly handle your issue, pl",
+              "miles": 0,
+              "aiUsed": false,
+              "textPreview": "CHECK CALLS REQUIRED IN AND OUT TIMES ARE REQUIRED AT EACH LOCATION TEXT: 940-310-8505 (Easiest Method, Just Text 'A' for Arrive and 'D' for Depart. That's it!. All other info is linked to your Tel#) CALL: 940-310-8505 EMAIL: dfm@gtrucking.com QUESTIONS / PROBLEMS? CALL: 940-310-8505 TEXT: 940-310-8505 EMERGENCY: 706-403-0172 (Mon-Fri Midnight to 9PM and Sat/Sun/Holidays 8AM to 8PM CST) NEED TO CANCEL? YOU MUST SPEAK TO A LIVE PERSON AND RECEIVE A CANCELATION CONFIRMATION BY EMAIL CALL: 940-310-8505 EMERGENCY: 706-403-0172 (Mon-Fri Midnight to 9PM and Sat/Sun/Holidays 8AM to 8PM CST) HAVE A COMPLAINT? It’s trucking, things do go wrong. However, if you feel that you were treated unfairly, we want to hear from you. In order to document and properly handle your issue, please email your concern to sally.smith@landstarmail.com. One of our management team will respond by phone to better understand your issue and how we can fix the problem. Calls are usually made within 24 business hours. VER",
+              "aiError": ""
+            }
+          },
+          "aiScan": {
+            "dates": [],
+            "dateCandidates": [],
+            "amount": 0,
+            "expirationDate": "",
+            "dateDetection": "not_found",
+            "loadNumber": "",
+            "origin": "",
+            "destination": "",
+            "miles": 0,
+            "aiUsed": false,
+            "textPreview": "",
+            "aiError": ""
+          },
+          "uploadedBy": {
+            "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+            "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+            "name": "ClearPoint Business Support Inc.",
+            "email": "adrianeosborne@gmail.com",
+            "role": "admin",
+            "roleLabel": "Company Owner"
+          },
+          "driverId": "",
+          "truckId": "",
+          "uploadedAt": "2026-09-09T17:41:02.631Z",
+          "createdTripId": "c1c1f160-8c41-4808-a425-e3ea6853fa15"
+        },
+        {
+          "id": "4954c94e-bb8d-4e76-9e9e-4ee4c272c1b2",
+          "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+          "type": "rateCon",
+          "fileName": "Rate Confirmation for Load #28176108.pdf",
+          "mimeType": "application/pdf",
+          "storedName": "19062915-27f3-4280-94c3-e4b86c39b90a-4954c94e-bb8d-4e76-9e9e-4ee4c272c1b2-Rate_Confirmation_for_Load__28176108.pdf",
+          "size": 175593,
+          "scanStatus": "Scanned - local fallback",
+          "extracted": {
+            "type": "rateCon",
+            "loadNumber": "28176108",
+            "date": "2022-12-05",
+            "origin": "herein are being provided for convenience only, an",
+            "destination": "with invoice to BROKER. Rates, ex",
+            "miles": 0,
+            "amount": 1500,
+            "textPreview": "Signature Line By signing below, CFA Trucking Inc agrees to the terms and conditions set forth below and provided herewith, if any. 1) 2) Carrier must report facility departure time and total detention hours within 24 hours of shipment delivery at the final facility. Carrier must provide proof of the on time arrival and departure times in the form of a BOL or other shipping document with arrival and departure times notated by facility within 24 hours of shipment delivery at final facility. Approval for payment of detention is contingent upon the following eligibility requirements: Get CoyoteGO • Dispatch • Check in • Submit paperwork • Send updates Available for An- droid or iPhone, at App Store or Google Play Today! None Load Temp Cust Requirements Van, 53' Equipment Value $100,000 Tarps ",
+            "generic": {
+              "dates": [
+                "2022-12-05",
+                "2022-12-07",
+                "2022-12-08"
+              ],
+              "dateCandidates": [
+                {
+                  "date": "2022-12-07",
+                  "label": "detention -First 2 hours free at 17:00 Appointment Scheduled For Wed 12/07/2022 N/A Stop 1 Requirements Pieces Exp Wt Commodity Food Product 23,456 L"
+                },
+                {
+                  "date": "2022-12-08",
+                  "label": "d damages -Lumpers are prepaid at 11:30 Appointment Scheduled For Thu 12/08/2022 N/A Stop 2 Requirements Pieces Exp Wt Commodity Food Product 23,456 L"
+                },
+                {
+                  "date": "2022-12-05",
+                  "label": "le Sales Rep Phone +1 (847) 810 6053 x4451 Fax +1 (773) 365 5179 Date 12/05/2022 10:17 Carrier Date PLEASE SIGN THIS AGREEMENT AND EMAIL TO chris.mall"
+                },
+                {
+                  "date": "2022-12-05",
+                  "label": "e Osborne of CFA Trucking Inc hereafter referred to as CARRIER, dated 12/05/2022. This confirmation is subject to the terms of the Agreement and this"
+                }
+              ],
+              "amount": 1500,
+              "expirationDate": "2022-12-08",
+              "dateDetection": "latest_document_date",
+              "loadNumber": "28176108",
+              "origin": "herein are being provided for convenience only, an",
+              "destination": "with invoice to BROKER. Rates, ex",
+              "miles": 0,
+              "aiUsed": false,
+              "textPreview": "Signature Line By signing below, CFA Trucking Inc agrees to the terms and conditions set forth below and provided herewith, if any. 1) 2) Carrier must report facility departure time and total detention hours within 24 hours of shipment delivery at the final facility. Carrier must provide proof of the on time arrival and departure times in the form of a BOL or other shipping document with arrival and departure times notated by facility within 24 hours of shipment delivery at final facility. Approval for payment of detention is contingent upon the following eligibility requirements: Get CoyoteGO • Dispatch • Check in • Submit paperwork • Send updates Available for An- droid or iPhone, at App Store or Google Play Today! None Load Temp Cust Requirements Van, 53' Equipment Value $100,000 Tarps Undefined Pre Cooled Temp None Carrier acknowledges that any routing instructions from the shipper herein are being provided for convenience only, and the Carrier may choose the route. Route Direction",
+              "aiError": ""
+            }
+          },
+          "aiScan": {
+            "dates": [
+              "2022-12-05",
+              "2022-12-07",
+              "2022-12-08"
+            ],
+            "dateCandidates": [
+              {
+                "date": "2022-12-07",
+                "label": "detention -First 2 hours free at 17:00 Appointment Scheduled For Wed 12/07/2022 N/A Stop 1 Requirements Pieces Exp Wt Commodity Food Product 23,456 L"
+              },
+              {
+                "date": "2022-12-08",
+                "label": "d damages -Lumpers are prepaid at 11:30 Appointment Scheduled For Thu 12/08/2022 N/A Stop 2 Requirements Pieces Exp Wt Commodity Food Product 23,456 L"
+              },
+              {
+                "date": "2022-12-05",
+                "label": "le Sales Rep Phone +1 (847) 810 6053 x4451 Fax +1 (773) 365 5179 Date 12/05/2022 10:17 Carrier Date PLEASE SIGN THIS AGREEMENT AND EMAIL TO chris.mall"
+              },
+              {
+                "date": "2022-12-05",
+                "label": "e Osborne of CFA Trucking Inc hereafter referred to as CARRIER, dated 12/05/2022. This confirmation is subject to the terms of the Agreement and this"
+              }
+            ],
+            "amount": 1500,
+            "expirationDate": "2022-12-08",
+            "dateDetection": "latest_document_date",
+            "loadNumber": "28176108",
+            "origin": "herein are being provided for convenience only, an",
+            "destination": "with invoice to BROKER. Rates, ex",
+            "miles": 0,
+            "aiUsed": false,
+            "textPreview": "Signature Line By signing below, CFA Trucking Inc agrees to the terms and conditions set forth below and provided herewith, if any. 1) 2) Carrier must report facility departure time and total detention hours within 24 hours of shipment delivery at the final facility. Carrier must provide proof of the on time arrival and departure times in the form of a BOL or other shipping document with arrival and departure times notated by facility within 24 hours of shipment delivery at final facility. Approval for payment of detention is contingent upon the following eligibility requirements: Get CoyoteGO • Dispatch • Check in • Submit paperwork • Send updates Available for An- droid or iPhone, at App Store or Google Play Today! None Load Temp Cust Requirements Van, 53' Equipment Value $100,000 Tarps Undefined Pre Cooled Temp None Carrier acknowledges that any routing instructions from the shipper herein are being provided for convenience only, and the Carrier may choose the route. Route Direction",
+            "aiError": ""
+          },
+          "uploadedBy": {
+            "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+            "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+            "name": "ClearPoint Business Support Inc.",
+            "email": "adrianeosborne@gmail.com",
+            "role": "admin",
+            "roleLabel": "Company Owner"
+          },
+          "driverId": "",
+          "truckId": "",
+          "uploadedAt": "2026-09-09T17:59:48.625Z",
+          "createdTripId": "8c9404b7-cfa9-4105-aa3f-f60abe15dea4"
+        }
+      ],
+      "complianceDocuments": [
+        {
+          "id": "4f7bb7fd-8084-41a7-8cf8-abc331265548",
+          "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+          "type": "insurance",
+          "fileName": "Insurance Cert 2026.pdf",
+          "mimeType": "application/pdf",
+          "storedName": "19062915-27f3-4280-94c3-e4b86c39b90a-4f7bb7fd-8084-41a7-8cf8-abc331265548-Insurance_Cert_2026.pdf",
+          "size": 99995,
+          "scanStatus": "Completed date entered manually",
+          "expirationDate": "2026-01-20",
+          "extracted": {
+            "expirationDate": "2026-01-20",
+            "completedDate": "2025-01-20",
+            "dateDetection": "manual_completed_date_plus_1_year",
+            "dateCandidates": [],
+            "textPreview": "",
+            "generic": {
+              "dates": [],
+              "dateCandidates": [],
+              "amount": 0,
+              "expirationDate": "",
+              "dateDetection": "not_found",
+              "loadNumber": "",
+              "origin": "",
+              "destination": "",
+              "miles": 0,
+              "aiUsed": false,
+              "textPreview": "",
+              "aiError": ""
+            }
+          },
+          "aiScan": {
+            "expirationDate": "2026-01-20",
+            "completedDate": "2025-01-20",
+            "dateDetection": "manual_completed_date_plus_1_year",
+            "dateCandidates": [],
+            "textPreview": "",
+            "generic": {
+              "dates": [],
+              "dateCandidates": [],
+              "amount": 0,
+              "expirationDate": "",
+              "dateDetection": "not_found",
+              "loadNumber": "",
+              "origin": "",
+              "destination": "",
+              "miles": 0,
+              "aiUsed": false,
+              "textPreview": "",
+              "aiError": ""
+            }
+          },
+          "uploadedBy": {
+            "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+            "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+            "name": "ClearPoint Business Support Inc.",
+            "email": "adrianeosborne@gmail.com",
+            "role": "admin",
+            "roleLabel": "Company Owner"
+          },
+          "uploadedAt": "2026-09-03T15:18:02.39Z"
+        },
+        {
+          "id": "470a5bbd-52da-4314-b8e4-ca441c99e5ee",
+          "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+          "type": "clearinghouseMvr",
+          "fileName": "Castillo, Andre Clearinghouse 2026.pdf",
+          "mimeType": "application/pdf",
+          "storedName": "19062915-27f3-4280-94c3-e4b86c39b90a-470a5bbd-52da-4314-b8e4-ca441c99e5ee-Castillo__Andre_Clearinghouse_2026.pdf",
+          "size": 156215,
+          "scanStatus": "Stored - PDF scan failed - local fallback",
+          "expirationDate": "",
+          "extracted": {
+            "expirationDate": "",
+            "dateDetection": "not_found",
+            "dateCandidates": [],
+            "textPreview": "",
+            "generic": {
+              "dates": [],
+              "dateCandidates": [],
+              "amount": 0,
+              "expirationDate": "",
+              "dateDetection": "not_found",
+              "loadNumber": "",
+              "origin": "",
+              "destination": "",
+              "miles": 0,
+              "aiUsed": false,
+              "textPreview": "",
+              "aiError": ""
+            }
+          },
+          "aiScan": {
+            "expirationDate": "",
+            "dateDetection": "not_found",
+            "dateCandidates": [],
+            "textPreview": "",
+            "generic": {
+              "dates": [],
+              "dateCandidates": [],
+              "amount": 0,
+              "expirationDate": "",
+              "dateDetection": "not_found",
+              "loadNumber": "",
+              "origin": "",
+              "destination": "",
+              "miles": 0,
+              "aiUsed": false,
+              "textPreview": "",
+              "aiError": ""
+            }
+          },
+          "uploadedBy": {
+            "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+            "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+            "name": "ClearPoint Business Support Inc.",
+            "email": "adrianeosborne@gmail.com",
+            "role": "admin",
+            "roleLabel": "Company Owner"
+          },
+          "uploadedAt": "2026-09-03T15:19:09.336Z"
+        },
+        {
+          "id": "3568ae7c-1955-427a-9da5-6de24061043a",
+          "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+          "type": "insurance",
+          "fileName": "UCR 2023.pdf",
+          "mimeType": "application/pdf",
+          "storedName": "19062915-27f3-4280-94c3-e4b86c39b90a-3568ae7c-1955-427a-9da5-6de24061043a-UCR_2023.pdf",
+          "size": 94839,
+          "scanStatus": "Scanned - local fallback",
+          "expirationDate": "2023-12-31",
+          "extracted": {
+            "expirationDate": "2023-12-31",
+            "dateDetection": "labeled_expiration",
+            "dateCandidates": [
+              {
+                "date": "2022-11-01",
+                "label": "CR Registration is VALID! Confirmation # 000-0353-9483 Registered on: 11/01/2022 10:47 EST Generated: 11/01/2022 10:47 EST Year: 2023 Paid: Date Brack"
+              },
+              {
+                "date": "2022-11-01",
+                "label": "mation # 000-0353-9483 Registered on: 11/01/2022 10:47 EST Generated: 11/01/2022 10:47 EST Year: 2023 Paid: Date Bracket UCR Fee Conv. Fee Total 11/01"
+              },
+              {
+                "date": "2022-11-01",
+                "label": "/2022 10:47 EST Year: 2023 Paid: Date Bracket UCR Fee Conv. Fee Total 11/01/2022 Tier 1 [1 veh.] $41.00 $1.22 $42.22 Bracket: 0 to 2 vehicles [1 vehic"
+              },
+              {
+                "date": "2023-12-31",
+                "label": "LII DRIVE MCDONOUGH, GA 30252 US Payor: CFA TRUCKING INC *** Expires: 12/31/2023 ***"
+              }
+            ],
+            "textPreview": "2023 UCR Registration is VALID! Confirmation # 000-0353-9483 Registered on: 11/01/2022 10:47 EST Generated: 11/01/2022 10:47 EST Year: 2023 Paid: Date Bracket UCR Fee Conv. Fee Total 11/01/2022 Tier 1 [1 veh.] $41.00 $1.22 $42.22 Bracket: 0 to 2 vehicles [1 vehicle(s)] USDOT #: 3324807 Classifications: Motor Carrier Legal Name: CFA TRUCKING INC Base State: US_GA Principal: 1520 KAYLII DRIVE MCDONOUGH, GA 30252 US Payor: CFA TRUCKING INC *** Expires: 12/31/2023 ***\n",
+            "generic": {
+              "dates": [
+                "2022-11-01",
+                "2023-12-31"
+              ],
+              "dateCandidates": [
+                {
+                  "date": "2022-11-01",
+                  "label": "CR Registration is VALID! Confirmation # 000-0353-9483 Registered on: 11/01/2022 10:47 EST Generated: 11/01/2022 10:47 EST Year: 2023 Paid: Date Brack"
+                },
+                {
+                  "date": "2022-11-01",
+                  "label": "mation # 000-0353-9483 Registered on: 11/01/2022 10:47 EST Generated: 11/01/2022 10:47 EST Year: 2023 Paid: Date Bracket UCR Fee Conv. Fee Total 11/01"
+                },
+                {
+                  "date": "2022-11-01",
+                  "label": "/2022 10:47 EST Year: 2023 Paid: Date Bracket UCR Fee Conv. Fee Total 11/01/2022 Tier 1 [1 veh.] $41.00 $1.22 $42.22 Bracket: 0 to 2 vehicles [1 vehic"
+                },
+                {
+                  "date": "2023-12-31",
+                  "label": "LII DRIVE MCDONOUGH, GA 30252 US Payor: CFA TRUCKING INC *** Expires: 12/31/2023 ***"
+                }
+              ],
+              "amount": 11,
+              "expirationDate": "2023-12-31",
+              "dateDetection": "labeled_expiration",
+              "loadNumber": "",
+              "origin": "",
+              "destination": "",
+              "miles": 0,
+              "aiUsed": false,
+              "textPreview": "2023 UCR Registration is VALID! Confirmation # 000-0353-9483 Registered on: 11/01/2022 10:47 EST Generated: 11/01/2022 10:47 EST Year: 2023 Paid: Date Bracket UCR Fee Conv. Fee Total 11/01/2022 Tier 1 [1 veh.] $41.00 $1.22 $42.22 Bracket: 0 to 2 vehicles [1 vehicle(s)] USDOT #: 3324807 Classifications: Motor Carrier Legal Name: CFA TRUCKING INC Base State: US_GA Principal: 1520 KAYLII DRIVE MCDONOUGH, GA 30252 US Payor: CFA TRUCKING INC *** Expires: 12/31/2023 ***\n",
+              "aiError": ""
+            }
+          },
+          "aiScan": {
+            "expirationDate": "2023-12-31",
+            "dateDetection": "labeled_expiration",
+            "dateCandidates": [
+              {
+                "date": "2022-11-01",
+                "label": "CR Registration is VALID! Confirmation # 000-0353-9483 Registered on: 11/01/2022 10:47 EST Generated: 11/01/2022 10:47 EST Year: 2023 Paid: Date Brack"
+              },
+              {
+                "date": "2022-11-01",
+                "label": "mation # 000-0353-9483 Registered on: 11/01/2022 10:47 EST Generated: 11/01/2022 10:47 EST Year: 2023 Paid: Date Bracket UCR Fee Conv. Fee Total 11/01"
+              },
+              {
+                "date": "2022-11-01",
+                "label": "/2022 10:47 EST Year: 2023 Paid: Date Bracket UCR Fee Conv. Fee Total 11/01/2022 Tier 1 [1 veh.] $41.00 $1.22 $42.22 Bracket: 0 to 2 vehicles [1 vehic"
+              },
+              {
+                "date": "2023-12-31",
+                "label": "LII DRIVE MCDONOUGH, GA 30252 US Payor: CFA TRUCKING INC *** Expires: 12/31/2023 ***"
+              }
+            ],
+            "textPreview": "2023 UCR Registration is VALID! Confirmation # 000-0353-9483 Registered on: 11/01/2022 10:47 EST Generated: 11/01/2022 10:47 EST Year: 2023 Paid: Date Bracket UCR Fee Conv. Fee Total 11/01/2022 Tier 1 [1 veh.] $41.00 $1.22 $42.22 Bracket: 0 to 2 vehicles [1 vehicle(s)] USDOT #: 3324807 Classifications: Motor Carrier Legal Name: CFA TRUCKING INC Base State: US_GA Principal: 1520 KAYLII DRIVE MCDONOUGH, GA 30252 US Payor: CFA TRUCKING INC *** Expires: 12/31/2023 ***\n",
+            "generic": {
+              "dates": [
+                "2022-11-01",
+                "2023-12-31"
+              ],
+              "dateCandidates": [
+                {
+                  "date": "2022-11-01",
+                  "label": "CR Registration is VALID! Confirmation # 000-0353-9483 Registered on: 11/01/2022 10:47 EST Generated: 11/01/2022 10:47 EST Year: 2023 Paid: Date Brack"
+                },
+                {
+                  "date": "2022-11-01",
+                  "label": "mation # 000-0353-9483 Registered on: 11/01/2022 10:47 EST Generated: 11/01/2022 10:47 EST Year: 2023 Paid: Date Bracket UCR Fee Conv. Fee Total 11/01"
+                },
+                {
+                  "date": "2022-11-01",
+                  "label": "/2022 10:47 EST Year: 2023 Paid: Date Bracket UCR Fee Conv. Fee Total 11/01/2022 Tier 1 [1 veh.] $41.00 $1.22 $42.22 Bracket: 0 to 2 vehicles [1 vehic"
+                },
+                {
+                  "date": "2023-12-31",
+                  "label": "LII DRIVE MCDONOUGH, GA 30252 US Payor: CFA TRUCKING INC *** Expires: 12/31/2023 ***"
+                }
+              ],
+              "amount": 11,
+              "expirationDate": "2023-12-31",
+              "dateDetection": "labeled_expiration",
+              "loadNumber": "",
+              "origin": "",
+              "destination": "",
+              "miles": 0,
+              "aiUsed": false,
+              "textPreview": "2023 UCR Registration is VALID! Confirmation # 000-0353-9483 Registered on: 11/01/2022 10:47 EST Generated: 11/01/2022 10:47 EST Year: 2023 Paid: Date Bracket UCR Fee Conv. Fee Total 11/01/2022 Tier 1 [1 veh.] $41.00 $1.22 $42.22 Bracket: 0 to 2 vehicles [1 vehicle(s)] USDOT #: 3324807 Classifications: Motor Carrier Legal Name: CFA TRUCKING INC Base State: US_GA Principal: 1520 KAYLII DRIVE MCDONOUGH, GA 30252 US Payor: CFA TRUCKING INC *** Expires: 12/31/2023 ***\n",
+              "aiError": ""
+            }
+          },
+          "uploadedBy": {
+            "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+            "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+            "name": "ClearPoint Business Support Inc.",
+            "email": "adrianeosborne@gmail.com",
+            "role": "admin",
+            "roleLabel": "Company Owner"
+          },
+          "uploadedAt": "2026-09-09T18:00:17.432Z"
+        },
+        {
+          "id": "f185111f-bf9d-426f-8b57-c40c9939f46d",
+          "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+          "type": "irpCabCard",
+          "fileName": "IRPCabCard2022 - Copy.pdf",
+          "mimeType": "application/pdf",
+          "storedName": "19062915-27f3-4280-94c3-e4b86c39b90a-f185111f-bf9d-426f-8b57-c40c9939f46d-IRPCabCard2022_-_Copy.pdf",
+          "size": 44537,
+          "scanStatus": "Scanned - local fallback",
+          "expirationDate": "2022-09-30",
+          "extracted": {
+            "expirationDate": "2022-09-30",
+            "dateDetection": "latest_document_date",
+            "dateCandidates": [
+              {
+                "date": "2022-09-30",
+                "label": "RIBED HEREIN REG YEAR: ACCT: FLEET: SUPP: EXPIRES: 2022 0428330 1 001 09/30/2022 REGISTRANT: KEEP IT MOVING EXPRESS TRUCKING LLC 13 WEBNER PL PALM COA"
+              },
+              {
+                "date": "2021-10-01",
+                "label": "4-7727 CARRIER TYPE: ENFORCEMENT CONTROL: ISSUE DATE: EFFECTIVE DATE: 10/01/2021 11/18/2021 0291776313 FOR HIRE CARRIER Jur Weight Jur Weight Jur Weig"
+              },
+              {
+                "date": "2021-11-18",
+                "label": "IER TYPE: ENFORCEMENT CONTROL: ISSUE DATE: EFFECTIVE DATE: 10/01/2021 11/18/2021 0291776313 FOR HIRE CARRIER Jur Weight Jur Weight Jur Weight Jur Weig"
+              }
+            ],
+            "textPreview": "STATE OF FLORIDA APPORTIONED CAB CARD THIS REGISTRATION CAB CARD MUST BE CARRIED IN THE VEHICLE DESCRIBED HEREIN REG YEAR: ACCT: FLEET: SUPP: EXPIRES: 2022 0428330 1 001 09/30/2022 REGISTRANT: KEEP IT MOVING EXPRESS TRUCKING LLC 13 WEBNER PL PALM COAST FL 32164-7727 CARRIER TYPE: ENFORCEMENT CONTROL: ISSUE DATE: EFFECTIVE DATE: 10/01/2021 11/18/2021 0291776313 FOR HIRE CARRIER Jur Weight Jur Weight Jur Weight Jur Weight Jur Weight Jur Weight Jur Weight AB 036288 AL 080000 AR 080000 AZ 080000 BC 036288 CA 080000 CO 080000 CT 080000 DC 080000 DE 080000 GA 080000 IA 080000 ID 080000 IL 080000 IN 080000 KS 080000 KY 080000 LA 080000 MA 080000 MB 036288 MD 080000 ME 080000 MI 080000 MN 080000 MO 080000 MS 080000 MT 080000 NB 036288 NC 080000 ND 080000 NE 080000 NL 036288 NH 080000 NJ 080000 NM ",
+            "generic": {
+              "dates": [
+                "2021-10-01",
+                "2021-11-18",
+                "2022-09-30"
+              ],
+              "dateCandidates": [
+                {
+                  "date": "2022-09-30",
+                  "label": "RIBED HEREIN REG YEAR: ACCT: FLEET: SUPP: EXPIRES: 2022 0428330 1 001 09/30/2022 REGISTRANT: KEEP IT MOVING EXPRESS TRUCKING LLC 13 WEBNER PL PALM COA"
+                },
+                {
+                  "date": "2021-10-01",
+                  "label": "4-7727 CARRIER TYPE: ENFORCEMENT CONTROL: ISSUE DATE: EFFECTIVE DATE: 10/01/2021 11/18/2021 0291776313 FOR HIRE CARRIER Jur Weight Jur Weight Jur Weig"
+                },
+                {
+                  "date": "2021-11-18",
+                  "label": "IER TYPE: ENFORCEMENT CONTROL: ISSUE DATE: EFFECTIVE DATE: 10/01/2021 11/18/2021 0291776313 FOR HIRE CARRIER Jur Weight Jur Weight Jur Weight Jur Weig"
+                }
+              ],
+              "amount": 0,
+              "expirationDate": "2022-09-30",
+              "dateDetection": "latest_document_date",
+              "loadNumber": "portionally",
+              "origin": "",
+              "destination": "gether with the registered gross weight. An enforcement control number has been imprinted above on this cab card as a security feature. If you have any questions or concerns about the validity of any information on this form, yo",
+              "miles": 0,
+              "aiUsed": false,
+              "textPreview": "STATE OF FLORIDA APPORTIONED CAB CARD THIS REGISTRATION CAB CARD MUST BE CARRIED IN THE VEHICLE DESCRIBED HEREIN REG YEAR: ACCT: FLEET: SUPP: EXPIRES: 2022 0428330 1 001 09/30/2022 REGISTRANT: KEEP IT MOVING EXPRESS TRUCKING LLC 13 WEBNER PL PALM COAST FL 32164-7727 CARRIER TYPE: ENFORCEMENT CONTROL: ISSUE DATE: EFFECTIVE DATE: 10/01/2021 11/18/2021 0291776313 FOR HIRE CARRIER Jur Weight Jur Weight Jur Weight Jur Weight Jur Weight Jur Weight Jur Weight AB 036288 AL 080000 AR 080000 AZ 080000 BC 036288 CA 080000 CO 080000 CT 080000 DC 080000 DE 080000 GA 080000 IA 080000 ID 080000 IL 080000 IN 080000 KS 080000 KY 080000 LA 080000 MA 080000 MB 036288 MD 080000 ME 080000 MI 080000 MN 080000 MO 080000 MS 080000 MT 080000 NB 036288 NC 080000 ND 080000 NE 080000 NL 036288 NH 080000 NJ 080000 NM 080000 NS 036288 NV 080000 NY 080000 OH 080000 OK 080000 ON 036288 OR 080000 PA 080000 PE 036288 QC 005AXL RI 080000 SC 080000 SD 080000 SK 036288 TN 080000 TX 080000 UT 080000 VA 080000 VT 080000 WA ",
+              "aiError": ""
+            }
+          },
+          "aiScan": {
+            "expirationDate": "2022-09-30",
+            "dateDetection": "latest_document_date",
+            "dateCandidates": [
+              {
+                "date": "2022-09-30",
+                "label": "RIBED HEREIN REG YEAR: ACCT: FLEET: SUPP: EXPIRES: 2022 0428330 1 001 09/30/2022 REGISTRANT: KEEP IT MOVING EXPRESS TRUCKING LLC 13 WEBNER PL PALM COA"
+              },
+              {
+                "date": "2021-10-01",
+                "label": "4-7727 CARRIER TYPE: ENFORCEMENT CONTROL: ISSUE DATE: EFFECTIVE DATE: 10/01/2021 11/18/2021 0291776313 FOR HIRE CARRIER Jur Weight Jur Weight Jur Weig"
+              },
+              {
+                "date": "2021-11-18",
+                "label": "IER TYPE: ENFORCEMENT CONTROL: ISSUE DATE: EFFECTIVE DATE: 10/01/2021 11/18/2021 0291776313 FOR HIRE CARRIER Jur Weight Jur Weight Jur Weight Jur Weig"
+              }
+            ],
+            "textPreview": "STATE OF FLORIDA APPORTIONED CAB CARD THIS REGISTRATION CAB CARD MUST BE CARRIED IN THE VEHICLE DESCRIBED HEREIN REG YEAR: ACCT: FLEET: SUPP: EXPIRES: 2022 0428330 1 001 09/30/2022 REGISTRANT: KEEP IT MOVING EXPRESS TRUCKING LLC 13 WEBNER PL PALM COAST FL 32164-7727 CARRIER TYPE: ENFORCEMENT CONTROL: ISSUE DATE: EFFECTIVE DATE: 10/01/2021 11/18/2021 0291776313 FOR HIRE CARRIER Jur Weight Jur Weight Jur Weight Jur Weight Jur Weight Jur Weight Jur Weight AB 036288 AL 080000 AR 080000 AZ 080000 BC 036288 CA 080000 CO 080000 CT 080000 DC 080000 DE 080000 GA 080000 IA 080000 ID 080000 IL 080000 IN 080000 KS 080000 KY 080000 LA 080000 MA 080000 MB 036288 MD 080000 ME 080000 MI 080000 MN 080000 MO 080000 MS 080000 MT 080000 NB 036288 NC 080000 ND 080000 NE 080000 NL 036288 NH 080000 NJ 080000 NM ",
+            "generic": {
+              "dates": [
+                "2021-10-01",
+                "2021-11-18",
+                "2022-09-30"
+              ],
+              "dateCandidates": [
+                {
+                  "date": "2022-09-30",
+                  "label": "RIBED HEREIN REG YEAR: ACCT: FLEET: SUPP: EXPIRES: 2022 0428330 1 001 09/30/2022 REGISTRANT: KEEP IT MOVING EXPRESS TRUCKING LLC 13 WEBNER PL PALM COA"
+                },
+                {
+                  "date": "2021-10-01",
+                  "label": "4-7727 CARRIER TYPE: ENFORCEMENT CONTROL: ISSUE DATE: EFFECTIVE DATE: 10/01/2021 11/18/2021 0291776313 FOR HIRE CARRIER Jur Weight Jur Weight Jur Weig"
+                },
+                {
+                  "date": "2021-11-18",
+                  "label": "IER TYPE: ENFORCEMENT CONTROL: ISSUE DATE: EFFECTIVE DATE: 10/01/2021 11/18/2021 0291776313 FOR HIRE CARRIER Jur Weight Jur Weight Jur Weight Jur Weig"
+                }
+              ],
+              "amount": 0,
+              "expirationDate": "2022-09-30",
+              "dateDetection": "latest_document_date",
+              "loadNumber": "portionally",
+              "origin": "",
+              "destination": "gether with the registered gross weight. An enforcement control number has been imprinted above on this cab card as a security feature. If you have any questions or concerns about the validity of any information on this form, yo",
+              "miles": 0,
+              "aiUsed": false,
+              "textPreview": "STATE OF FLORIDA APPORTIONED CAB CARD THIS REGISTRATION CAB CARD MUST BE CARRIED IN THE VEHICLE DESCRIBED HEREIN REG YEAR: ACCT: FLEET: SUPP: EXPIRES: 2022 0428330 1 001 09/30/2022 REGISTRANT: KEEP IT MOVING EXPRESS TRUCKING LLC 13 WEBNER PL PALM COAST FL 32164-7727 CARRIER TYPE: ENFORCEMENT CONTROL: ISSUE DATE: EFFECTIVE DATE: 10/01/2021 11/18/2021 0291776313 FOR HIRE CARRIER Jur Weight Jur Weight Jur Weight Jur Weight Jur Weight Jur Weight Jur Weight AB 036288 AL 080000 AR 080000 AZ 080000 BC 036288 CA 080000 CO 080000 CT 080000 DC 080000 DE 080000 GA 080000 IA 080000 ID 080000 IL 080000 IN 080000 KS 080000 KY 080000 LA 080000 MA 080000 MB 036288 MD 080000 ME 080000 MI 080000 MN 080000 MO 080000 MS 080000 MT 080000 NB 036288 NC 080000 ND 080000 NE 080000 NL 036288 NH 080000 NJ 080000 NM 080000 NS 036288 NV 080000 NY 080000 OH 080000 OK 080000 ON 036288 OR 080000 PA 080000 PE 036288 QC 005AXL RI 080000 SC 080000 SD 080000 SK 036288 TN 080000 TX 080000 UT 080000 VA 080000 VT 080000 WA ",
+              "aiError": ""
+            }
+          },
+          "uploadedBy": {
+            "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+            "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+            "name": "ClearPoint Business Support Inc.",
+            "email": "adrianeosborne@gmail.com",
+            "role": "admin",
+            "roleLabel": "Company Owner"
+          },
+          "uploadedAt": "2026-09-09T18:00:27.696Z"
+        }
+      ],
+      "affiliateCode": "6677ff0eed",
+      "referredBy": "",
+      "referredByType": "",
+      "firstMonthPaid": true,
+      "trialStartedAt": "2026-09-01T14:28:29.584Z",
+      "trialEndsAt": "2026-09-08T14:28:29.584Z",
+      "trialStatus": "Active",
+      "commissions": [],
+      "paymentInfo": {
+        "provider": "Complimentary beta",
+        "providerStatus": "Closed beta access - no subscription charge",
+        "billingName": "ClearPoint Business Support Inc.",
+        "billingEmail": "adrianeosborne@gmail.com",
+        "customerId": "",
+        "subscriptionId": "",
+        "last4": "",
+        "cardBrand": "",
+        "updatedAt": "2026-09-01T14:28:29.584Z"
+      },
+      "records": {
+        "trips": [
+          {
+            "id": "c1c1f160-8c41-4808-a425-e3ea6853fa15",
+            "date": "2025-09-24",
+            "description": "Rate Con BLEMS",
+            "origin": "ating in, de",
+            "destination": "hear from you. In order to document and properly handle your issue, pl",
+            "miles": 0,
+            "amount": 3400,
+            "status": "Scheduled",
+            "sourceDocumentId": "cd493cd8-8a53-47f9-ae9a-93b5a4da3d26",
+            "autoPopulated": true,
+            "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+            "loadNumber": "2010774"
+          },
+          {
+            "id": "8c9404b7-cfa9-4105-aa3f-f60abe15dea4",
+            "date": "2022-12-05",
+            "description": "Rate Con 28176108",
+            "origin": "herein are being provided for convenience only, an",
+            "destination": "with invoice to BROKER. Rates, ex",
+            "miles": 0,
+            "amount": 1500,
+            "status": "Scheduled",
+            "sourceDocumentId": "4954c94e-bb8d-4e76-9e9e-4ee4c272c1b2",
+            "autoPopulated": true,
+            "driverId": "",
+            "truckId": "",
+            "truckNumber": "",
+            "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a"
+          }
+        ],
+        "expenses": [
+          {
+            "id": "56e43545-973a-4ff6-9b73-327be77d36b7",
+            "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+            "driverId": "",
+            "truckId": "",
+            "createdByDriverId": "",
+            "date": "2026-09-09",
+            "description": "Maintenance - General receipt",
+            "amount": 1108.85,
+            "category": "Maintenance",
+            "status": "Paid",
+            "sourceReceipt": {
+              "id": "fdc3c7a4-5f90-4bd3-8094-2c650b078e91",
+              "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+              "fileName": "Invoice 1038 for truck repair 11.9.22.pdf",
+              "mimeType": "application/pdf",
+              "storedName": "19062915-27f3-4280-94c3-e4b86c39b90a-fdc3c7a4-5f90-4bd3-8094-2c650b078e91-Invoice_1038_for_truck_repair_11.9.22.pdf",
+              "size": 107238,
+              "scanStatus": "Stored - PDF scan failed - local fallback",
+              "extracted": {
+                "date": "2026-09-09",
+                "amount": 0,
+                "category": "General",
+                "description": "General receipt",
+                "textPreview": "",
+                "generic": {
+                  "dates": [],
+                  "dateCandidates": [],
+                  "amount": 0,
+                  "expirationDate": "",
+                  "dateDetection": "not_found",
+                  "loadNumber": "",
+                  "origin": "",
+                  "destination": "",
+                  "miles": 0,
+                  "aiUsed": false,
+                  "textPreview": "",
+                  "aiError": ""
+                }
+              },
+              "uploadedBy": {
+                "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+                "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+                "name": "ClearPoint Business Support Inc.",
+                "email": "adrianeosborne@gmail.com",
+                "role": "admin",
+                "roleLabel": "Company Owner"
+              },
+              "uploadedAt": "2026-09-09T13:14:22.996Z"
+            }
+          },
+          {
+            "id": "b792b725-00a8-47cf-95d0-437329b94acc",
+            "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+            "driverId": "",
+            "truckId": "",
+            "createdByDriverId": "",
+            "date": "2020-01-16",
+            "description": "Fuel - P-Fleet fuel report",
+            "amount": 1760.28,
+            "category": "Fuel",
+            "status": "Paid",
+            "sourceReceipt": {
+              "id": "eb1dc7ba-829c-4800-8c94-ced1f89b0793",
+              "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+              "fileName": "Fuel Report Pfleet 1.16.20 to 2.16.20.pdf",
+              "mimeType": "application/pdf",
+              "storedName": "19062915-27f3-4280-94c3-e4b86c39b90a-eb1dc7ba-829c-4800-8c94-ced1f89b0793-Fuel_Report_Pfleet_1.16.20_to_2.16.20.pdf",
+              "size": 15920,
+              "scanStatus": "Scanned - local fallback",
+              "extracted": {
+                "date": "2020-01-16",
+                "amount": 1760.28,
+                "category": "Fuel",
+                "description": "Fuel - P-Fleet fuel report",
+                "textPreview": ";\u0012Í\u0005Ä\u0011@\u001c\u0007¥±\u0002\u0000r\u0013Þ\n\nendstream\n\n\n\nendobj\n\n\n\n 6 0 obj\n\n<<\n\n/Contents [ 9 0 R\n\n10 0 R\n\n11 0 R\n\n12 0 R\n\n13 0 R\n\n14 0 R\n\n15 0 R\n\n16 0 R\n\n17 0 R\n\n18 0 R\n\n19 0 R\n\n20 0 R\n\n21 0 R\n\n22 0 R\n\n23 0 R\n\n24 0 R\n\n25 0 R\n\n26 0 R\n\n27 0 R\n\n28 0 R\n\n29 0 R\n\n30 0 R\n\n31 0 R\n\n32 0 R\n\n33 0 R\n\n34 0 R\n\n35 0 R\n\n36 0 R\n\n37 0 R\n\n38 0 R\n\n39 0 R\n\n40 0 R\n\n41 0 R\n\n42 0 R\n\n43 0 R\n\n44 0 R\n\n45 0 R\n\n46 0 R\n\n47 0 R\n\n48 0 R\n\n49 0 R\n\n50 0 R\n\n51 0 R\n\n52 0 R\n\n53 0 R ]\n\n/MediaBox [ 0 0 612 792 ]\n\n/Parent 2 0 R\n\n/Resources <<\n\n/Font <<\n\n/Fabc6 8 0 R\n\n>>\n\n/ProcSet [ /PDF\n\n/Text\n\n/ImageB\n\n/ImageC\n\n/ImageI ]\n\n>>\n\n/Rotate 90\n\n/Type /Page\n\n>>\n\nendobj\n\n\n\n7 0 obj\n\n<<\n\n/Ascent 783\n\n/CapHeight 699\n\n/Descent -205\n\n/Flags 33\n\n/FontBBox [ 0 -210 630 789 ]\n\n/FontName /LucidaConsole\n\n/ItalicAngle 0\n\n/StemV 80\n\n/Type /FontDescriptor\n\n>>\n\nendobj\n\n\n\n8",
+                "generic": {
+                  "dates": [
+                    "2020-01-16",
+                    "2020-01-19",
+                    "2020-01-23",
+                    "2020-01-26",
+                    "2020-01-30",
+                    "2020-02-02",
+                    "2020-02-05",
+                    "2020-02-06",
+                    "2020-02-09",
+                    "2020-02-13",
+                    "2020-02-16",
+                    "2020-02-17"
+                  ],
+                  "dateCandidates": [
+                    {
+                      "date": "2020-01-16",
+                      "label": "0 0 1 30 559.9 Tm 0 Ts (P-Fleet FUEL SUMMARY REPORT Page: 1 Dates: 1/16/20 Thru 2/16/20 2/17/20 ACCOUNT NO: 00-0223874 C.F.A. TRUCKING, INC."
+                    },
+                    {
+                      "date": "2020-02-16",
+                      "label": "9 Tm 0 Ts (P-Fleet FUEL SUMMARY REPORT Page: 1 Dates: 1/16/20 Thru 2/16/20 2/17/20 ACCOUNT NO: 00-0223874 C.F.A. TRUCKING, INC. 1955 SW BEARD"
+                    },
+                    {
+                      "date": "2020-02-17",
+                      "label": "Ts (P-Fleet FUEL SUMMARY REPORT Page: 1 Dates: 1/16/20 Thru 2/16/20 2/17/20 ACCOUNT NO: 00-0223874 C.F.A. TRUCKING, INC. 1955 SW BEARD ST. PO"
+                    },
+                    {
+                      "date": "2020-01-16",
+                      "label": "--------------- DRIVER #: 1863830048 EVERETT OSBORNE FORT PIERCE, FL 1/16/20 7:49 PM 799244 62,24 DSL 98.1 3.159 309.93 1863830048 EVERETT OSBORNE"
+                    },
+                    {
+                      "date": "2020-01-16",
+                      "label": "2,24 DSL 98.1 3.159 309.93 1863830048 EVERETT OSBORNE FORT PIERCE, FL 1/16/20 7:49 PM 799244 62,24 DEF 2.4 2.959 7.16 1863830048 EVERETT OSBORNE FO"
+                    },
+                    {
+                      "date": "2020-01-23",
+                      "label": "4 62,24 DEF 2.4 2.959 7.16 1863830048 EVERETT OSBORNE FORT PIERCE, FL 1/23/20 2:49 AM 800123 9,040 DEF 2.8 2.957 8.16 1863830048 EVERETT OSBORNE FO"
+                    },
+                    {
+                      "date": "2020-01-23",
+                      "label": "3 9,040 DEF 2.8 2.957 8.16 1863830048 EVERETT OSBORNE FORT PIERCE, FL 1/23/20 2:49 AM 800123 10.16 DSL 86.5 3.159 273.12 1863830048 EVERETT OSBORNE"
+                    },
+                    {
+                      "date": "2020-01-30",
+                      "label": "0.16 DSL 86.5 3.159 273.12 1863830048 EVERETT OSBORNE FORT PIERCE, FL 1/30/20 1:51 PM 802490 24.11 DSL 98.2 3.059 300.29 1863830048 EVERETT OSBORNE"
+                    },
+                    {
+                      "date": "2020-01-30",
+                      "label": "4.11 DSL 98.2 3.059 300.29 1863830048 EVERETT OSBORNE FORT PIERCE, FL 1/30/20 1:51 PM 802490 9,040 DEF 2.5 2.956 7.36 1863830048 EVERETT OSBORNE TI"
+                    },
+                    {
+                      "date": "2020-02-05",
+                      "label": "802490 9,040 DEF 2.5 2.956 7.36 1863830048 EVERETT OSBORNE TIFTON, GA 2/05/20 12:43 AM 80622 19,28 DEF 2.1 2.995 6.23 1863830048 EVERETT OSBORNE TI"
+                    },
+                    {
+                      "date": "2020-02-05",
+                      "label": "80622 19,28 DEF 2.1 2.995 6.23 1863830048 EVERETT OSBORNE TIFTON, GA 2/05/20 12:43 AM 80622 19,28 DSL 85.6 2.959 253.17 1863830048 EVERETT OSBORNE"
+                    },
+                    {
+                      "date": "2020-02-06",
+                      "label": "9,28 DSL 85.6 2.959 253.17 1863830048 EVERETT OSBORNE FORT PIERCE, FL 2/06/20 1:03 PM 807602 9,040 DSL 87.3 3.019 263.63 1863830048 EVERETT OSBORNE"
+                    },
+                    {
+                      "date": "2020-02-06",
+                      "label": ",040 DSL 87.3 3.019 263.63 1863830048 EVERETT OSBORNE FORT PIERCE, FL 2/06/20 1:03 PM 807602 9,040 DEF 1.7 3.000 4.95 1863830048 EVERETT OSBORNE FO"
+                    },
+                    {
+                      "date": "2020-02-13",
+                      "label": "2 9,040 DEF 1.7 3.000 4.95 1863830048 EVERETT OSBORNE FORT PIERCE, FL 2/13/20 5:04 AM 810404 9,040 DEF 1.5 3.000 4.47 1863830048 EVERETT OSBORNE FO"
+                    },
+                    {
+                      "date": "2020-02-13",
+                      "label": "4 9,040 DEF 1.5 3.000 4.47 1863830048 EVERETT OSBORNE FORT PIERCE, FL 2/13/20 5:04 AM 810404 26.99 DSL 103.8 2.959 307.16 1863830048 EVERETT OSBORN"
+                    },
+                    {
+                      "date": "2020-01-19",
+                      "label": "BORNE -------- -------- DRIVER TOTALS: 572.31 1,745.63 VEHICLE #: 1/19/20 7:52 AM GCF 1.0 2.930 2.93 n/a 1/26/20 6:48 AM GCF 1.0 2.930 2.93 n/"
+                    },
+                    {
+                      "date": "2020-01-26",
+                      "label": "572.31 1,745.63 VEHICLE #: 1/19/20 7:52 AM GCF 1.0 2.930 2.93 n/a 1/26/20 6:48 AM GCF 1.0 2.930 2.93 n/a 2/02/20 1:15 AM GCF 1.0 2.930 2.93 n/"
+                    },
+                    {
+                      "date": "2020-02-02",
+                      "label": "52 AM GCF 1.0 2.930 2.93 n/a 1/26/20 6:48 AM GCF 1.0 2.930 2.93 n/a 2/02/20 1:15 AM GCF 1.0 2.930 2.93 n/a 2/09/20 7:22 AM GCF 1.0 2.930 2.93 n/"
+                    },
+                    {
+                      "date": "2020-02-09",
+                      "label": "48 AM GCF 1.0 2.930 2.93 n/a 2/02/20 1:15 AM GCF 1.0 2.930 2.93 n/a 2/09/20 7:22 AM GCF 1.0 2.930 2.93 n/a 2/16/20 7:02 AM GCF 1.0 2.930 2.93 n/"
+                    },
+                    {
+                      "date": "2020-02-16",
+                      "label": "15 AM GCF 1.0 2.930 2.93 n/a 2/09/20 7:22 AM GCF 1.0 2.930 2.93 n/a 2/16/20 7:02 AM GCF 1.0 2.930 2.93 n/a -------- -------- VEHICLE TOTALS: 5."
+                    }
+                  ],
+                  "amount": 1760.28,
+                  "expirationDate": "2020-02-16",
+                  "dateDetection": "labeled_expiration",
+                  "loadNumber": "cSet",
+                  "origin": "",
+                  "destination": "N, GA",
+                  "miles": 0,
+                  "aiUsed": false,
+                  "textPreview": ";\u0012Í\u0005Ä\u0011@\u001c\u0007¥±\u0002\u0000r\u0013Þ\n\nendstream\n\n\n\nendobj\n\n\n\n 6 0 obj\n\n<<\n\n/Contents [ 9 0 R\n\n10 0 R\n\n11 0 R\n\n12 0 R\n\n13 0 R\n\n14 0 R\n\n15 0 R\n\n16 0 R\n\n17 0 R\n\n18 0 R\n\n19 0 R\n\n20 0 R\n\n21 0 R\n\n22 0 R\n\n23 0 R\n\n24 0 R\n\n25 0 R\n\n26 0 R\n\n27 0 R\n\n28 0 R\n\n29 0 R\n\n30 0 R\n\n31 0 R\n\n32 0 R\n\n33 0 R\n\n34 0 R\n\n35 0 R\n\n36 0 R\n\n37 0 R\n\n38 0 R\n\n39 0 R\n\n40 0 R\n\n41 0 R\n\n42 0 R\n\n43 0 R\n\n44 0 R\n\n45 0 R\n\n46 0 R\n\n47 0 R\n\n48 0 R\n\n49 0 R\n\n50 0 R\n\n51 0 R\n\n52 0 R\n\n53 0 R ]\n\n/MediaBox [ 0 0 612 792 ]\n\n/Parent 2 0 R\n\n/Resources <<\n\n/Font <<\n\n/Fabc6 8 0 R\n\n>>\n\n/ProcSet [ /PDF\n\n/Text\n\n/ImageB\n\n/ImageC\n\n/ImageI ]\n\n>>\n\n/Rotate 90\n\n/Type /Page\n\n>>\n\nendobj\n\n\n\n7 0 obj\n\n<<\n\n/Ascent 783\n\n/CapHeight 699\n\n/Descent -205\n\n/Flags 33\n\n/FontBBox [ 0 -210 630 789 ]\n\n/FontName /LucidaConsole\n\n/ItalicAngle 0\n\n/StemV 80\n\n/Type /FontDescriptor\n\n>>\n\nendobj\n\n\n\n8 0 obj\n\n<<\n\n/BaseFont /LucidaConsole\n\n/Encoding /WinAnsiEncoding\n\n/FirstChar 32\n\n/FontDescriptor 7 0 R\n\n/LastChar 255\n\n/Subtype /TrueType\n\n/Type /Font\n\n/Widths [ 602 602 602 602 602 602 602 602 602 60",
+                  "aiError": ""
+                }
+              },
+              "uploadedBy": {
+                "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+                "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+                "name": "ClearPoint Business Support Inc.",
+                "email": "adrianeosborne@gmail.com",
+                "role": "admin",
+                "roleLabel": "Company Owner"
+              },
+              "uploadedAt": "2026-09-09T17:38:39.733Z"
+            }
+          }
+        ],
+        "invoices": [],
+        "maintenance": []
+      },
+      "createdAt": "2026-09-01T14:28:29.584Z",
+      "updatedAt": "2026-09-09T18:00:27.696Z",
+      "passwordReset": {
+        "token": "d480e942dcd0ef9679813d88cd151996700325e680b67871c5413518ac00dad8",
+        "createdAt": "2026-09-01T14:49:10.679Z",
+        "expiresAt": "2026-09-01T15:19:10.679Z",
+        "usedAt": "2026-09-01T14:49:10.76Z"
+      },
+      "passwordChangedAt": "2026-09-01T14:49:10.76Z",
+      "securityNotifications": [
+        {
+          "id": "0b72cc76-5d5f-4e75-82b9-2325f9a07394",
+          "type": "password_changed",
+          "email": "adrianeosborne@gmail.com",
+          "source": "reset_link",
+          "message": "Your TruckerBooks password was changed.",
+          "ip": "::1",
+          "createdAt": "2026-09-01T14:49:10.76Z"
+        }
+      ],
+      "mfa": {
+        "required": true,
+        "emailEnabled": true,
+        "recoveryCodes": [],
+        "authenticator": {
+          "enabled": false,
+          "secret": ""
+        },
+        "lastVerifiedAt": "2026-09-09T13:13:28.626Z"
+      },
+      "complianceShares": [],
+      "completedComplianceAlerts": [],
+      "referralDiscount": null,
+      "supportIssues": [],
+      "supportAccessGrants": [],
+      "routeTracking": {
+        "enabled": false,
+        "currentLocation": null,
+        "history": []
+      },
+      "lastLoginAt": "2026-09-09T13:13:19.787Z"
+    },
+    {
+      "id": "db0dda87-8096-44b0-abba-9aabfee1aaae",
+      "companyId": "db0dda87-8096-44b0-abba-9aabfee1aaae",
+      "businessName": "osborne",
+      "dotNumber": "1234576",
+      "companyPhone": "5618432592",
+      "companyAddress": "127 BOYD BROWN RD",
+      "adminName": "adriane osborne",
+      "adminRole": "owner",
+      "email": "takingaction86@gmail.com",
+      "emailVerified": true,
+      "emailVerifiedAt": "2026-09-10T13:24:13.204Z",
+      "emailVerificationToken": "",
+      "emailVerificationSentAt": "2026-09-10T13:24:13.204Z",
+      "acceptedPolicies": true,
+      "acceptedPoliciesAt": "2026-09-10T13:24:13.204Z",
+      "passwordHash": "e5c4d1ab4de44a3a05887dc502ee5234:b338fe27191cc9e042275777197535e47d5de0b4ea9a55d1b0e80a300ad9fe864e57c979b9c7d788256d51534fb68035493520757237af574fa65fe753381ea7",
+      "role": "admin",
+      "permissions": [
+        "viewLoads",
+        "createLoads",
+        "editLoads",
+        "assignDrivers",
+        "viewFinancialInformation",
+        "createInvoices",
+        "approveExpenses",
+        "processSettlements",
+        "viewPayroll",
+        "manageCompanyUsers",
+        "manageIntegrations",
+        "changeSubscription",
+        "exportReports",
+        "deleteDocuments",
+        "viewDriverQualificationFiles"
+      ],
+      "subscriptionTier": "silver",
+      "trucks": [],
+      "drivers": [],
+      "documents": [],
+      "complianceDocuments": [
+        {
+          "id": "75c4e695-7a68-4eea-bcb8-d0d035d52c84",
+          "companyId": "db0dda87-8096-44b0-abba-9aabfee1aaae",
+          "type": "insurance",
+          "fileName": "Insurance Cert 2026.pdf",
+          "mimeType": "application/pdf",
+          "storedName": "db0dda87-8096-44b0-abba-9aabfee1aaae-75c4e695-7a68-4eea-bcb8-d0d035d52c84-Insurance_Cert_2026.pdf",
+          "size": 99995,
+          "scanStatus": "Scanned - local fallback",
+          "expirationDate": "2027-01-21",
+          "extracted": {
+            "expirationDate": "2027-01-21",
+            "dateDetection": "latest_document_date",
+            "dateCandidates": [
+              {
+                "date": "2026-04-17",
+                "label": "he ACORD name and logo are registered marks of ACORD HIRED AUTOS ONLY 4/17/2026 Acrisure South Insurance Services, LLC 1317 Citizens Blvd Leesburg FL"
+              },
+              {
+                "date": "2026-01-21",
+                "label": "972887 A X 1,000,000 X 100,000 5,000 1,000,000 2,000,000 X 9300270890 1/21/2026 1/21/2027 INCLUDED A 1,000,000 X 9300270890 1/21/2026 1/21/2027 PIP B"
+              },
+              {
+                "date": "2027-01-21",
+                "label": "1,000,000 X 100,000 5,000 1,000,000 2,000,000 X 9300270890 1/21/2026 1/21/2027 INCLUDED A 1,000,000 X 9300270890 1/21/2026 1/21/2027 PIP BASIC 10,00"
+              },
+              {
+                "date": "2026-01-21",
+                "label": "00 X 9300270890 1/21/2026 1/21/2027 INCLUDED A 1,000,000 X 9300270890 1/21/2026 1/21/2027 PIP BASIC 10,000 A MOTOR TRUCK CARGO PHYSICAL DAMAGE NON-OW"
+              },
+              {
+                "date": "2027-01-21",
+                "label": "70890 1/21/2026 1/21/2027 INCLUDED A 1,000,000 X 9300270890 1/21/2026 1/21/2027 PIP BASIC 10,000 A MOTOR TRUCK CARGO PHYSICAL DAMAGE NON-OWNED TRAILE"
+              },
+              {
+                "date": "2026-01-21",
+                "label": ",000 A MOTOR TRUCK CARGO PHYSICAL DAMAGE NON-OWNED TRAILER 9300270890 1/21/2026 1/21/2027 DED $2500 DED $2500 SEE LIST DED $2000 100,000 30,000 ***RE"
+              },
+              {
+                "date": "2027-01-21",
+                "label": "OR TRUCK CARGO PHYSICAL DAMAGE NON-OWNED TRAILER 9300270890 1/21/2026 1/21/2027 DED $2500 DED $2500 SEE LIST DED $2000 100,000 30,000 ***REEFER BREAK"
+              }
+            ],
+            "textPreview": "SHOULD ANY OF THE ABOVE DESCRIBED POLICIES BE CANCELLED BEFORE THE EXPIRATION DATE THEREOF, NOTICE WILL BE DELIVERED IN ACCORDANCE WITH THE POLICY PROVISIONS. INSURER(S) AFFORDING COVERAGE INSURER F : INSURER E : INSURER D : INSURER C : INSURER B : INSURER A : NAIC # NAME: CONTACT (A/C, No): FAX E-MAIL ADDRESS: PRODUCER (A/C, No, Ext): PHONE INSURED REVISION NUMBER: CERTIFICATE NUMBER: COVERAGES IMPORTANT: If the certificate holder is an ADDITIONAL INSURED, the policy(ies) must have ADDITIONAL INSURED provisions or be endorsed. If SUBROGATION IS WAIVED, subject to the terms and conditions of the policy, certain policies may require an endorsement. A statement on this certificate does not confer rights to the certificate holder in lieu of such endorsement(s). THIS CERTIFICATE IS ISSUED AS A",
+            "generic": {
+              "dates": [
+                "2026-01-21",
+                "2026-04-17",
+                "2027-01-21"
+              ],
+              "dateCandidates": [
+                {
+                  "date": "2026-04-17",
+                  "label": "he ACORD name and logo are registered marks of ACORD HIRED AUTOS ONLY 4/17/2026 Acrisure South Insurance Services, LLC 1317 Citizens Blvd Leesburg FL"
+                },
+                {
+                  "date": "2026-01-21",
+                  "label": "972887 A X 1,000,000 X 100,000 5,000 1,000,000 2,000,000 X 9300270890 1/21/2026 1/21/2027 INCLUDED A 1,000,000 X 9300270890 1/21/2026 1/21/2027 PIP B"
+                },
+                {
+                  "date": "2027-01-21",
+                  "label": "1,000,000 X 100,000 5,000 1,000,000 2,000,000 X 9300270890 1/21/2026 1/21/2027 INCLUDED A 1,000,000 X 9300270890 1/21/2026 1/21/2027 PIP BASIC 10,00"
+                },
+                {
+                  "date": "2026-01-21",
+                  "label": "00 X 9300270890 1/21/2026 1/21/2027 INCLUDED A 1,000,000 X 9300270890 1/21/2026 1/21/2027 PIP BASIC 10,000 A MOTOR TRUCK CARGO PHYSICAL DAMAGE NON-OW"
+                },
+                {
+                  "date": "2027-01-21",
+                  "label": "70890 1/21/2026 1/21/2027 INCLUDED A 1,000,000 X 9300270890 1/21/2026 1/21/2027 PIP BASIC 10,000 A MOTOR TRUCK CARGO PHYSICAL DAMAGE NON-OWNED TRAILE"
+                },
+                {
+                  "date": "2026-01-21",
+                  "label": ",000 A MOTOR TRUCK CARGO PHYSICAL DAMAGE NON-OWNED TRAILER 9300270890 1/21/2026 1/21/2027 DED $2500 DED $2500 SEE LIST DED $2000 100,000 30,000 ***RE"
+                },
+                {
+                  "date": "2027-01-21",
+                  "label": "OR TRUCK CARGO PHYSICAL DAMAGE NON-OWNED TRAILER 9300270890 1/21/2026 1/21/2027 DED $2500 DED $2500 SEE LIST DED $2000 100,000 30,000 ***REEFER BREAK"
+                }
+              ],
+              "amount": 0,
+              "expirationDate": "2027-01-21",
+              "dateDetection": "latest_document_date",
+              "loadNumber": "VISIONS",
+              "origin": "",
+              "destination": "the terms and conditions of the policy, ce",
+              "miles": 0,
+              "aiUsed": false,
+              "textPreview": "SHOULD ANY OF THE ABOVE DESCRIBED POLICIES BE CANCELLED BEFORE THE EXPIRATION DATE THEREOF, NOTICE WILL BE DELIVERED IN ACCORDANCE WITH THE POLICY PROVISIONS. INSURER(S) AFFORDING COVERAGE INSURER F : INSURER E : INSURER D : INSURER C : INSURER B : INSURER A : NAIC # NAME: CONTACT (A/C, No): FAX E-MAIL ADDRESS: PRODUCER (A/C, No, Ext): PHONE INSURED REVISION NUMBER: CERTIFICATE NUMBER: COVERAGES IMPORTANT: If the certificate holder is an ADDITIONAL INSURED, the policy(ies) must have ADDITIONAL INSURED provisions or be endorsed. If SUBROGATION IS WAIVED, subject to the terms and conditions of the policy, certain policies may require an endorsement. A statement on this certificate does not confer rights to the certificate holder in lieu of such endorsement(s). THIS CERTIFICATE IS ISSUED AS A MATTER OF INFORMATION ONLY AND CONFERS NO RIGHTS UPON THE CERTIFICATE HOLDER. THIS CERTIFICATE DOES NOT AFFIRMATIVELY OR NEGATIVELY AMEND, EXTEND OR ALTER THE COVERAGE AFFORDED BY THE POLICIES BELOW.",
+              "aiError": ""
+            }
+          },
+          "aiScan": {
+            "expirationDate": "2027-01-21",
+            "dateDetection": "latest_document_date",
+            "dateCandidates": [
+              {
+                "date": "2026-04-17",
+                "label": "he ACORD name and logo are registered marks of ACORD HIRED AUTOS ONLY 4/17/2026 Acrisure South Insurance Services, LLC 1317 Citizens Blvd Leesburg FL"
+              },
+              {
+                "date": "2026-01-21",
+                "label": "972887 A X 1,000,000 X 100,000 5,000 1,000,000 2,000,000 X 9300270890 1/21/2026 1/21/2027 INCLUDED A 1,000,000 X 9300270890 1/21/2026 1/21/2027 PIP B"
+              },
+              {
+                "date": "2027-01-21",
+                "label": "1,000,000 X 100,000 5,000 1,000,000 2,000,000 X 9300270890 1/21/2026 1/21/2027 INCLUDED A 1,000,000 X 9300270890 1/21/2026 1/21/2027 PIP BASIC 10,00"
+              },
+              {
+                "date": "2026-01-21",
+                "label": "00 X 9300270890 1/21/2026 1/21/2027 INCLUDED A 1,000,000 X 9300270890 1/21/2026 1/21/2027 PIP BASIC 10,000 A MOTOR TRUCK CARGO PHYSICAL DAMAGE NON-OW"
+              },
+              {
+                "date": "2027-01-21",
+                "label": "70890 1/21/2026 1/21/2027 INCLUDED A 1,000,000 X 9300270890 1/21/2026 1/21/2027 PIP BASIC 10,000 A MOTOR TRUCK CARGO PHYSICAL DAMAGE NON-OWNED TRAILE"
+              },
+              {
+                "date": "2026-01-21",
+                "label": ",000 A MOTOR TRUCK CARGO PHYSICAL DAMAGE NON-OWNED TRAILER 9300270890 1/21/2026 1/21/2027 DED $2500 DED $2500 SEE LIST DED $2000 100,000 30,000 ***RE"
+              },
+              {
+                "date": "2027-01-21",
+                "label": "OR TRUCK CARGO PHYSICAL DAMAGE NON-OWNED TRAILER 9300270890 1/21/2026 1/21/2027 DED $2500 DED $2500 SEE LIST DED $2000 100,000 30,000 ***REEFER BREAK"
+              }
+            ],
+            "textPreview": "SHOULD ANY OF THE ABOVE DESCRIBED POLICIES BE CANCELLED BEFORE THE EXPIRATION DATE THEREOF, NOTICE WILL BE DELIVERED IN ACCORDANCE WITH THE POLICY PROVISIONS. INSURER(S) AFFORDING COVERAGE INSURER F : INSURER E : INSURER D : INSURER C : INSURER B : INSURER A : NAIC # NAME: CONTACT (A/C, No): FAX E-MAIL ADDRESS: PRODUCER (A/C, No, Ext): PHONE INSURED REVISION NUMBER: CERTIFICATE NUMBER: COVERAGES IMPORTANT: If the certificate holder is an ADDITIONAL INSURED, the policy(ies) must have ADDITIONAL INSURED provisions or be endorsed. If SUBROGATION IS WAIVED, subject to the terms and conditions of the policy, certain policies may require an endorsement. A statement on this certificate does not confer rights to the certificate holder in lieu of such endorsement(s). THIS CERTIFICATE IS ISSUED AS A",
+            "generic": {
+              "dates": [
+                "2026-01-21",
+                "2026-04-17",
+                "2027-01-21"
+              ],
+              "dateCandidates": [
+                {
+                  "date": "2026-04-17",
+                  "label": "he ACORD name and logo are registered marks of ACORD HIRED AUTOS ONLY 4/17/2026 Acrisure South Insurance Services, LLC 1317 Citizens Blvd Leesburg FL"
+                },
+                {
+                  "date": "2026-01-21",
+                  "label": "972887 A X 1,000,000 X 100,000 5,000 1,000,000 2,000,000 X 9300270890 1/21/2026 1/21/2027 INCLUDED A 1,000,000 X 9300270890 1/21/2026 1/21/2027 PIP B"
+                },
+                {
+                  "date": "2027-01-21",
+                  "label": "1,000,000 X 100,000 5,000 1,000,000 2,000,000 X 9300270890 1/21/2026 1/21/2027 INCLUDED A 1,000,000 X 9300270890 1/21/2026 1/21/2027 PIP BASIC 10,00"
+                },
+                {
+                  "date": "2026-01-21",
+                  "label": "00 X 9300270890 1/21/2026 1/21/2027 INCLUDED A 1,000,000 X 9300270890 1/21/2026 1/21/2027 PIP BASIC 10,000 A MOTOR TRUCK CARGO PHYSICAL DAMAGE NON-OW"
+                },
+                {
+                  "date": "2027-01-21",
+                  "label": "70890 1/21/2026 1/21/2027 INCLUDED A 1,000,000 X 9300270890 1/21/2026 1/21/2027 PIP BASIC 10,000 A MOTOR TRUCK CARGO PHYSICAL DAMAGE NON-OWNED TRAILE"
+                },
+                {
+                  "date": "2026-01-21",
+                  "label": ",000 A MOTOR TRUCK CARGO PHYSICAL DAMAGE NON-OWNED TRAILER 9300270890 1/21/2026 1/21/2027 DED $2500 DED $2500 SEE LIST DED $2000 100,000 30,000 ***RE"
+                },
+                {
+                  "date": "2027-01-21",
+                  "label": "OR TRUCK CARGO PHYSICAL DAMAGE NON-OWNED TRAILER 9300270890 1/21/2026 1/21/2027 DED $2500 DED $2500 SEE LIST DED $2000 100,000 30,000 ***REEFER BREAK"
+                }
+              ],
+              "amount": 0,
+              "expirationDate": "2027-01-21",
+              "dateDetection": "latest_document_date",
+              "loadNumber": "VISIONS",
+              "origin": "",
+              "destination": "the terms and conditions of the policy, ce",
+              "miles": 0,
+              "aiUsed": false,
+              "textPreview": "SHOULD ANY OF THE ABOVE DESCRIBED POLICIES BE CANCELLED BEFORE THE EXPIRATION DATE THEREOF, NOTICE WILL BE DELIVERED IN ACCORDANCE WITH THE POLICY PROVISIONS. INSURER(S) AFFORDING COVERAGE INSURER F : INSURER E : INSURER D : INSURER C : INSURER B : INSURER A : NAIC # NAME: CONTACT (A/C, No): FAX E-MAIL ADDRESS: PRODUCER (A/C, No, Ext): PHONE INSURED REVISION NUMBER: CERTIFICATE NUMBER: COVERAGES IMPORTANT: If the certificate holder is an ADDITIONAL INSURED, the policy(ies) must have ADDITIONAL INSURED provisions or be endorsed. If SUBROGATION IS WAIVED, subject to the terms and conditions of the policy, certain policies may require an endorsement. A statement on this certificate does not confer rights to the certificate holder in lieu of such endorsement(s). THIS CERTIFICATE IS ISSUED AS A MATTER OF INFORMATION ONLY AND CONFERS NO RIGHTS UPON THE CERTIFICATE HOLDER. THIS CERTIFICATE DOES NOT AFFIRMATIVELY OR NEGATIVELY AMEND, EXTEND OR ALTER THE COVERAGE AFFORDED BY THE POLICIES BELOW.",
+              "aiError": ""
+            }
+          },
+          "uploadedBy": {
+            "id": "db0dda87-8096-44b0-abba-9aabfee1aaae",
+            "companyId": "db0dda87-8096-44b0-abba-9aabfee1aaae",
+            "name": "osborne",
+            "email": "takingaction86@gmail.com",
+            "role": "admin",
+            "roleLabel": "Company Owner"
+          },
+          "uploadedAt": "2026-09-10T13:53:41.080Z"
+        }
+      ],
+      "affiliateCode": "a7c227c4d8",
+      "referredBy": "",
+      "referredByType": "",
+      "firstMonthPaid": true,
+      "trialStartedAt": "2026-09-10T13:24:13.204Z",
+      "trialEndsAt": "2026-09-17T13:24:13.204Z",
+      "trialStatus": "Active",
+      "commissions": [],
+      "paymentInfo": {
+        "provider": "Complimentary beta",
+        "providerStatus": "Closed beta access - no subscription charge",
+        "billingName": "osborne",
+        "billingEmail": "takingaction86@gmail.com",
+        "customerId": "",
+        "subscriptionId": "",
+        "last4": "",
+        "cardBrand": "",
+        "updatedAt": "2026-09-10T13:24:13.204Z"
+      },
+      "records": {
+        "trips": [],
+        "expenses": [],
+        "invoices": [],
+        "maintenance": []
+      },
+      "createdAt": "2026-09-10T13:24:13.204Z",
+      "updatedAt": "2026-09-10T13:53:41.080Z",
+      "passwordReset": null,
+      "passwordChangedAt": "",
+      "securityNotifications": [],
+      "mfa": {
+        "required": true,
+        "emailEnabled": true,
+        "recoveryCodes": [],
+        "authenticator": {
+          "enabled": false,
+          "secret": ""
+        },
+        "lastVerifiedAt": "2026-09-10T13:24:38.108Z"
+      },
+      "complianceShares": [],
+      "completedComplianceAlerts": [],
+      "referralDiscount": null,
+      "supportIssues": [],
+      "supportAccessGrants": [],
+      "routeTracking": {
+        "enabled": false,
+        "currentLocation": null,
+        "history": []
+      },
+      "lastLoginAt": "2026-09-10T13:24:31.013Z"
+    }
+  ],
+  "partners": [],
+  "sessions": {
+    "fb915005b8a1e22e3b3b0d966c0239167848aa94b76ba10838f2b2193d11c209": {
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "driverId": "",
+      "createdAt": "2026-09-01T14:49:24.327Z",
+      "expiresAt": "2026-10-01T14:49:24.327Z",
+      "rememberMe": true
+    },
+    "aa82c37d755a3a4f058c0778c8f44470b071dc8ea4ea91f42caf5b5c2a547be9": {
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "driverId": "",
+      "createdAt": "2026-09-01T14:50:10.069Z",
+      "expiresAt": "2026-09-01T22:50:10.07Z",
+      "rememberMe": false
+    },
+    "61964317735c00c692bf41064b75a7f0c771290a91e6254ce058a18acf25f537": {
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "driverId": "",
+      "createdAt": "2026-09-01T14:54:12.487Z",
+      "expiresAt": "2026-10-01T14:54:12.487Z",
+      "rememberMe": true
+    },
+    "6c54d904fdcfc4091e5520266c4dd0b7ecfb85e5dc3396762ac526ff2cca2cb6": {
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "driverId": "",
+      "createdAt": "2026-09-01T15:01:03.72Z",
+      "expiresAt": "2026-10-01T15:01:03.72Z",
+      "rememberMe": true
+    },
+    "21af3bb0a5558f75af4a8ba8dc40fba9418c1536d5a9506169c243e2b5f6559d": {
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "driverId": "",
+      "createdAt": "2026-09-03T14:26:33.856Z",
+      "expiresAt": "2026-10-03T14:26:33.856Z",
+      "rememberMe": true
+    },
+    "56348a0ad3d150340a310cf89289d04c617ee5d51f59285c1a37062fb36be1ec": {
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "driverId": "",
+      "createdAt": "2026-09-03T14:27:05.576Z",
+      "expiresAt": "2026-10-03T14:27:05.576Z",
+      "rememberMe": true
+    },
+    "a91f3f68d03224b8044369e8952e43f932f194ee18b32f018a52d3894b51ca22": {
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "driverId": "",
+      "createdAt": "2026-09-03T15:17:20.723Z",
+      "expiresAt": "2026-09-03T23:17:20.723Z",
+      "rememberMe": false
+    },
+    "adbfa467a07723678c20df731eb7eb8c799c730c84e740716af10acb01c8ca3a": {
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "driverId": "",
+      "createdAt": "2026-09-03T15:59:21.17Z",
+      "expiresAt": "2026-10-03T15:59:21.17Z",
+      "rememberMe": true
+    },
+    "b8cd1fb35f20e8df69137bfb5d1f5955336bc1f8e1ca466e77f3d1ad9ed6da69": {
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "driverId": "",
+      "createdAt": "2026-09-09T13:13:28.625Z",
+      "expiresAt": "2026-09-09T21:13:28.625Z",
+      "rememberMe": false
+    },
+    "e9a292534a452cd3609cc12d82b0e4778c8bd94493d7f61bea66b5f255bb445d": {
+      "userId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "driverId": "",
+      "createdAt": "2026-09-09T13:21:39.207Z",
+      "expiresAt": "2026-09-09T21:21:39.207Z",
+      "rememberMe": false
+    },
+    "c52b91c5ef865b591d99469a064a6de366a4df47f5b9720d77eb9e999e2e4d09": {
+      "userId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "driverId": "",
+      "createdAt": "2026-09-09T13:22:01.613Z",
+      "expiresAt": "2026-09-09T21:22:01.613Z",
+      "rememberMe": false
+    },
+    "f7818b5094deb4308fee6f65482d05aa9589a420402b533f528207c146a3dd16": {
+      "userId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "driverId": "",
+      "createdAt": "2026-09-09T17:26:07.176Z",
+      "expiresAt": "2026-09-10T01:26:07.176Z",
+      "rememberMe": false
+    },
+    "7bf3ca3ba51c349f0e94e863b3cc687fce82f632ac3f8764ee5fe857bbb547d6": {
+      "userId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "driverId": "",
+      "createdAt": "2026-09-09T17:44:55.173Z",
+      "expiresAt": "2026-09-10T01:44:55.173Z",
+      "rememberMe": false
+    },
+    "c956f2431e71dd8e8f4d88ddafd06878af8c9e5472a5477432603163b4735d1e": {
+      "userId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "driverId": "",
+      "createdAt": "2026-09-09T17:45:41.391Z",
+      "expiresAt": "2026-09-10T01:45:41.391Z",
+      "rememberMe": false
+    },
+    "d048844d35f26e32f064b5647d04a69cde0a282daba3afc480b294e649249733": {
+      "userId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "driverId": "",
+      "createdAt": "2026-09-09T17:49:25.026Z",
+      "expiresAt": "2026-09-10T01:49:25.026Z",
+      "rememberMe": false
+    },
+    "214476698e721e115a1011fa814865d273e2e03f9e4df73e055eddfb2f82021b": {
+      "userId": "db0dda87-8096-44b0-abba-9aabfee1aaae",
+      "driverId": "",
+      "createdAt": "2026-09-10T13:24:38.106Z",
+      "expiresAt": "2026-10-10T13:24:38.106Z",
+      "rememberMe": true
+    }
+  },
+  "ownerSessions": {},
+  "supportSessions": {},
+  "partnerSessions": {},
+  "security": {
+    "loginAttempts": {
+      "customer:info@clearpointbizsupport.com": {
+        "count": 2,
+        "lastFailedAt": "2026-09-01T14:48:55.392Z",
+        "lockedUntil": ""
+      },
+      "customer:owner@beta.runvara.local": {
+        "count": 1,
+        "lastFailedAt": "2026-09-09T13:20:17.416Z",
+        "lockedUntil": ""
+      }
+    },
+    "mfaChallenges": {
+      "7f6c8627b6af38ea969931e8b5af5ac9c86fcf93f5755125": {
+        "type": "customer",
+        "subjectId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+        "methods": [
+          "email"
+        ],
+        "emailCodeHash": "63f5a5b32b9fbf171df02f1619e0b1705d9f3a68cffd95e2803878fe90420127",
+        "emailCodeExpiresAt": "2026-09-01T14:00:21.755Z",
+        "expiresAt": "2026-09-01T14:00:21.755Z",
+        "createdAt": "2026-09-01T13:50:21.755Z"
+      },
+      "ad8d4cafd49ab0724d45a2a7f7bbc13052d9b37810edc3c8": {
+        "type": "customer",
+        "subjectId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+        "methods": [
+          "email"
+        ],
+        "emailCodeHash": "8cf2bbdeabfd7a00738d8c104d01db6eba1086153b9f03148c28dbeb1e9375c5",
+        "emailCodeExpiresAt": "2026-09-01T14:50:42.392Z",
+        "expiresAt": "2026-09-01T14:50:42.392Z",
+        "createdAt": "2026-09-01T14:40:42.392Z"
+      },
+      "d29a602f33fcb3e7a709054391fda42d69acea6f94c68146": {
+        "type": "customer",
+        "subjectId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+        "methods": [
+          "email"
+        ],
+        "emailCodeHash": "96eed61edc0e70d968e54ef40b02ce2ade789975362f7eb88c3439018d89964a",
+        "emailCodeExpiresAt": "2026-09-01T14:59:10.823Z",
+        "expiresAt": "2026-09-01T14:59:10.824Z",
+        "createdAt": "2026-09-01T14:49:10.824Z"
+      },
+      "5a81b644a92bff6f718ba7c6d484b14c185e642e9a5ecb6a": {
+        "type": "customer",
+        "subjectId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+        "methods": [
+          "email"
+        ],
+        "emailCodeHash": "483498a2896f2b9ee58420642a222629ada80d9e0d83c60be81277689fa17123",
+        "emailCodeExpiresAt": "2026-09-01T14:59:48.693Z",
+        "expiresAt": "2026-09-01T14:59:48.693Z",
+        "createdAt": "2026-09-01T14:49:48.693Z"
+      },
+      "f288f0a9acbf3402714171d18072c9a53b649f84e06aa2d7": {
+        "type": "customer",
+        "subjectId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+        "methods": [
+          "email"
+        ],
+        "emailCodeHash": "3d4c2a2803b6acd060e1710e9ab3252cd58649dd85336985de3a7e9dac36136a",
+        "emailCodeExpiresAt": "2026-09-09T13:30:43.145Z",
+        "expiresAt": "2026-09-09T13:30:43.145Z",
+        "createdAt": "2026-09-09T13:20:43.145Z"
+      },
+      "98bbea305ce16131fed8a9f67505f89c256899193438f99e": {
+        "type": "customer",
+        "subjectId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+        "methods": [
+          "email"
+        ],
+        "emailCodeHash": "5bccb29e9c1c402c8c2159351bd3bc4d319baea44b7e8e8aebfa560229ded122",
+        "emailCodeExpiresAt": "2026-09-09T13:30:58.333Z",
+        "expiresAt": "2026-09-09T13:30:58.333Z",
+        "createdAt": "2026-09-09T13:20:58.333Z"
+      }
+    }
+  },
+  "auditLogs": [
+    {
+      "id": "b34e46d3-9bcc-46ca-91ef-b51ae52a7dd6",
+      "companyId": "db0dda87-8096-44b0-abba-9aabfee1aaae",
+      "companyName": "osborne",
+      "userId": "db0dda87-8096-44b0-abba-9aabfee1aaae",
+      "userName": "adriane osborne",
+      "userEmail": "takingaction86@gmail.com",
+      "userRole": "admin",
+      "action": "Successful login",
+      "status": "success",
+      "dateTime": "2026-09-10T13:24:38.109Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "db0dda87-8096-44b0-abba-9aabfee1aaae",
+        "label": "osborne"
+      },
+      "details": "MFA verified with email."
+    },
+    {
+      "id": "976d38df-23eb-448e-a949-f53eab31152d",
+      "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "companyName": "Beta Demo Logistics",
+      "userId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "userName": "Beta Owner",
+      "userEmail": "owner@beta.truckerbooks.local",
+      "userRole": "admin",
+      "action": "Financial approval",
+      "status": "success",
+      "dateTime": "2026-09-09T17:49:25.323Z",
+      "ipAddress": "::1",
+      "device": "node",
+      "affectedRecord": {
+        "type": "expense",
+        "id": "41bd2dd6-e08b-4552-97ee-1c910fc27422",
+        "label": ""
+      },
+      "details": "Receipt scanned and expense record created."
+    },
+    {
+      "id": "a169a068-b75e-4ef8-88b1-f3abce7cb841",
+      "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "companyName": "Beta Demo Logistics",
+      "userId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "userName": "Beta Owner",
+      "userEmail": "owner@beta.truckerbooks.local",
+      "userRole": "admin",
+      "action": "Successful login",
+      "status": "success",
+      "dateTime": "2026-09-09T17:49:25.026Z",
+      "ipAddress": "::1",
+      "device": "node",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+        "label": "Beta Demo Logistics"
+      },
+      "details": "Company account login."
+    },
+    {
+      "id": "4ef88019-acc8-41c6-b644-177621c1f712",
+      "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "companyName": "Beta Demo Logistics",
+      "userId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "userName": "Beta Owner",
+      "userEmail": "owner@beta.truckerbooks.local",
+      "userRole": "admin",
+      "action": "Successful login",
+      "status": "success",
+      "dateTime": "2026-09-09T17:45:41.392Z",
+      "ipAddress": "::1",
+      "device": "node",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+        "label": "Beta Demo Logistics"
+      },
+      "details": "Company account login."
+    },
+    {
+      "id": "18437284-aefb-4bad-b297-2aa3016a77ed",
+      "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "companyName": "Beta Demo Logistics",
+      "userId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "userName": "Beta Owner",
+      "userEmail": "owner@beta.truckerbooks.local",
+      "userRole": "admin",
+      "action": "Successful login",
+      "status": "success",
+      "dateTime": "2026-09-09T17:44:55.174Z",
+      "ipAddress": "::1",
+      "device": "node",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+        "label": "Beta Demo Logistics"
+      },
+      "details": "Company account login."
+    },
+    {
+      "id": "732e167a-0b24-40e3-a96b-6e3ae2a17f32",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Financial approval",
+      "status": "success",
+      "dateTime": "2026-09-09T17:38:39.733Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+      "affectedRecord": {
+        "type": "expense",
+        "id": "b792b725-00a8-47cf-95d0-437329b94acc",
+        "label": ""
+      },
+      "details": "Receipt scanned and expense record created."
+    },
+    {
+      "id": "8d6c7d7f-667c-4f0d-b0a1-9093fdfff1b9",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Financial approval",
+      "status": "success",
+      "dateTime": "2026-09-09T17:35:21.082Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+      "affectedRecord": {
+        "type": "expense",
+        "id": "d6d4d704-8799-4726-bb4b-17da43874330",
+        "label": ""
+      },
+      "details": "Receipt scanned and expense record created."
+    },
+    {
+      "id": "d86c4b03-c754-42fb-a3be-ccb91693a025",
+      "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "companyName": "Beta Demo Logistics",
+      "userId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "userName": "Beta Owner",
+      "userEmail": "owner@beta.truckerbooks.local",
+      "userRole": "admin",
+      "action": "Financial approval",
+      "status": "success",
+      "dateTime": "2026-09-09T17:26:07.231Z",
+      "ipAddress": "::1",
+      "device": "node",
+      "affectedRecord": {
+        "type": "expense",
+        "id": "cbae2e55-ed21-4826-adc0-79d7682ae802",
+        "label": ""
+      },
+      "details": "Receipt scanned and expense record created."
+    },
+    {
+      "id": "8819a160-e5ac-4e13-a813-12c378fff10f",
+      "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "companyName": "Beta Demo Logistics",
+      "userId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "userName": "Beta Owner",
+      "userEmail": "owner@beta.truckerbooks.local",
+      "userRole": "admin",
+      "action": "Successful login",
+      "status": "success",
+      "dateTime": "2026-09-09T17:26:07.177Z",
+      "ipAddress": "::1",
+      "device": "node",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+        "label": "Beta Demo Logistics"
+      },
+      "details": "Company account login."
+    },
+    {
+      "id": "bf65e2ad-9070-4d01-a2e1-c758f2d9fce4",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Document deleted",
+      "status": "success",
+      "dateTime": "2026-09-09T13:30:53.769Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+      "affectedRecord": {
+        "type": "load_document",
+        "id": "ed082523-5088-429f-aae5-c71ebe5985f7",
+        "label": "CarrierConfirmation_2010774.pdf"
+      },
+      "details": "Load document deleted."
+    },
+    {
+      "id": "2d770119-9c2f-4048-9558-3092200726e9",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Document deleted",
+      "status": "success",
+      "dateTime": "2026-09-09T13:30:36.476Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+      "affectedRecord": {
+        "type": "load_document",
+        "id": "5c4c8768-3f76-42cf-9458-0fdab77dd129",
+        "label": "CarrierConfirmation_2010774.pdf"
+      },
+      "details": "Load document deleted."
+    },
+    {
+      "id": "8c586275-6a65-4aef-a148-2a6e7cb12834",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Financial approval",
+      "status": "success",
+      "dateTime": "2026-09-09T13:25:30.652Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+      "affectedRecord": {
+        "type": "expense",
+        "id": "2a350e47-0042-41f9-8571-596eb98b3784",
+        "label": ""
+      },
+      "details": "Receipt scanned and expense record created."
+    },
+    {
+      "id": "cd3a5b9d-d570-4784-8bd3-fd6c07e05e1e",
+      "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "companyName": "Beta Demo Logistics",
+      "userId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "userName": "Beta Owner",
+      "userEmail": "owner@beta.truckerbooks.local",
+      "userRole": "admin",
+      "action": "Financial approval",
+      "status": "success",
+      "dateTime": "2026-09-09T13:22:01.656Z",
+      "ipAddress": "::1",
+      "device": "node",
+      "affectedRecord": {
+        "type": "expense",
+        "id": "8aee6ea5-45ab-49f8-acc1-12ce0bd755b7",
+        "label": ""
+      },
+      "details": "Receipt scanned and expense record created."
+    },
+    {
+      "id": "a80bf260-5038-447b-8c81-2485edb896c1",
+      "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "companyName": "Beta Demo Logistics",
+      "userId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "userName": "Beta Owner",
+      "userEmail": "owner@beta.truckerbooks.local",
+      "userRole": "admin",
+      "action": "Successful login",
+      "status": "success",
+      "dateTime": "2026-09-09T13:22:01.613Z",
+      "ipAddress": "::1",
+      "device": "node",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+        "label": "Beta Demo Logistics"
+      },
+      "details": "Company account login."
+    },
+    {
+      "id": "2558afc2-2b35-4cc4-a225-48e301b4c0a7",
+      "companyId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "companyName": "Beta Demo Logistics",
+      "userId": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+      "userName": "Beta Owner",
+      "userEmail": "owner@beta.truckerbooks.local",
+      "userRole": "admin",
+      "action": "Successful login",
+      "status": "success",
+      "dateTime": "2026-09-09T13:21:39.207Z",
+      "ipAddress": "::1",
+      "device": "node",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "fedbe83c-09f0-4b48-80db-ea5a8a6d0b9d",
+        "label": "Beta Demo Logistics"
+      },
+      "details": "Company account login."
+    },
+    {
+      "id": "b707e302-da02-4eb7-9143-b9a23286237b",
+      "companyId": "",
+      "companyName": "",
+      "userId": "",
+      "userName": "owner@beta.runvara.local",
+      "userEmail": "owner@beta.runvara.local",
+      "userRole": "",
+      "action": "Failed login",
+      "status": "failure",
+      "dateTime": "2026-09-09T13:20:17.416Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.6.4",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "",
+        "label": "owner@beta.runvara.local"
+      },
+      "details": "Email, password, or verification did not match."
+    },
+    {
+      "id": "14c116ba-d169-42af-ae23-a5dac2fdad19",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Financial approval",
+      "status": "success",
+      "dateTime": "2026-09-09T13:14:36.945Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+      "affectedRecord": {
+        "type": "expense",
+        "id": "0abf97d9-173b-417a-b4de-82ec5d2713a1",
+        "label": ""
+      },
+      "details": "Receipt scanned and expense record created."
+    },
+    {
+      "id": "0d0e21e3-b3a7-41ca-9da9-6c1fa93d15ad",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Financial approval",
+      "status": "success",
+      "dateTime": "2026-09-09T13:14:22.996Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+      "affectedRecord": {
+        "type": "expense",
+        "id": "56e43545-973a-4ff6-9b73-327be77d36b7",
+        "label": ""
+      },
+      "details": "Receipt scanned and expense record created."
+    },
+    {
+      "id": "1cf1bccf-1027-48ed-827b-d6230815ae2a",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Successful login",
+      "status": "success",
+      "dateTime": "2026-09-09T13:13:28.627Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+        "label": "ClearPoint Business Support Inc."
+      },
+      "details": "MFA verified with email."
+    },
+    {
+      "id": "9b5a8d06-e723-4fc4-9f1d-b9abe61ccf47",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Financial approval",
+      "status": "success",
+      "dateTime": "2026-09-03T15:59:21.214Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.6.4",
+      "affectedRecord": {
+        "type": "expense",
+        "id": "4538048e-007d-4156-a650-1bd69df2fe06",
+        "label": ""
+      },
+      "details": "Receipt scanned and expense record created."
+    },
+    {
+      "id": "877a5205-ebc9-4694-b6fa-ad5e2ac01fc8",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Successful login",
+      "status": "success",
+      "dateTime": "2026-09-03T15:59:21.17Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.6.4",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+        "label": "ClearPoint Business Support Inc."
+      },
+      "details": "MFA verified with email."
+    },
+    {
+      "id": "2b9aeca6-42f5-4873-b5b8-244e5c24a28a",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Successful login",
+      "status": "success",
+      "dateTime": "2026-09-03T15:17:20.723Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+        "label": "ClearPoint Business Support Inc."
+      },
+      "details": "MFA verified with email."
+    },
+    {
+      "id": "537fc95e-aa06-4257-98ef-fd7da6214218",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Failed login",
+      "status": "failure",
+      "dateTime": "2026-09-03T15:16:29.395Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+        "label": "ClearPoint Business Support Inc."
+      },
+      "details": "Email, password, or verification did not match."
+    },
+    {
+      "id": "5f9edb47-8b14-453c-abbc-36ca87d7b888",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Successful login",
+      "status": "success",
+      "dateTime": "2026-09-03T14:27:05.576Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.6.4",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+        "label": "ClearPoint Business Support Inc."
+      },
+      "details": "MFA verified with email."
+    },
+    {
+      "id": "3582a255-68ab-4362-9a9d-d7f3ce4142a8",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Financial approval",
+      "status": "success",
+      "dateTime": "2026-09-03T14:26:33.91Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.6.4",
+      "affectedRecord": {
+        "type": "expense",
+        "id": "f17c3559-3fa4-48a8-93ce-bd7d017c2bb4",
+        "label": ""
+      },
+      "details": "Receipt scanned and expense record created."
+    },
+    {
+      "id": "f6c4a248-2706-4c83-9959-9ce9b0b9c233",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Successful login",
+      "status": "success",
+      "dateTime": "2026-09-03T14:26:33.856Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.6.4",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+        "label": "ClearPoint Business Support Inc."
+      },
+      "details": "MFA verified with email."
+    },
+    {
+      "id": "33d2afc9-33e3-4d2c-b12a-d5bee0d77ec9",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Successful login",
+      "status": "success",
+      "dateTime": "2026-09-01T15:01:03.72Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.6.4",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+        "label": "ClearPoint Business Support Inc."
+      },
+      "details": "MFA verified with email."
+    },
+    {
+      "id": "71b75801-4842-491d-9b98-c38be4a92975",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Successful login",
+      "status": "success",
+      "dateTime": "2026-09-01T14:54:12.487Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.6.4",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+        "label": "ClearPoint Business Support Inc."
+      },
+      "details": "MFA verified with email."
+    },
+    {
+      "id": "6ca6dce6-0816-40ed-af52-b5f3a907e7e7",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Successful login",
+      "status": "success",
+      "dateTime": "2026-09-01T14:50:10.07Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+        "label": "ClearPoint Business Support Inc."
+      },
+      "details": "MFA verified with email."
+    },
+    {
+      "id": "943ca1ba-5b80-4dc4-9dde-272e4197c5dc",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Successful login",
+      "status": "success",
+      "dateTime": "2026-09-01T14:49:24.327Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.6.4",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+        "label": "ClearPoint Business Support Inc."
+      },
+      "details": "MFA verified with email."
+    },
+    {
+      "id": "15a22aa9-8092-4924-894e-730c6f7c07cc",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Password reset completed",
+      "status": "success",
+      "dateTime": "2026-09-01T14:49:10.76Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.6.4",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+        "label": "ClearPoint Business Support Inc."
+      },
+      "details": "Password changed and active sessions revoked."
+    },
+    {
+      "id": "da3a1589-b8a7-4a6a-8847-229d05a5d13f",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Password reset requested",
+      "status": "success",
+      "dateTime": "2026-09-01T14:49:10.679Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.6.4",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+        "label": "ClearPoint Business Support Inc."
+      },
+      "details": "Short-lived reset link created."
+    },
+    {
+      "id": "291a23b3-f58f-4c91-b058-7054fbc46c36",
+      "companyId": "",
+      "companyName": "",
+      "userId": "",
+      "userName": "info@clearpointbizsupport.com",
+      "userEmail": "info@clearpointbizsupport.com",
+      "userRole": "",
+      "action": "Failed login",
+      "status": "failure",
+      "dateTime": "2026-09-01T14:48:55.392Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.6.4",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "",
+        "label": "info@clearpointbizsupport.com"
+      },
+      "details": "Email, password, or verification did not match."
+    },
+    {
+      "id": "7315bf02-02b3-4110-b68a-fc37765ed0fe",
+      "companyId": "",
+      "companyName": "",
+      "userId": "",
+      "userName": "info@clearpointbizsupport.com",
+      "userEmail": "info@clearpointbizsupport.com",
+      "userRole": "",
+      "action": "Failed login",
+      "status": "failure",
+      "dateTime": "2026-09-01T14:48:28.851Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-US) PowerShell/7.6.4",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "",
+        "label": "info@clearpointbizsupport.com"
+      },
+      "details": "Email, password, or verification did not match."
+    },
+    {
+      "id": "c2f6f4bd-14a5-40c3-80c5-300ccdc6343b",
+      "companyId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "companyName": "ClearPoint Business Support Inc.",
+      "userId": "19062915-27f3-4280-94c3-e4b86c39b90a",
+      "userName": "Adriane Osborne",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "admin",
+      "action": "Failed login",
+      "status": "failure",
+      "dateTime": "2026-09-01T14:28:49.542Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "19062915-27f3-4280-94c3-e4b86c39b90a",
+        "label": "ClearPoint Business Support Inc."
+      },
+      "details": "Company user email is not verified."
+    },
+    {
+      "id": "8147df7d-e4dc-4e66-831b-dd2fa8f45370",
+      "companyId": "",
+      "companyName": "",
+      "userId": "",
+      "userName": "adrianeosborne@gmail.com",
+      "userEmail": "adrianeosborne@gmail.com",
+      "userRole": "",
+      "action": "Failed login",
+      "status": "failure",
+      "dateTime": "2026-09-01T14:27:13.237Z",
+      "ipAddress": "::1",
+      "device": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+      "affectedRecord": {
+        "type": "company_user",
+        "id": "",
+        "label": "adrianeosborne@gmail.com"
+      },
+      "details": "Email, password, or verification did not match."
+    },
+    {
+      "id": "8549da4b-6e13-4ca3-9612-f03f8b2d5a3b",
+      "companyId": "",
+      "companyName": "TruckerBooks Beta",
+      "userId": "",
+      "userName": "System",
+      "userEmail": "",
+      "userRole": "system",
+      "action": "Beta database seeded",
+      "status": "success",
+      "dateTime": "2026-09-01T13:49:36.875Z",
+      "ipAddress": "",
+      "device": "server",
+      "affectedRecord": {
+        "type": "environment",
+        "label": "beta"
+      },
+      "details": "Separate beta database created with sample data only."
+    }
+  ]
+}

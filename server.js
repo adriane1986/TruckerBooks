@@ -4926,7 +4926,7 @@ async function handleApi(req, res, pathname) {
     const document = findCompanyRecord(user, user.complianceDocuments, id);
     if (!document) return sendError(res, 404, "Compliance document not found.");
     const enteredDate = normalizeDate(String(body.expirationDate || ""));
-    if (!enteredDate) return sendError(res, 400, "Enter a valid expiration date.");
+    if (!enteredDate) return sendError(res, 400, document.type === "clearinghouseMvr" ? "Enter a valid completed date." : "Enter a valid expiration date.");
     const expirationDate = document.type === "clearinghouseMvr" ? addMonthsIsoDate(enteredDate, 12) : enteredDate;
     document.expirationDate = expirationDate;
     document.manualExpirationDate = true;
