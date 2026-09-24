@@ -794,6 +794,26 @@ function formatDate(date) {
   return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+function normalizeDateInput(value) {
+  const raw = String(value || "").trim();
+  const iso = raw.match(/\b(20\d{2}|19\d{2})-(\d{1,2})-(\d{1,2})\b/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+  const parts = raw.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b/);
+  if (parts) {
+    const year = parts[3].length === 2 ? `20${parts[3]}` : parts[3];
+    return `${year}-${parts[1].padStart(2, "0")}-${parts[2].padStart(2, "0")}`;
+  }
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+}
+
+function addOneYear(dateValue) {
+  const date = new Date(`${dateValue}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return "";
+  date.setFullYear(date.getFullYear() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
 function renderTableView(collection, title, columns) {
   const rows = filtered(state.records[collection]);
   content.innerHTML = `
@@ -1532,6 +1552,7 @@ function renderCompliance() {
                     <form class="mini-date-form" data-expiration-form="${item.id}">
                       <label>${item.type === "clearinghouseMvr" ? "Completed date" : "Expiration date"}<input type="${item.type === "clearinghouseMvr" ? "text" : "date"}" name="expirationDate" ${item.type === "clearinghouseMvr" ? 'inputmode="numeric" placeholder="1/20/2025"' : ""} required /></label>
                       <button class="chip-button" type="submit">Save</button>
+                      ${item.type === "clearinghouseMvr" ? '<span class="muted clearinghouse-renewal-preview" data-clearinghouse-renewal-preview></span>' : ""}
                     </form>
                   `}
                 </td>
@@ -2154,6 +2175,7 @@ function renderContent() {
   if (state.view === "multiCompany") renderMultiCompanyWorkspace();
   if (state.view === "support") renderSupport();
   renderIcons(content);
+  refreshClearinghouseRenewalPreviews();
 }
 
 function currentCollection() {
@@ -2832,9 +2854,18 @@ async function completeComplianceAlert(alertId) {
 
 async function saveComplianceExpiration(form) {
   try {
+    const documentId = form.dataset.expirationForm;
+    const document = state.complianceDocuments.find((item) => item.id === documentId);
+    const rawDate = new FormData(form).get("expirationDate");
+    const enteredDate = document?.type === "clearinghouseMvr" ? normalizeDateInput(rawDate) : rawDate;
+    if (document?.type === "clearinghouseMvr" && !enteredDate) {
+      state.accountMessage = "Enter the Clearinghouse completed date, such as 1/20/2025.";
+      renderContent();
+      return;
+    }
     const payload = await api(`/api/compliance/${form.dataset.expirationForm}`, {
       method: "PATCH",
-      body: JSON.stringify({ expirationDate: new FormData(form).get("expirationDate") })
+      body: JSON.stringify({ expirationDate: enteredDate })
     });
     state.complianceDocuments = payload.complianceDocuments;
     state.complianceAlerts = payload.complianceAlerts;
@@ -2847,6 +2878,20 @@ async function saveComplianceExpiration(form) {
     state.accountMessage = error.message;
     renderContent();
   }
+}
+
+function updateClearinghouseRenewalPreview(input) {
+  const form = input.closest("[data-expiration-form]");
+  const document = state.complianceDocuments.find((item) => item.id === form?.dataset.expirationForm);
+  const preview = form?.querySelector("[data-clearinghouse-renewal-preview]");
+  if (!preview || document?.type !== "clearinghouseMvr") return;
+  const completedDate = normalizeDateInput(input.value);
+  const renewalDate = completedDate ? addOneYear(completedDate) : "";
+  preview.textContent = renewalDate ? `Renews ${formatDate(renewalDate)}` : "";
+}
+
+function refreshClearinghouseRenewalPreviews() {
+  document.querySelectorAll("[data-expiration-form] input[name='expirationDate']").forEach(updateClearinghouseRenewalPreview);
 }
 
 async function saveGpsLocation(position) {
@@ -3059,6 +3104,7 @@ document.addEventListener("input", (event) => {
     renderContent();
   }
   if (event.target.matches("[data-cpm-input]")) updateCostPerMileCalculator();
+  if (event.target.matches("[data-expiration-form] input[name='expirationDate']")) updateClearinghouseRenewalPreview(event.target);
 });
 
 document.addEventListener("change", (event) => {

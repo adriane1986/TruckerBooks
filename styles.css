@@ -1333,6 +1333,10 @@ button {
   padding: 0 12px;
 }
 
+.clearinghouse-renewal-preview {
+  grid-column: 1 / -1;
+}
+
 .rename-file-form {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) auto;
