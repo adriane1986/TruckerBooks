@@ -1525,6 +1525,7 @@ function renderCompliance() {
                 </td>
                 <td data-label="Renewal">
                   <strong>${isCarrierPacketDocument(item) ? "No renewal needed" : item.expirationDate ? formatDate(item.expirationDate) : "Not detected"}</strong>
+                  ${item.extracted?.aiError || item.aiScan?.aiError ? `<br><span class="muted">Scanner issue: ${(item.extracted?.aiError || item.aiScan?.aiError).slice(0, 90)}</span>` : ""}
                   ${item.expirationDate || isCarrierPacketDocument(item) ? "" : `
                     <form class="mini-date-form" data-expiration-form="${item.id}">
                       <label>${item.type === "clearinghouseMvr" ? "Completed date" : "Expiration date"}<input type="date" name="expirationDate" required /></label>
@@ -1536,6 +1537,7 @@ function renderCompliance() {
                 <td data-label="Actions">
                   <div class="table-actions">
                     ${item.manualOnly ? "" : `<a class="ghost-button" href="${complianceDocumentEmailHref(item)}">Email</a>`}
+                    ${item.manualOnly || isCarrierPacketDocument(item) ? "" : `<button class="icon-button" type="button" data-rescan-compliance="${item.id}" title="Scan again" aria-label="Scan again"><span data-icon="refresh-cw"></span></button>`}
                     <button class="icon-button" type="button" data-delete-compliance="${item.id}" title="Delete compliance document" aria-label="Delete compliance document"><span data-icon="trash"></span></button>
                   </div>
                 </td>
@@ -2759,7 +2761,13 @@ async function rescanComplianceDocument(id) {
     const payload = await api(`/api/compliance/${id}/rescan`, { method: "POST" });
     state.complianceDocuments = payload.complianceDocuments;
     state.complianceAlerts = payload.complianceAlerts;
-    state.accountMessage = "Rescan complete.";
+    const updated = payload.complianceDocuments?.find((item) => item.id === id);
+    const scanIssue = updated?.extracted?.aiError || updated?.aiScan?.aiError || "";
+    state.accountMessage = updated?.expirationDate
+      ? `Scan complete. Renewal detected: ${formatDate(updated.expirationDate)}.`
+      : scanIssue
+        ? `Scan complete, but scanner needs review: ${scanIssue}`
+        : "Scan complete. No renewal date was detected.";
     renderContent();
   } catch (error) {
     state.accountMessage = error.message;
@@ -2830,7 +2838,7 @@ async function saveComplianceExpiration(form) {
     state.complianceAlerts = payload.complianceAlerts;
     const updated = payload.complianceDocuments?.find((item) => item.id === form.dataset.expirationForm);
     state.accountMessage = updated?.type === "clearinghouseMvr"
-      ? `Clearinghouse renewal saved for ${formatDate(updated.expirationDate)}.`
+      ? `Clearinghouse completed date saved. Renewal is ${formatDate(updated.expirationDate)}.`
       : "Expiration date saved.";
     renderContent();
   } catch (error) {
