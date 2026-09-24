@@ -2300,16 +2300,23 @@ async function runAiScanner(buffer, mimeType, documentContext = "", modelOverrid
       scanStatus = "Stored - OCR unavailable";
     }
   } else if (/pdf/i.test(mimeType)) {
+    let pdfTextError = "";
     try {
       text = await extractPdfText(buffer);
-      if (text.trim() && !textLooksGarbled(text)) {
-        scanStatus = "Scanned";
-      } else {
-        text = await extractPdfImageOcrText(buffer).catch(() => "");
-        scanStatus = text.trim() ? "Scanned with PDF OCR" : "Stored - no PDF text found";
-      }
-    } catch {
-      scanStatus = "Stored - PDF scan failed";
+    } catch (error) {
+      pdfTextError = error?.message || "PDF text extraction failed";
+      text = "";
+    }
+    if (text.trim() && !textLooksGarbled(text)) {
+      scanStatus = "Scanned";
+    } else {
+      const ocrText = await extractPdfImageOcrText(buffer).catch(() => "");
+      text = ocrText.trim() ? ocrText : text;
+      scanStatus = text.trim()
+        ? "Scanned with PDF OCR"
+        : pdfTextError
+          ? "Stored - PDF OCR unavailable"
+          : "Stored - no PDF text found";
     }
   } else {
     scanStatus = "Stored - unsupported scan type";
@@ -2873,7 +2880,7 @@ function imageDataToPng(image, rotation = 0) {
 }
 
 async function extractPdfEmbeddedImages(buffer) {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjs = await loadPdfJs();
   const { OPS } = pdfjs;
   const document = await pdfjs.getDocument({ data: new Uint8Array(buffer), disableWorker: true }).promise;
   const images = [];
