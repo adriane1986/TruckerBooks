@@ -1799,6 +1799,8 @@ function extractClearinghouseCompletedDate(text) {
     /query\s+status\s*:?\s*completed\s*\(\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
     /query\s+status\s*:?\s*completed[\s\S]{0,120}?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
     /query\s+status\s+completed\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
+    /query\s+status[\s:;-]{0,20}completed[\s(:-]{0,20}(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
+    /status[\s:;-]{0,20}completed[\s(:-]{0,20}(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
     /completed\s+date\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
     /date\s+completed\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
     /query\s+status\s*:?\s*completed\s*\(\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})/i,
@@ -2895,17 +2897,25 @@ async function extractPdfEmbeddedImages(buffer) {
 
 async function extractPdfImageOcrText(buffer) {
   const tesseract = require("tesseract.js");
-  const images = await extractPdfEmbeddedImages(buffer);
   const textParts = [];
-  for (const image of images.slice(0, 6)) {
-    for (const rotation of [0, 90, 270]) {
-      const bmp = imageDataToBmp(image, rotation);
-      const result = await tesseract.recognize(bmp, "eng");
-      const text = result?.data?.text || "";
-      if (text.trim()) textParts.push(text);
+  try {
+    const images = await extractPdfEmbeddedImages(buffer);
+    for (const image of images.slice(0, 6)) {
+      for (const rotation of [0, 90, 270]) {
+        try {
+          const bmp = imageDataToBmp(image, rotation);
+          const result = await tesseract.recognize(bmp, "eng");
+          const text = result?.data?.text || "";
+          if (text.trim()) textParts.push(text);
+        } catch {
+          // Keep scanning other embedded images and rotations.
+        }
+      }
     }
+  } catch {
+    // Some PDFs do not expose embedded images cleanly; render whole pages below.
   }
-  const renderedPages = await renderPdfPageImages(buffer, { maxPages: 3, scale: 2 }).catch(() => []);
+  const renderedPages = await renderPdfPageImages(buffer, { maxPages: 3, scale: 3 }).catch(() => []);
   for (const pageImage of renderedPages) {
     try {
       const result = await tesseract.recognize(pageImage, "eng");
