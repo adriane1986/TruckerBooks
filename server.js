@@ -1795,12 +1795,15 @@ function extractLabeledDateCandidates(text) {
 }
 
 function extractClearinghouseCompletedDate(text) {
-  const datePattern = "(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?\\s+\\d{1,2},?\\s+\\d{4}|\\d{1,2}[-\\s](?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)[-\\s]\\d{2,4}|\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|\\d{4}-\\d{1,2}-\\d{1,2})";
   const patterns = [
-    new RegExp(`query\\s+status\\s+completed\\s*:?\\s*(${datePattern})`, "i"),
-    new RegExp(`query\\s+status\\s*:?\\s*completed[\\s\\S]{0,120}?(${datePattern})`, "i"),
-    new RegExp(`completed\\s+date\\s*:?\\s*(${datePattern})`, "i"),
-    new RegExp(`date\\s+completed\\s*:?\\s*(${datePattern})`, "i")
+    /query\s+status\s*:?\s*completed\s*\(\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
+    /query\s+status\s*:?\s*completed[\s\S]{0,120}?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
+    /query\s+status\s+completed\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
+    /completed\s+date\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
+    /date\s+completed\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
+    /query\s+status\s*:?\s*completed\s*\(\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})/i,
+    /query\s+status\s*:?\s*completed[\s\S]{0,120}?([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})/i,
+    /completed\s+date\s*:?\s*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})/i
   ];
   return normalizeDate(firstMatch(text, patterns));
 }
