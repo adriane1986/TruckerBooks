@@ -2998,11 +2998,33 @@ async function rescanPendingDocuments(user) {
   return changed;
 }
 
+async function rescanPendingComplianceDocuments(user) {
+  let changed = false;
+  for (const document of user.complianceDocuments || []) {
+    if (document.expirationDate || document.manualOnly || ["w9", "noa"].includes(document.type)) continue;
+    const filePath = path.join(uploadDir, document.storedName || "");
+    if (!document.storedName || !fs.existsSync(filePath)) continue;
+    const scan = await safeScanComplianceDocument(fs.readFileSync(filePath), document.mimeType, document.type, {
+      fileName: document.fileName,
+      documentId: document.id,
+      phase: "pending-compliance-rescan"
+    });
+    document.scanStatus = scan.scanStatus;
+    document.expirationDate = scan.extracted.expirationDate;
+    document.extracted = scan.extracted;
+    document.aiScan = scan.extracted;
+    document.rescannedAt = new Date().toISOString();
+    changed = true;
+  }
+  return changed;
+}
+
 async function rescanAllStoredDocuments() {
   const db = readDb();
   let changed = false;
   for (const user of db.users) {
     if (await rescanPendingDocuments(user)) changed = true;
+    if (await rescanPendingComplianceDocuments(user)) changed = true;
   }
   if (changed) writeDb(db);
 }
@@ -4726,6 +4748,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (req.method === "GET" && pathname === "/api/compliance") {
+    if (await rescanPendingComplianceDocuments(user)) writeDb(db);
     if (isDriverActor(actor)) {
       const customer = publicDriverUser(user, actor);
       return sendJson(res, 200, {
