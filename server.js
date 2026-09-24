@@ -1964,12 +1964,14 @@ function parseComplianceText(text, type = "") {
   ]);
   const candidates = extractDateCandidates(clean);
   const labeledCandidates = extractLabeledDateCandidates(clean);
-  const expirationDate = chooseBestComplianceDate({
-    type,
-    expirationDate: clearinghouseCompletedDate || normalizeDate(dotPhysicalExpiration || expiration),
-    dates: candidates,
-    dateCandidates: labeledCandidates
-  });
+  const expirationDate = clearinghouseCompletedDate
+    ? addMonthsIsoDate(clearinghouseCompletedDate, 12)
+    : chooseBestComplianceDate({
+      type,
+      expirationDate: normalizeDate(dotPhysicalExpiration || expiration),
+      dates: candidates,
+      dateCandidates: labeledCandidates
+    });
   return {
     expirationDate,
     completedDate: clearinghouseCompletedDate,
