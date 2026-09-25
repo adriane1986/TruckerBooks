@@ -4,7 +4,8 @@
   "description": "RUNVARA customer dashboard web app",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "hash:password": "node tools/hash-password.js"
   },
   "private": true,
   "dependencies": {

@@ -225,7 +225,23 @@ Without `OPENAI_API_KEY`, the app falls back to local OCR/text parsing for testi
 
 ## Owner Login Password Hash
 
-Set `OWNER_PASSWORD_HASH` instead of a readable owner password. Customer and partner passwords are also stored as hashes only.
+Set `OWNER_EMAIL` and `OWNER_PASSWORD_HASH` in Railway before using `/owner`. `OWNER_ACCESS_CODE` is optional but recommended.
+
+Create the owner password hash locally:
+
+```powershell
+npm run hash:password
+```
+
+Copy the printed hash into Railway as:
+
+```text
+OWNER_PASSWORD_HASH=pbkdf2:...
+OWNER_EMAIL=info@thetruckerconsultant.com
+OWNER_ACCESS_CODE=your-private-access-code
+```
+
+Do not put the readable owner password in Railway or in source files. Customer and partner passwords are also stored as hashes only.
 
 ## Closed Beta Launch Requirements
 

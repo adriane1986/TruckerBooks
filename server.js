@@ -4200,7 +4200,9 @@ async function handleApi(req, res, pathname) {
   if (req.method === "POST" && pathname === "/api/owner/login") {
     const body = await readBody(req);
     const email = normalizeEmail(body.email);
-    if (!ownerPasswordHash) return sendError(res, 503, "Owner login is not configured yet. Add OWNER_EMAIL and OWNER_PASSWORD_HASH in Railway.");
+    if (!ownerEmail || ownerEmail === "owner@runvara.local" || !ownerPasswordHash) {
+      return sendError(res, 503, "Owner login is not configured yet. Add OWNER_EMAIL and OWNER_PASSWORD_HASH in Railway. OWNER_ACCESS_CODE is optional but recommended.");
+    }
     if (isLoginLocked(db, "owner", email)) return sendError(res, 429, "Too many owner sign in attempts. Please wait 15 minutes and try again.");
     if (email !== ownerEmail || !verifyPassword(body.password || "", ownerPasswordHash) || (ownerAccessCode && String(body.accessCode || "").trim() !== ownerAccessCode)) {
       recordLoginFailure(db, "owner", email);
