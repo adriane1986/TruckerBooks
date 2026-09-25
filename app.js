@@ -1467,6 +1467,7 @@ function renderCompliance() {
       ? `OPENAI_API_KEY is present, but it does not look valid. It should start with sk-. Current detected length: ${scanner.keyLength}.`
       : "The backend does not see OPENAI_API_KEY. Add it to the Railway app service Variables, then redeploy.";
   content.innerHTML = `
+    <p class="muted build-marker">Clearinghouse renewal fix loaded: Sep 25</p>
     <div class="metric-grid">
       ${metric("Compliance files", documents.length, "Insurance, DOT, Clearinghouse MVR, UCR, 2290, IFTA License, IRP-Cab Card, W9, NOA", "shield")}
       ${metric("Renewal alerts", alerts.length, "Includes IFTA deadlines", "receipt")}
