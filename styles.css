@@ -1337,6 +1337,25 @@ button {
   grid-column: 1 / -1;
 }
 
+.amount-edit-form {
+  display: inline-grid;
+  grid-template-columns: minmax(86px, 110px) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.amount-edit-form input {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 8px;
+  font-weight: 800;
+}
+
+.amount-edit-form .chip-button {
+  min-height: 34px;
+}
+
 .rename-file-form {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) auto;

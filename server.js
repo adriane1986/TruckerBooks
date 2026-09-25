@@ -5170,6 +5170,30 @@ async function handleApi(req, res, pathname) {
     return sendJson(res, 201, { record, records: user.records });
   }
 
+  if (req.method === "PATCH" && pathname.startsWith("/api/records/")) {
+    const [, , , collection, id] = pathname.split("/");
+    if (!isAllowedCollection(collection)) return sendError(res, 404, "Unknown record type.");
+    if (!requirePermission(user, res, collectionPermission(collection, "PATCH"))) return;
+    const record = findCompanyRecord(user, user.records[collection], id);
+    if (!record) return sendError(res, 404, "Record not found.");
+    const body = await readBody(req);
+    if (body.amount !== undefined) {
+      const amount = Number(body.amount);
+      if (!Number.isFinite(amount) || amount < 0) return sendError(res, 400, "Enter a valid amount.");
+      record.amount = Math.round(amount * 100) / 100;
+      record.manualAmount = true;
+    }
+    if (collection === "expenses" && body.category !== undefined) {
+      record.category = String(body.category || record.category || "General").trim() || "General";
+    }
+    if (body.description !== undefined) record.description = String(body.description || record.description || "").trim() || record.description;
+    record.updatedAt = new Date().toISOString();
+    user.updatedAt = record.updatedAt;
+    auditLog(db, req, { company: user, user: isDriverActor(actor) ? actor : user, action: "Record updated", affectedRecord: auditRecord(collection.slice(0, -1), record), details: `${collection} record updated.` });
+    writeDb(db);
+    return sendJson(res, 200, { record, records: user.records });
+  }
+
   if (req.method === "DELETE" && pathname.startsWith("/api/records/")) {
     const [, , , collection, id] = pathname.split("/");
     if (!isAllowedCollection(collection)) return sendError(res, 404, "Unknown record type.");

@@ -584,6 +584,7 @@ function displayExpenseDescription(item) {
 }
 
 function displayExpenseAmount(item) {
+  if (item?.manualAmount) return Number(item.amount || 0);
   const text = `${item?.description || ""} ${item?.sourceReceipt?.fileName || ""}`;
   if (/invoice\s+(?:for\s+)?truck\s+repair|invoice\s+1038|formula\s+truck\s+repair/i.test(text)) return 1108.85;
   return Number(item?.amount || 0);
@@ -911,7 +912,12 @@ function renderExpenses() {
                 <span class="muted">${displayExpenseCategory(item)}${item.sourceReceipt ? ` · Receipt scanned · <a class="document-name-link inline-document-link" href="/api/expenses/receipt/${item.id}" target="_blank" rel="noopener">${item.sourceReceipt.fileName}</a>` : ""}</span>
               </td>
               <td><strong>${uploadedByLabel(item.sourceReceipt?.uploadedBy)}</strong></td>
-              <td>${money(displayExpenseAmount(item))}</td>
+              <td>
+                <form class="amount-edit-form" data-expense-amount-form="${item.id}">
+                  <input name="amount" type="number" min="0" step="0.01" value="${Number(displayExpenseAmount(item) || 0).toFixed(2)}" aria-label="Expense amount" />
+                  <button class="chip-button" type="submit">Save</button>
+                </form>
+              </td>
               <td><span class="status ${item.status}">${item.status}</span></td>
               <td>
                 <div class="table-actions">
@@ -2257,6 +2263,23 @@ async function deleteEntry(id) {
   renderContent();
 }
 
+async function saveExpenseAmount(form) {
+  try {
+    const amount = Number(new FormData(form).get("amount"));
+    if (!Number.isFinite(amount) || amount < 0) throw new Error("Enter a valid amount.");
+    const payload = await api(`/api/records/expenses/${form.dataset.expenseAmountForm}`, {
+      method: "PATCH",
+      body: JSON.stringify({ amount })
+    });
+    state.records = payload.records;
+    state.accountMessage = `Expense amount updated to ${money(amount)}.`;
+    renderContent();
+  } catch (error) {
+    state.accountMessage = error.message;
+    renderContent();
+  }
+}
+
 function exportRecords() {
   window.location.href = "/api/export";
 }
@@ -3095,6 +3118,10 @@ document.addEventListener("submit", (event) => {
   if (event.target.matches("[data-expiration-form]")) {
     event.preventDefault();
     saveComplianceExpiration(event.target);
+  }
+  if (event.target.matches("[data-expense-amount-form]")) {
+    event.preventDefault();
+    saveExpenseAmount(event.target);
   }
   if (event.target.matches("[data-rename-document]")) {
     event.preventDefault();
