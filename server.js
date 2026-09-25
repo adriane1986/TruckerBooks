@@ -1810,6 +1810,22 @@ function extractClearinghouseCompletedDate(text) {
   return normalizeDate(firstMatch(text, patterns));
 }
 
+function extractIftaLicenseExpirationDate(text) {
+  const clean = String(text || "").replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
+  const tableMatch = clean.match(/effective\s+date\s+expiration\s+date[\s\S]{0,80}?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\s+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i);
+  if (tableMatch?.[2]) return normalizeDate(tableMatch[2]);
+  const labeledExpiration = firstMatch(clean, [
+    /expiration\s+date\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
+    /license\s+expires\s+on\s+the\s+expiration\s+date[\s\S]{0,160}?expiration\s+date\s*:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i
+  ]);
+  if (labeledExpiration) return normalizeDate(labeledExpiration);
+  const year = firstMatch(clean, [
+    /license\s+year\s*:?\s*(20\d{2})/i,
+    /international\s+fuel\s+tax\s+agreement[\s\S]{0,300}?\b(20\d{2})\b/i
+  ]);
+  return year ? `${year}-12-31` : "";
+}
+
 function chooseBestComplianceDate({ type, expirationDate, dates = [], dateCandidates = [] }) {
   const labeled = dateCandidates
     .map((item) => ({ date: normalizeDate(item.date), label: String(item.label || "").toLowerCase() }))
@@ -1862,6 +1878,17 @@ function chooseBestComplianceDate({ type, expirationDate, dates = [], dateCandid
     ].filter(Boolean);
     const latestDotDate = [...new Set(dotDates)].sort().at(-1);
     if (latestDotDate) return latestDotDate;
+  }
+
+  if (type === "iftaLicense") {
+    const exactExpiration = labeled
+      .filter((item) => /expiration\s+date|license\s+exp/i.test(item.label) && !/grace|enforcement|effective|issue/i.test(item.label))
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .at(0);
+    if (exactExpiration) return exactExpiration.date;
+
+    const licenseYear = labeled.map((item) => Number(item.date.slice(0, 4))).sort().at(-1);
+    if (licenseYear) return `${licenseYear}-12-31`;
   }
 
   const explicit = normalizeDate(expirationDate || "");
@@ -1956,6 +1983,7 @@ function parseDocumentText(text, type) {
 function parseComplianceText(text, type = "") {
   const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
   const clearinghouseCompletedDate = type === "clearinghouseMvr" ? extractClearinghouseCompletedDate(clean) : "";
+  const iftaLicenseExpiration = type === "iftaLicense" ? extractIftaLicenseExpirationDate(clean) : "";
   const dotPhysicalExpiration = type === "dotPhysical" ? firstMatch(clean, [
     /medical\s+examiner'?s?\s+certificate\s+expiration\s+date[\s\S]{0,80}?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
     /certificate\s+expiration\s+date[\s\S]{0,80}?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i,
@@ -1971,6 +1999,8 @@ function parseComplianceText(text, type = "") {
   const labeledCandidates = extractLabeledDateCandidates(clean);
   const expirationDate = clearinghouseCompletedDate
     ? addMonthsIsoDate(clearinghouseCompletedDate, 12)
+    : iftaLicenseExpiration
+      ? iftaLicenseExpiration
     : chooseBestComplianceDate({
       type,
       expirationDate: normalizeDate(dotPhysicalExpiration || expiration),
@@ -1980,7 +2010,7 @@ function parseComplianceText(text, type = "") {
   return {
     expirationDate,
     completedDate: clearinghouseCompletedDate,
-    dateDetection: clearinghouseCompletedDate ? "query_status_completed_plus_1_year" : normalizeDate(dotPhysicalExpiration) ? "dot_physical_ocr_label" : normalizeDate(expiration) ? "labeled_expiration" : expirationDate ? "latest_document_date" : "not_found",
+    dateDetection: clearinghouseCompletedDate ? "query_status_completed_plus_1_year" : iftaLicenseExpiration ? "ifta_license_expiration_date" : normalizeDate(dotPhysicalExpiration) ? "dot_physical_ocr_label" : normalizeDate(expiration) ? "labeled_expiration" : expirationDate ? "latest_document_date" : "not_found",
     dateCandidates: labeledCandidates,
     textPreview: clean.slice(0, 800)
   };
@@ -2012,6 +2042,7 @@ function categorizeExpense(text) {
   const clean = text.toLowerCase();
   if (/(truck\s+service|work\s+order|repair\s+order|standard\s+service\s+labor|service\s+labor|labor\s+only|replace\s+(?:one\s+)?fuel\s+filter|fuel\s+filter\s+(?:kit|change)|air\/?elec|electrical\s+line\s+assembly|shop\s+supply|environmental\s+fee)/i.test(clean)) return "Maintenance";
   if (/(fuel|diesel|def\s+fuel|gallons?|price\s*\/\s*gal|ppg|pump|maverik|pilot|flying j|love'?s|travelcenters|travel\s+centers|ta\s+travel|ta\s+greensboro|petro|shell|bp|chevron|exxon|ta-petro)/i.test(clean)) return "Fuel";
+  if (/(restaurant|meal|meals|food|diner|cafe|coffee|breakfast|lunch|dinner|mcdonald'?s|burger\s*king|wendy'?s|subway|taco\s*bell|chick[-\s]?fil[-\s]?a|chipotle|cracker\s+barrel|denny'?s|ihop|waffle\s+house|starbucks|dunkin|pizza|kfc|popeyes|arbys|arby'?s|panera)/i.test(clean)) return "Meals";
   if (/(postage|postal|usps|united states postal service|stamps?|shipping|shipstation|fedex|ups\b|mailing|mail\s|package|parcel)/i.test(clean)) return "Office and admin";
   if (/invoice\s+(?:for\s+)?truck\s+repair|invoice\s+1038|formula\s+truck\s+repair|truck\s+repair|trailer\s+body\s+repair|repair|service|oil|tire|brake|maintenance|mechanic|parts|body\s+shop|diagnostic|labor|welding/i.test(clean)) return "Maintenance";
   if (/(ifta|ucr|2290|permit|irp|registration|tax)/i.test(clean)) return "Permits and taxes";
@@ -2029,7 +2060,7 @@ function normalizeExpenseRecord(expense) {
   const repairText = !postageText && /(truck\s+service|work\s+order|repair\s+order|standard\s+service\s+labor|service\s+labor|labor\s+only|replace\s+(?:one\s+)?fuel\s+filter|fuel\s+filter\s+(?:kit|change)|air\/?elec|electrical\s+line\s+assembly|shop\s+supply|environmental\s+fee|invoice\s+(?:for\s+)?truck\s+repair|invoice\s+1038|formula\s+truck\s+repair|truck\s+repair|trailer\s+body\s+repair|repair|service|oil|tire|brake|maintenance|mechanic|parts|body\s+shop|diagnostic|labor|welding)/i.test(text);
   const category = postageText ? "Office and admin" : repairText ? "Maintenance" : expense.category || detectedCategory || "General";
   const correctedAmount = /invoice\s+(?:for\s+)?truck\s+repair|invoice\s+1038|formula\s+truck\s+repair/i.test(text) ? 1108.85 : Number(expense.amount || 0);
-  const categoryPrefix = /^(Fuel|Road costs|Maintenance|Insurance|Permits and taxes|Factoring and bank fees|Office and admin|General)\s*-\s*/i;
+  const categoryPrefix = /^(Fuel|Meals|Road costs|Maintenance|Insurance|Permits and taxes|Factoring and bank fees|Office and admin|General)\s*-\s*/i;
   let cleanDescription = String(expense.description || "Expense");
   while (categoryPrefix.test(cleanDescription)) {
     cleanDescription = cleanDescription.replace(categoryPrefix, "");
@@ -2217,7 +2248,10 @@ async function scanComplianceDocument(buffer, mimeType, complianceType = "") {
   const dotPhysicalContext = complianceType === "dotPhysical"
     ? "This is a DOT Physical / Medical Examiner's Certificate upload. The card may be a sideways phone photo or an image-only PDF, so inspect it visually and mentally rotate it if needed. Use the date labeled Medical Examiner's Certificate Expiration Date, Medical Examiner Certificate Expiration, Medical Card Expires, Certificate Expires, Expiration Date, or Qualified Until. Do not use the examination date, Date Certificate Signed, signature date, issue date, registry number, or driver's license date. If the card has Date Certificate Signed and Medical Examiner's Certificate Expiration Date, choose the Medical Examiner's Certificate Expiration Date, which is usually the later date."
     : "";
-  const scan = await runAiScanner(buffer, mimeType, `This is a Compliance upload. Prioritize renewal, expiration, valid-through, policy end, coverage end, Policy Exp., DOT physical expiration, UCR, 2290 tax period, IRP Cab Card validity period end date, and Clearinghouse MVR dates. ${dotPhysicalContext} For Clearinghouse MVR documents, find the date labeled Query Status Completed first, then set the renewal date to exactly 12 months after that completed date.`, openaiVisionModel);
+  const iftaContext = complianceType === "iftaLicense"
+    ? "This is an IFTA License upload. Use the date labeled Expiration Date as the renewal/expiration date. Do not use Effective Date, Issue Date, Grace Period, or Enforcement Date."
+    : "";
+  const scan = await runAiScanner(buffer, mimeType, `This is a Compliance upload. Prioritize renewal, expiration, valid-through, policy end, coverage end, Policy Exp., DOT physical expiration, UCR, 2290 tax period, IFTA License Expiration Date, IRP Cab Card validity period end date, and Clearinghouse MVR dates. ${dotPhysicalContext} ${iftaContext} For Clearinghouse MVR documents, find the date labeled Query Status Completed first, then set the renewal date to exactly 12 months after that completed date.`, openaiVisionModel);
   const local = parseComplianceText(scan.text, complianceType);
   const generic = scan.extracted || {};
   const aiExpiration = normalizeDate(generic.expirationDate || "");

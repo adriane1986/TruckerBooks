@@ -567,6 +567,7 @@ function displayExpenseCategory(item) {
   const text = `${item?.description || ""} ${item?.category || ""} ${item?.sourceReceipt?.fileName || ""}`.toLowerCase();
   if (/(truck\s+service|work\s+order|repair\s+order|standard\s+service\s+labor|service\s+labor|labor\s+only|replace\s+(?:one\s+)?fuel\s+filter|fuel\s+filter\s+(?:kit|change)|air\/?elec|electrical\s+line\s+assembly|shop\s+supply|environmental\s+fee)/i.test(text)) return "Maintenance";
   if (/(fuel|diesel|def\s+fuel|gallons?|price\s*\/\s*gal|ppg|pump|maverik|pilot|flying j|love'?s|travelcenters|travel\s+centers|ta\s+travel|petro|shell|bp|chevron|exxon|ta-petro)/i.test(text)) return "Fuel";
+  if (/(restaurant|meal|meals|food|diner|cafe|coffee|breakfast|lunch|dinner|mcdonald'?s|burger\s*king|wendy'?s|subway|taco\s*bell|chick[-\s]?fil[-\s]?a|chipotle|cracker\s+barrel|denny'?s|ihop|waffle\s+house|starbucks|dunkin|pizza|kfc|popeyes|arbys|arby'?s|panera)/i.test(text)) return "Meals";
   if (/(postage|postal|usps|united states postal service|stamps?|shipping|shipstation|fedex|ups\b|mailing|mail\s|package|parcel)/i.test(text)) return "Office and admin";
   if (/invoice\s+(?:for\s+)?truck\s+repair|invoice\s+1038|formula\s+truck\s+repair|truck\s+repair|trailer\s+body\s+repair|repair|service|oil|tire|brake|maintenance|mechanic|parts|body\s+shop|diagnostic|labor|welding/i.test(text)) return "Maintenance";
   return item?.category || "General";
@@ -574,7 +575,7 @@ function displayExpenseCategory(item) {
 
 function displayExpenseDescription(item) {
   const category = displayExpenseCategory(item);
-  const categoryPrefix = /^(Fuel|Road costs|Maintenance|Insurance|Permits and taxes|Factoring and bank fees|Office and admin|General)\s*-\s*/i;
+  const categoryPrefix = /^(Fuel|Meals|Road costs|Maintenance|Insurance|Permits and taxes|Factoring and bank fees|Office and admin|General)\s*-\s*/i;
   let cleanDescription = String(item?.description || "Expense");
   while (categoryPrefix.test(cleanDescription)) {
     cleanDescription = cleanDescription.replace(categoryPrefix, "");
@@ -871,6 +872,7 @@ function renderExpenses() {
           <select name="category">
             <option value="">Auto-detect category</option>
             <option value="Fuel">Fuel</option>
+            <option value="Meals">Meals</option>
             <option value="Road costs">Road costs</option>
             <option value="Maintenance">Maintenance</option>
             <option value="Insurance">Insurance</option>
@@ -2083,6 +2085,7 @@ function renderDriverMobile() {
             <select name="category">
               <option value="">Receipt category</option>
               <option value="Fuel">Fuel</option>
+              <option value="Meals">Meals</option>
               <option value="Road costs">Road costs</option>
               <option value="Maintenance">Maintenance</option>
               <option value="General">General</option>
