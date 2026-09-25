@@ -695,6 +695,154 @@ function publicPaymentPolicy() {
   };
 }
 
+function requestIsHttps(req) {
+  const forwardedProto = String(req?.headers?.["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase();
+  return forwardedProto === "https" || Boolean(req?.socket?.encrypted);
+}
+
+function fileCount(directory, extension = "") {
+  try {
+    if (!fs.existsSync(directory)) return 0;
+    return fs.readdirSync(directory).filter((fileName) => !extension || fileName.endsWith(extension)).length;
+  } catch {
+    return 0;
+  }
+}
+
+function betaReadinessStatus(req = null) {
+  const environment = publicEnvironment();
+  const paymentPolicy = publicPaymentPolicy();
+  const backupsConfigured = environment.backupsEnabled;
+  const backupCount = fileCount(backupDir, ".json");
+  const errorLogPath = path.join(logDir, "errors.log");
+  const httpsActive = req ? requestIsHttps(req) : null;
+  const db = readDb();
+  const supportIssueCount = db.users.reduce((count, user) => count + (user.supportIssues || []).length, 0);
+  const failedLoginCount = Object.values(db.security?.loginAttempts || {}).reduce((count, attempts) => count + (Array.isArray(attempts) ? attempts.length : 0), 0);
+
+  const checks = [
+    {
+      id: "beta-mode",
+      label: "Beta mode label",
+      status: environment.betaMode ? "ready" : "needs_configuration",
+      detail: environment.betaMode ? "Visible in the app header and sign-in screen." : "Set APP_ENV=beta or BETA_MODE=true on Railway."
+    },
+    {
+      id: "https",
+      label: "Railway HTTPS",
+      status: httpsActive === null ? "manual" : httpsActive ? "ready" : "needs_configuration",
+      detail: httpsActive === null ? "Open the Railway beta URL and confirm the browser shows HTTPS." : httpsActive ? "This request reached the app over HTTPS." : "This request did not report HTTPS. Check the Railway domain."
+    },
+    {
+      id: "auth",
+      label: "Signup, login, password reset",
+      status: "manual",
+      detail: `Password hashing and reset routes are present. Run one end-to-end tester account pass; beta email verification is ${emailVerificationDisabled ? "disabled" : "enabled"}.`
+    },
+    {
+      id: "document-privacy",
+      label: "Account-separated documents",
+      status: "manual",
+      detail: "Document downloads are served through authenticated company-scoped routes. Run the Tester A/B direct-link test before inviting more testers."
+    },
+    {
+      id: "password-hashing",
+      label: "Password storage",
+      status: "ready",
+      detail: `Passwords are stored as salted hashes and require at least ${minimumPasswordLength} characters.`
+    },
+    {
+      id: "financial-review",
+      label: "Financial calculations",
+      status: "manual",
+      detail: "Manually verify load profit, invoices, expenses, cost per mile, and reports with known sample numbers."
+    },
+    {
+      id: "backups",
+      label: "Beta database backups",
+      status: backupsConfigured ? "ready" : "needs_configuration",
+      detail: backupsConfigured ? `Automatic backups are configured every ${environment.backupIntervalHours} hours. Existing backup files: ${backupCount}.` : "Set BACKUP_INTERVAL_HOURS to a positive number."
+    },
+    {
+      id: "error-logging",
+      label: "Error logging",
+      status: environment.errorLoggingEnabled ? "ready" : "needs_configuration",
+      detail: fs.existsSync(errorLogPath) ? "errors.log exists and server errors are appended there." : "Server errors are configured to write to data-beta/logs/errors.log when they occur."
+    },
+    {
+      id: "support-feedback",
+      label: "Feedback and support",
+      status: "ready",
+      detail: `Support issue form is available. Open beta support issues: ${supportIssueCount}. Contact: info@thetruckerconsultant.com.`
+    },
+    {
+      id: "policies",
+      label: "Posted legal pages",
+      status: "ready",
+      detail: "Privacy, Terms of Use, Closed Beta Agreement, and Beta Launch pages are published."
+    },
+    {
+      id: "payments",
+      label: "Payments during beta",
+      status: paymentPolicy.checkoutEnabled && stripeMode !== "test" ? "needs_configuration" : "ready",
+      detail: paymentPolicy.message
+    },
+    {
+      id: "launch-monitoring",
+      label: "Launch-day monitoring",
+      status: "manual",
+      detail: `Monitor support issues, failed logins (${failedLoginCount} recent), password resets, document uploads, exports, and error logs.`
+    }
+  ];
+
+  const blocking = checks.filter((check) => check.status === "needs_configuration").length;
+  const manual = checks.filter((check) => check.status === "manual").length;
+  return {
+    generatedAt: new Date().toISOString(),
+    environment,
+    paymentPolicy,
+    summary: {
+      ready: checks.filter((check) => check.status === "ready").length,
+      manual,
+      needsConfiguration: blocking,
+      overall: blocking ? "needs_configuration" : manual ? "manual_go_no_go_required" : "ready"
+    },
+    checks
+  };
+}
+
+function readinessLabel(status) {
+  if (status === "ready") return "Ready";
+  if (status === "manual") return "Manual test";
+  return "Needs setup";
+}
+
+function betaReadinessMarkup(readiness) {
+  const rows = readiness.checks.map((check) => `
+                <tr>
+                  <td><strong>${check.label}</strong></td>
+                  <td><span class="status ${check.status === "ready" ? "paid" : check.status === "manual" ? "pending" : "overdue"}">${readinessLabel(check.status)}</span></td>
+                  <td>${check.detail}</td>
+                </tr>
+              `).join("");
+  return `
+              <h2>Live Beta Readiness</h2>
+              <p><strong>Current status:</strong> ${readiness.summary.needsConfiguration ? "Needs configuration before beta." : "Ready for configured checks; complete the manual go/no-go tests before inviting testers."}</p>
+              <div class="metric-grid">
+                <article class="metric-card"><span>Ready</span><strong>${readiness.summary.ready}</strong><small>Automated or configured checks</small></article>
+                <article class="metric-card"><span>Manual</span><strong>${readiness.summary.manual}</strong><small>Tester walkthrough required</small></article>
+                <article class="metric-card"><span>Needs setup</span><strong>${readiness.summary.needsConfiguration}</strong><small>Must be fixed first</small></article>
+              </div>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead><tr><th>Requirement</th><th>Status</th><th>What to verify</th></tr></thead>
+                  <tbody>${rows}</tbody>
+                </table>
+              </div>
+              <p><a class="chip-button" href="/api/beta-readiness" target="_blank" rel="noreferrer">View readiness JSON</a> <a class="chip-button" href="/health" target="_blank" rel="noreferrer">View Railway health check</a></p>
+  `;
+}
+
 function publicPaymentInfo(paymentInfo = {}) {
   return {
     billingName: paymentInfo.billingName || "",
@@ -1342,7 +1490,8 @@ function servePolicyPage(res, type) {
     </html>`);
 }
 
-function serveBetaLaunchPage(res) {
+function serveBetaLaunchPage(req, res) {
+  const readiness = betaReadinessStatus(req);
   res.writeHead(200, secureHeaders({ "Content-Type": "text/html; charset=utf-8" }));
   res.end(`<!doctype html>
     <html lang="en">
@@ -1362,6 +1511,7 @@ function serveBetaLaunchPage(res) {
             <div class="panel-body policy-copy">
               <p><strong>Last updated:</strong> September 1, 2026</p>
               <p>Do not begin the closed beta until every launch requirement below has passed or has been formally held back from the beta scope.</p>
+              ${betaReadinessMarkup(readiness)}
               <h2>Go/No-Go Requirements</h2>
               <ul>
                 <li>Signup, login, and password reset work end to end.</li>
@@ -2129,6 +2279,33 @@ function extractSimplePdfText(buffer) {
 function receiptTotalAmount(text) {
   const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
   const lines = clean.split("\n").map((line) => line.trim()).filter(Boolean);
+  const moneyLike = /\$?\s*([0-9]{1,4}(?:,[0-9]{3})*(?:\.\d{2})|[0-9]{1,4}\.\d{2})\b/g;
+  const rejectLine = /(gallons?|gal\b|price\s*\/\s*gal|ppg|pump|points?|balance|vehicle|auth|authorization|invoice\s*#|trace|card\s*#|member|phone|zip|store\s+\d|customer\s+service|fuel\s+disc|tax\s+exempt)/i;
+  const totalLineDefinitions = [
+    { label: "totalAmt", score: 160, pattern: /\btot(?:al|ai)\s+(?:amt|am(?:oun)?t|ant)\b/i },
+    { label: "amountTendered", score: 150, pattern: /\bamount\s+tendered\b/i },
+    { label: "total", score: 145, pattern: /^\s*tot(?:al|ai)\s*:?\s*/i },
+    { label: "saleTotal", score: 140, pattern: /\bsale\s+total\b|\bsales\s+total\b/i },
+    { label: "grandTotal", score: 138, pattern: /\bgrand\s+total\b|\binvoice\s+total\b|\btotal\s+due\b|\bamount\s+due\b/i },
+    { label: "received", score: 100, pattern: /\breceived\b|\bpaid\b|\bamount\s+paid\b/i }
+  ];
+  const lineCandidates = [];
+  lines.forEach((line, index) => {
+    if (/sub\s*total|sales\s+tax|tax\s+total/i.test(line) || rejectLine.test(line)) return;
+    const definition = totalLineDefinitions.find((item) => item.pattern.test(line));
+    if (!definition) return;
+    const localMatches = [...line.matchAll(moneyLike)];
+    const lookahead = lines.slice(index + 1, index + 3).join(" ");
+    const lookaheadMatches = /^(?:total|received|paid|amount\s+tendered)\b/i.test(line)
+      ? [...lookahead.matchAll(moneyLike)]
+      : [];
+    const matches = localMatches.length ? localMatches : lookaheadMatches;
+    const amount = moneyNumber(matches.at(-1)?.[1] || "");
+    if (!amount || amount >= 10000) return;
+    lineCandidates.push({ amount, score: definition.score, index });
+  });
+  const bestLineCandidate = lineCandidates.sort((a, b) => b.score - a.score || b.index - a.index)[0];
+  if (bestLineCandidate) return bestLineCandidate.amount;
   const patterns = [
     /(?:total\s+purchases\s+(?:for\s+)?(?:this\s+)?account|total\s+purchases)\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
     /\*\*\s*total\s+purchases\s+(?:for\s+)?(?:this\s+)?account\s*:?\s*\$?\s*([0-9,]+(?:\.\d{2})?)/i,
@@ -2158,12 +2335,12 @@ function receiptTotalAmount(text) {
 function parseReceiptText(text) {
   const clean = text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ");
   const generic = parseGenericDocumentText(clean);
-  const totalAmount = receiptTotalAmount(clean) || firstMatch(clean, [/\$\s*([0-9,]+(?:\.\d{2})?)/]);
   const isPFleet = /\bp-?fleet\b|total\s+purchases\s+this\s+account/i.test(clean);
   const fuelVendor = firstMatch(clean, [
     /\b(Maverik)\b/i,
     /\b(TravelCenters\s+of\s+America|TA(?:\s+[A-Za-z]+)?|Pilot|Love'?s|Flying\s+J|Petro)\b/i
   ]);
+  const totalAmount = receiptTotalAmount(clean) || (fuelVendor ? "" : firstMatch(clean, [/\$\s*([0-9,]+(?:\.\d{2})?)/]));
   const vendor = firstMatch(clean, [
     
     /\b(P-?Fleet)\b/i,
@@ -2172,7 +2349,7 @@ function parseReceiptText(text) {
     /(?:merchant|vendor|store|supplier)\s*:?\s*([A-Za-z0-9 &'#.,-]{2,60})/i,
     /^([A-Za-z0-9 &'#.,-]{2,60})/m
   ]);
-  const amount = Number(String(totalAmount || generic.amount || "").replace(/,/g, "")) || 0;
+  const amount = Number(String(totalAmount || (!fuelVendor ? generic.amount : "") || "").replace(/,/g, "")) || 0;
   const date = generic.dates?.[0] || new Date().toISOString().slice(0, 10);
   const category = fuelVendor ? "Fuel" : categorizeExpense(clean);
   return {
@@ -2215,18 +2392,21 @@ async function scanReceiptDocument(buffer, mimeType) {
   const local = parseReceiptText(scan.text);
   const generic = scan.extracted || {};
   const category = categorizeExpense(`${scan.text} ${local.description || ""} ${generic.notes || ""} ${generic.documentType || ""}`);
+  const resolvedCategory = category || local.category;
+  const genericAmount = Number(generic.amount || 0);
+  const resolvedAmount = local.amount || (resolvedCategory === "Fuel" ? 0 : genericAmount > 0 && genericAmount < 10000 ? genericAmount : 0);
   return {
     ...scan,
     extracted: {
       ...local,
       date: generic.dates?.[0] || local.date,
-      amount: local.amount || (Number(generic.amount || 0) > 0 && Number(generic.amount || 0) < 10000 ? Number(generic.amount || 0) : 0),
-      category: category || local.category,
-      description: (category || local.category) === "Maintenance"
+      amount: resolvedAmount,
+      category: resolvedCategory,
+      description: resolvedCategory === "Maintenance"
         ? local.description
         : /p-?fleet|total\s+purchases\s+this\s+account/i.test(`${scan.text} ${local.description}`)
-          ? `${category || local.category} - P-Fleet fuel report`
-          : generic.notes ? `${category || local.category} - ${generic.notes.slice(0, 50)}` : local.description,
+          ? `${resolvedCategory} - P-Fleet fuel report`
+          : generic.notes ? `${resolvedCategory} - ${generic.notes.slice(0, 50)}` : local.description,
       generic
     }
   };
@@ -3579,6 +3759,22 @@ async function handleApi(req, res, pathname) {
 
   if (req.method === "GET" && pathname === "/api/environment") {
     return sendJson(res, 200, { environment: publicEnvironment() });
+  }
+
+  if (req.method === "GET" && pathname === "/api/beta-readiness") {
+    return sendJson(res, 200, betaReadinessStatus(req));
+  }
+
+  if (req.method === "GET" && pathname === "/api/health") {
+    return sendJson(res, 200, {
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      environment: appEnvironment,
+      betaMode,
+      dataStore: dataDirectoryName,
+      backupsEnabled: publicEnvironment().backupsEnabled,
+      errorLoggingEnabled: true
+    });
   }
 
   if (req.method === "POST" && pathname === "/api/signup") {
@@ -5224,7 +5420,20 @@ function serveStatic(req, res, pathname) {
   if (pathname === "/privacy") return servePolicyPage(res, "privacy");
   if (pathname === "/terms") return servePolicyPage(res, "terms");
   if (pathname === "/beta-agreement") return servePolicyPage(res, "beta");
-  if (pathname === "/beta-launch") return serveBetaLaunchPage(res);
+  if (pathname === "/beta-launch") return serveBetaLaunchPage(req, res);
+  if (pathname === "/health" || pathname === "/healthz") {
+    res.writeHead(200, secureHeaders({ "Content-Type": "application/json; charset=utf-8" }));
+    res.end(JSON.stringify({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      environment: appEnvironment,
+      betaMode,
+      dataStore: dataDirectoryName,
+      backupsEnabled: publicEnvironment().backupsEnabled,
+      errorLoggingEnabled: true
+    }, null, 2));
+    return;
+  }
   if (pathname.startsWith("/data/")) {
     res.writeHead(403, secureHeaders({ "Content-Type": "text/plain; charset=utf-8" }));
     res.end("Private app storage");

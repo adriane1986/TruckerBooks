@@ -44,6 +44,12 @@ Password: BetaPassphrase2026!
 
 Automated backups are stored in `data-beta/backups`, and server errors are written to `data-beta/logs/errors.log`. Keep real API keys in environment variables through the hosting provider or local shell, not in source files.
 
+Beta readiness and Railway health checks:
+
+- `/beta-launch` shows the live beta readiness checklist, tester instructions, feedback survey, and launch-day checklist.
+- `/api/beta-readiness` returns the same readiness status as JSON for quick checks.
+- `/health`, `/healthz`, and `/api/health` return a lightweight Railway health-check response.
+
 ## Beta Payment Safety
 
 For the first closed beta, subscription charges are turned off by default. Testers receive complimentary beta access and Stripe Checkout is blocked when `APP_ENV=beta` unless `ENABLE_BETA_PAYMENT_TESTING=true`.
