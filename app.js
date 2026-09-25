@@ -912,11 +912,11 @@ function renderExpenses() {
                 <span class="muted">${displayExpenseCategory(item)}${item.sourceReceipt ? ` · Receipt scanned · <a class="document-name-link inline-document-link" href="/api/expenses/receipt/${item.id}" target="_blank" rel="noopener">${item.sourceReceipt.fileName}</a>` : ""}</span>
               </td>
               <td><strong>${uploadedByLabel(item.sourceReceipt?.uploadedBy)}</strong></td>
-              <td>
-                <form class="amount-edit-form" data-expense-amount-form="${item.id}">
+              <td data-label="Amount">
+                <div class="amount-edit-form" data-expense-amount-form="${item.id}">
                   <input name="amount" type="number" min="0" step="0.01" value="${Number(displayExpenseAmount(item) || 0).toFixed(2)}" aria-label="Expense amount" />
-                  <button class="chip-button" type="submit">Save</button>
-                </form>
+                  <button class="chip-button" type="button" data-save-expense-amount="${item.id}">Save</button>
+                </div>
               </td>
               <td><span class="status ${item.status}">${item.status}</span></td>
               <td>
@@ -2265,7 +2265,7 @@ async function deleteEntry(id) {
 
 async function saveExpenseAmount(form) {
   try {
-    const amount = Number(new FormData(form).get("amount"));
+    const amount = Number(form.querySelector("input[name='amount']")?.value);
     if (!Number.isFinite(amount) || amount < 0) throw new Error("Enter a valid amount.");
     const payload = await api(`/api/records/expenses/${form.dataset.expenseAmountForm}`, {
       method: "PATCH",
@@ -3005,6 +3005,7 @@ document.addEventListener("click", (event) => {
   const completeAlertButton = event.target.closest("[data-complete-alert]");
   const openTripButton = event.target.closest("[data-open-trip]");
   const copyReferralButton = event.target.closest("[data-copy-referral]");
+  const saveExpenseAmountButton = event.target.closest("[data-save-expense-amount]");
   const markPaidButton = event.target.closest("[data-mark-first-paid]");
   const stripeCheckoutButton = event.target.closest("[data-stripe-checkout]");
   const plaidLinkButton = event.target.closest("[data-plaid-link]");
@@ -3016,6 +3017,7 @@ document.addEventListener("click", (event) => {
   if (navButton) setView(navButton.dataset.view);
   if (shortcut) setView(shortcut.dataset.viewShortcut);
   if (deleteButton) deleteEntry(deleteButton.dataset.delete);
+  if (saveExpenseAmountButton) saveExpenseAmount(saveExpenseAmountButton.closest("[data-expense-amount-form]"));
   if (authModeButton) setAuthMode(authModeButton.dataset.authMode);
   if (planButton) updatePlan(planButton.dataset.plan);
   if (workspacePlanButton) selectWorkspacePlan(workspacePlanButton.dataset.workspacePlan);
@@ -3119,10 +3121,6 @@ document.addEventListener("submit", (event) => {
     event.preventDefault();
     saveComplianceExpiration(event.target);
   }
-  if (event.target.matches("[data-expense-amount-form]")) {
-    event.preventDefault();
-    saveExpenseAmount(event.target);
-  }
   if (event.target.matches("[data-rename-document]")) {
     event.preventDefault();
     renameDocument(event.target);
@@ -3136,6 +3134,13 @@ document.addEventListener("input", (event) => {
   }
   if (event.target.matches("[data-cpm-input]")) updateCostPerMileCalculator();
   if (event.target.matches("[data-expiration-form] input[name='expirationDate']")) updateClearinghouseRenewalPreview(event.target);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && event.target.matches("[data-expense-amount-form] input[name='amount']")) {
+    event.preventDefault();
+    saveExpenseAmount(event.target.closest("[data-expense-amount-form]"));
+  }
 });
 
 document.addEventListener("change", (event) => {

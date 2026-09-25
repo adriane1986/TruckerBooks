@@ -1338,14 +1338,17 @@ button {
 }
 
 .amount-edit-form {
-  display: inline-grid;
-  grid-template-columns: minmax(86px, 110px) auto;
+  position: relative;
+  z-index: 1;
+  display: flex;
   gap: 6px;
   align-items: center;
+  flex-wrap: nowrap;
 }
 
 .amount-edit-form input {
   min-height: 34px;
+  width: 108px;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0 8px;
@@ -1354,6 +1357,7 @@ button {
 
 .amount-edit-form .chip-button {
   min-height: 34px;
+  white-space: nowrap;
 }
 
 .rename-file-form {
