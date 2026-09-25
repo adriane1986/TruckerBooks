@@ -22,7 +22,7 @@ http://localhost:3000
 
 ## Beta Environment
 
-Run beta with its own database, sample data, backups, error logs, and visible Beta label:
+Run beta with its own database, clear tester dashboards, backups, error logs, and visible Beta label:
 
 ```powershell
 $env:APP_ENV="beta"
@@ -33,7 +33,7 @@ $env:BACKUP_INTERVAL_HOURS="24"
 & "C:\Users\Adriane Osborne\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe" "C:\Users\Adriane Osborne\Documents\Codex\2026-07-28\server.js"
 ```
 
-Beta uses `data-beta/truckerbooks-beta-db.json` instead of the normal `data/truckerbooks-db.json`. On first run it creates fake preview companies only, so production customer data is not mixed into beta.
+Beta uses `data-beta/truckerbooks-beta-db.json` instead of the normal `data/truckerbooks-db.json`. On first run it creates beta login accounts with clear dashboards only, so production customer data is not mixed into beta.
 
 Demo beta login:
 
@@ -76,7 +76,7 @@ The beta agreement includes confidentiality, consent to collect usage and error 
 ## What It Supports
 
 - Company account registration with company name, DOT number, phone, address, subscription plan, first administrator, policy acceptance, and email verification
-- Dedicated beta mode with a separate sample-data database, automated backups, error logging, secure environment configuration, and an in-app Beta label
+- Dedicated beta mode with a separate clear-dashboard database, automated backups, error logging, secure environment configuration, and an in-app Beta label
 - Complimentary beta access with Stripe Checkout blocked by default, plus test-mode-only payment testing safeguards
 - Starter Privacy Policy, Terms of Use, and Closed Beta Testing Agreement pages for beta tester onboarding
 - Secure login with email/password, show/hide password, remember-me sessions, generic login errors, account-lock protection, session expiration, and logout from all devices
@@ -235,6 +235,6 @@ The most important security test is account separation: Tester A must never be a
 
 The beta launch package should include the tester invitation, Closed Beta Testing Agreement, onboarding instructions, task checklist, feedback survey, bug tracker fields, sample documents, and launch-day checklist. The app exposes these at `/beta-launch`, with the legal pages at `/beta-agreement`, `/privacy`, and `/terms`.
 
-New customer accounts start with an empty dashboard. Trips, expenses, invoices, maintenance, documents, and compliance records appear only after the user uploads documents or adds records manually. The built-in beta demo account may still contain sample records for walkthrough testing.
+New customer accounts and built-in beta login accounts start with an empty dashboard. Trips, expenses, invoices, maintenance, trucks, drivers, documents, and compliance records appear only after the user uploads documents or adds records manually.
 
 

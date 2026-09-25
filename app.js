@@ -35,24 +35,10 @@ const icons = {
 };
 
 const sampleData = {
-  trips: [
-    { id: crypto.randomUUID(), date: "2026-04-03", description: "Fresh produce load", origin: "Savannah, GA", destination: "Nashville, TN", miles: 498, amount: 2450, status: "Paid" },
-    { id: crypto.randomUUID(), date: "2026-04-12", description: "Dry van retail freight", origin: "Charlotte, NC", destination: "Columbus, OH", miles: 430, amount: 1985, status: "Pending" },
-    { id: crypto.randomUUID(), date: "2026-04-23", description: "Machinery parts", origin: "Detroit, MI", destination: "Birmingham, AL", miles: 738, amount: 3320, status: "Scheduled" }
-  ],
-  expenses: [
-    { id: crypto.randomUUID(), date: "2026-04-04", description: "Fuel - I-75 stop", amount: 612.44, category: "Fuel", status: "Paid" },
-    { id: crypto.randomUUID(), date: "2026-04-08", description: "Truck insurance", amount: 890, category: "Insurance", status: "Paid" },
-    { id: crypto.randomUUID(), date: "2026-04-20", description: "Scale ticket and tolls", amount: 76.8, category: "Road costs", status: "Paid" }
-  ],
-  invoices: [
-    { id: crypto.randomUUID(), date: "2026-04-05", description: "Invoice 1042 - Coastal Foods", amount: 2450, status: "Paid" },
-    { id: crypto.randomUUID(), date: "2026-04-13", description: "Invoice 1043 - Northline Logistics", amount: 1985, status: "Pending" }
-  ],
-  maintenance: [
-    { id: crypto.randomUUID(), date: "2026-04-09", description: "Oil change and inspection", amount: 385, status: "Paid" },
-    { id: crypto.randomUUID(), date: "2026-04-28", description: "Steer tire replacement", amount: 925, status: "Scheduled" }
-  ]
+  trips: [],
+  expenses: [],
+  invoices: [],
+  maintenance: []
 };
 
 const state = {

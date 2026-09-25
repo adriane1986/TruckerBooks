@@ -531,8 +531,51 @@ function driverCanAccessApi(req, pathname) {
 
 function normalizeAndSaveDb() {
   const db = readDb();
+  clearBuiltInBetaDashboards(db);
   writeDb(db);
   return db;
+}
+
+function clearBuiltInBetaDashboards(db) {
+  if (!betaMode || db.meta?.betaDashboardsClearedAt) return;
+  const betaSeedEmails = new Set(["owner@beta.runvara.local", "admin@beta.runvara.local"]);
+  let clearedCount = 0;
+  (db.users || []).forEach((user) => {
+    if (!betaSeedEmails.has(normalizeEmail(user.email))) return;
+    user.trucks = [];
+    user.drivers = [];
+    user.documents = [];
+    user.complianceDocuments = [];
+    user.supportIssues = [];
+    user.records = emptyRecords();
+    user.routeTracking = { enabled: false, currentLocation: null, history: [] };
+    user.updatedAt = new Date().toISOString();
+    clearedCount += 1;
+  });
+  db.meta = {
+    ...(db.meta || {}),
+    betaDashboardsClearedAt: new Date().toISOString(),
+    betaDashboardPolicy: "Built-in beta demo accounts start with clear dashboards. Tester-created accounts are not cleared by this startup cleanup."
+  };
+  if (clearedCount) {
+    db.auditLogs = Array.isArray(db.auditLogs) ? db.auditLogs : [];
+    db.auditLogs.unshift({
+      id: crypto.randomUUID(),
+      companyId: "",
+      companyName: "RUNVARA Beta",
+      userId: "",
+      userName: "System",
+      userEmail: "",
+      userRole: "system",
+      action: "Beta dashboards cleared",
+      status: "success",
+      dateTime: db.meta.betaDashboardsClearedAt,
+      ipAddress: "",
+      device: "server",
+      affectedRecord: { type: "environment", label: "beta demo accounts" },
+      details: "Cleared built-in beta demo account dashboards for manual beta testing."
+    });
+  }
 }
 
 function publicUser(user) {
@@ -928,39 +971,6 @@ function betaDemoCompany({
 }) {
   const createdAt = new Date().toISOString();
   const companyId = crypto.randomUUID();
-  const trucks = Array.from({ length: truckCount }, (_, index) => ({
-    id: crypto.randomUUID(),
-    companyId,
-    unitNumber: `BETA-${String(index + 1).padStart(2, "0")}`,
-    vin: `BETADEMO${String(index + 1).padStart(9, "0")}`,
-    plate: `BT${String(1000 + index)}`,
-    status: "Active",
-    addedAt: createdAt
-  }));
-  const drivers = [
-    {
-      id: crypto.randomUUID(),
-      companyId,
-      name: "Jordan Sample",
-      email: `driver.${companyId.slice(0, 8)}@beta.runvara.local`,
-      role: "driver",
-      roleLabel: "Driver",
-      permissions: normalizePermissions("driver"),
-      truckId: trucks[0]?.id || "",
-      truckNumber: trucks[0]?.unitNumber || "",
-      payType: "Per mile",
-      ratePerMile: 0.62,
-      weeklyRate: 0,
-      payPercentage: 0,
-      status: "Active",
-      emailVerified: true,
-      passwordHash: hashPassword(betaSamplePassword),
-      mfa: { enabled: false, recoveryCodes: [] },
-      addedBy: { name: adminName, email },
-      addedAt: createdAt,
-      createdAt
-    }
-  ];
   return normalizeUser({
     id: companyId,
     companyId,
@@ -979,8 +989,8 @@ function betaDemoCompany({
     role: "admin",
     permissions: normalizePermissions("owner"),
     subscriptionTier,
-    trucks,
-    drivers,
+    trucks: [],
+    drivers: [],
     documents: [],
     complianceDocuments: [],
     supportIssues: [],
@@ -992,7 +1002,7 @@ function betaDemoCompany({
     trialEndsAt: addDaysIso(createdAt, trialDays),
     trialStatus: "Active",
     commissions: [],
-    records: scopedStarterRecords(companyId),
+    records: emptyRecords(),
     routeTracking: { enabled: false, currentLocation: null, history: [] },
     paymentInfo: {},
     integrations: {},
@@ -1030,7 +1040,7 @@ function createBetaSeedDb() {
       environment: appEnvironment,
       betaMode: true,
       seededAt,
-      dataPolicy: "Sample beta records only. Do not copy production customer data into this database."
+      dataPolicy: "Clear beta dashboards only. Do not copy production customer data into this database."
     },
     users,
     partners: [],
@@ -1053,7 +1063,7 @@ function createBetaSeedDb() {
       ipAddress: "",
       device: "server",
       affectedRecord: { type: "environment", label: "beta" },
-      details: "Separate beta database created with sample data only."
+      details: "Separate beta database created with clear beta dashboards."
     }]
   };
 }
