@@ -4,6 +4,7 @@ const navItems = [
   { id: "compliance", label: "Compliance", icon: "shield", eyebrow: "Renewals and filings" },
   { id: "expenses", label: "Expenses", icon: "receipt", eyebrow: "Deductions and costs" },
   { id: "rateCons", label: "Rate Cons/BOLs", icon: "upload", eyebrow: "Load documents" },
+  { id: "costPerMile", label: "Cost/Mile", icon: "route", eyebrow: "Operating cost calculator" },
   { id: "reports", label: "Reports", icon: "bar-chart", eyebrow: "Profit and tax summary" },
   { id: "userManagement", label: "User Management", icon: "users", eyebrow: "Subscription and access" },
   { id: "account", label: "Account", icon: "credit-card", eyebrow: "Admin payment settings", adminOnly: true },
@@ -124,6 +125,7 @@ const viewPermissionRequirements = {
   compliance: "viewDriverQualificationFiles",
   expenses: "viewFinancialInformation",
   rateCons: "viewLoads",
+  costPerMile: "viewFinancialInformation",
   reports: "exportReports",
   userManagement: "manageCompanyUsers",
   account: "changeSubscription"
@@ -975,6 +977,73 @@ function matchesDateRange(value) {
   return true;
 }
 
+function costPerMileDefaults(year = state.reportYear) {
+  const trips = recordsForYear(state.records.trips, year);
+  const expenseRows = recordsForYear(state.records.expenses, year);
+  const maintenanceRows = recordsForYear(state.records.maintenance, year);
+  const expensesForYear = [...expenseRows, ...maintenanceRows.map((item) => ({ ...item, category: item.category || "Maintenance" }))];
+  const categoryTotals = expenseCategoryTotals(expensesForYear);
+  const expenses = sumExpenseAmounts(expensesForYear);
+  return {
+    miles: sum(trips, "miles"),
+    revenue: sum(trips),
+    fuel: categoryTotals.Fuel || 0,
+    maintenance: categoryTotals.Maintenance || 0,
+    insurance: categoryTotals.Insurance || 0,
+    permits: categoryTotals["Permits and taxes"] || 0,
+    driverPay: 0,
+    other: Math.max(expenses - ((categoryTotals.Fuel || 0) + (categoryTotals.Maintenance || 0) + (categoryTotals.Insurance || 0) + (categoryTotals["Permits and taxes"] || 0)), 0)
+  };
+}
+
+function renderCostPerMileCalculator(defaults) {
+  const costs = defaults.fuel + defaults.maintenance + defaults.insurance + defaults.permits + defaults.driverPay + defaults.other;
+  const revenuePerMile = defaults.miles > 0 ? defaults.revenue / defaults.miles : 0;
+  const costPerMile = defaults.miles > 0 ? costs / defaults.miles : 0;
+  const profitPerMile = defaults.miles > 0 ? (defaults.revenue - costs) / defaults.miles : 0;
+  return `
+    <section class="panel">
+      <div class="panel-header"><h2>Cost Per Mile Calculator</h2><span class="muted">Enter miles and costs to estimate operating cost</span></div>
+      <div class="panel-body">
+        <div class="calculator-grid">
+          <label>Loaded miles<input data-cpm-input="miles" type="number" min="0" step="1" value="${numericInputValue(defaults.miles)}" /></label>
+          <label>Revenue<input data-cpm-input="revenue" type="number" min="0" step="0.01" value="${numericInputValue(defaults.revenue)}" /></label>
+          <label>Fuel<input data-cpm-input="fuel" type="number" min="0" step="0.01" value="${numericInputValue(defaults.fuel)}" /></label>
+          <label>Maintenance<input data-cpm-input="maintenance" type="number" min="0" step="0.01" value="${numericInputValue(defaults.maintenance)}" /></label>
+          <label>Insurance<input data-cpm-input="insurance" type="number" min="0" step="0.01" value="${numericInputValue(defaults.insurance)}" /></label>
+          <label>Permits and taxes<input data-cpm-input="permits" type="number" min="0" step="0.01" value="${numericInputValue(defaults.permits)}" /></label>
+          <label>Driver pay<input data-cpm-input="driverPay" type="number" min="0" step="0.01" value="${numericInputValue(defaults.driverPay)}" /></label>
+          <label>Other costs<input data-cpm-input="other" type="number" min="0" step="0.01" value="${numericInputValue(defaults.other)}" /></label>
+        </div>
+        <div class="calculator-results">
+          <article><span>Total costs</span><strong id="cpmTotalCosts">${moneyWithCents(costs)}</strong></article>
+          <article><span>Cost per mile</span><strong id="cpmCostPerMile">${moneyWithCents(costPerMile)}</strong></article>
+          <article><span>Revenue per mile</span><strong id="cpmRevenuePerMile">${moneyWithCents(revenuePerMile)}</strong></article>
+          <article><span>Profit per mile</span><strong id="cpmProfitPerMile">${moneyWithCents(profitPerMile)}</strong></article>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderCostPerMile() {
+  const years = reportYears();
+  if (!years.includes(state.reportYear)) state.reportYear = years[0];
+  content.innerHTML = `
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Cost Per Mile</h2>
+        <div class="filters">
+          <select id="reportYearFilter" aria-label="Calculator year">
+            ${years.map((year) => `<option value="${year}" ${state.reportYear === year ? "selected" : ""}>${year}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+    </section>
+    ${renderCostPerMileCalculator(costPerMileDefaults(state.reportYear))}
+  `;
+}
+
 function renderReports() {
   const years = reportYears();
   if (!years.includes(state.reportYear)) state.reportYear = years[0];
@@ -1000,20 +1069,6 @@ function renderReports() {
     .map(([label, value]) => ({ label, value }))
     .sort((a, b) => b.value - a.value);
   const maxCategory = Math.max(...categories.map((item) => item.value), 1);
-  const calculatorDefaults = {
-    miles,
-    revenue,
-    fuel: categoryTotals.Fuel || 0,
-    maintenance: categoryTotals.Maintenance || 0,
-    insurance: categoryTotals.Insurance || 0,
-    permits: categoryTotals["Permits and taxes"] || 0,
-    driverPay: 0,
-    other: Math.max(expenses - ((categoryTotals.Fuel || 0) + (categoryTotals.Maintenance || 0) + (categoryTotals.Insurance || 0) + (categoryTotals["Permits and taxes"] || 0)), 0)
-  };
-  const calculatorCosts = calculatorDefaults.fuel + calculatorDefaults.maintenance + calculatorDefaults.insurance + calculatorDefaults.permits + calculatorDefaults.driverPay + calculatorDefaults.other;
-  const calculatorRevenuePerMile = calculatorDefaults.miles > 0 ? calculatorDefaults.revenue / calculatorDefaults.miles : 0;
-  const calculatorCostPerMile = calculatorDefaults.miles > 0 ? calculatorCosts / calculatorDefaults.miles : 0;
-  const calculatorProfitPerMile = calculatorDefaults.miles > 0 ? (calculatorDefaults.revenue - calculatorCosts) / calculatorDefaults.miles : 0;
 
   content.innerHTML = `
     <section class="panel">
@@ -1032,27 +1087,6 @@ function renderReports() {
       ${metric("Estimated taxable", money(Math.max(revenue - expenses, 0)), "Before other adjustments", "bar-chart")}
       ${metric("Cost per mile", money(expenses / Math.max(miles, 1)), `${number(miles)} loaded miles`, "route")}
     </div>
-    <section class="panel">
-      <div class="panel-header"><h2>Cost Per Mile Calculator</h2><span class="muted">Enter miles and costs to estimate operating cost</span></div>
-      <div class="panel-body">
-        <div class="calculator-grid">
-          <label>Loaded miles<input data-cpm-input="miles" type="number" min="0" step="1" value="${numericInputValue(calculatorDefaults.miles)}" /></label>
-          <label>Revenue<input data-cpm-input="revenue" type="number" min="0" step="0.01" value="${numericInputValue(calculatorDefaults.revenue)}" /></label>
-          <label>Fuel<input data-cpm-input="fuel" type="number" min="0" step="0.01" value="${numericInputValue(calculatorDefaults.fuel)}" /></label>
-          <label>Maintenance<input data-cpm-input="maintenance" type="number" min="0" step="0.01" value="${numericInputValue(calculatorDefaults.maintenance)}" /></label>
-          <label>Insurance<input data-cpm-input="insurance" type="number" min="0" step="0.01" value="${numericInputValue(calculatorDefaults.insurance)}" /></label>
-          <label>Permits and taxes<input data-cpm-input="permits" type="number" min="0" step="0.01" value="${numericInputValue(calculatorDefaults.permits)}" /></label>
-          <label>Driver pay<input data-cpm-input="driverPay" type="number" min="0" step="0.01" value="${numericInputValue(calculatorDefaults.driverPay)}" /></label>
-          <label>Other costs<input data-cpm-input="other" type="number" min="0" step="0.01" value="${numericInputValue(calculatorDefaults.other)}" /></label>
-        </div>
-        <div class="calculator-results">
-          <article><span>Total costs</span><strong id="cpmTotalCosts">${moneyWithCents(calculatorCosts)}</strong></article>
-          <article><span>Cost per mile</span><strong id="cpmCostPerMile">${moneyWithCents(calculatorCostPerMile)}</strong></article>
-          <article><span>Revenue per mile</span><strong id="cpmRevenuePerMile">${moneyWithCents(calculatorRevenuePerMile)}</strong></article>
-          <article><span>Profit per mile</span><strong id="cpmProfitPerMile">${moneyWithCents(calculatorProfitPerMile)}</strong></article>
-        </div>
-      </div>
-    </section>
     <section class="panel">
       <div class="panel-header"><h2>AI Profit Summary</h2><span class="muted">Loss patterns from this report year</span></div>
       <div class="panel-body">
@@ -2165,6 +2199,7 @@ function renderContent() {
     renderCompliance();
   }
   if (state.view === "affiliate") renderAffiliate();
+  if (state.view === "costPerMile") renderCostPerMile();
   if (state.view === "reports") renderReports();
   if (state.view === "userManagement") renderAccount();
   if (state.view === "account") renderPaymentAccount();
