@@ -4,7 +4,7 @@ const navItems = [
   { id: "compliance", label: "Compliance", icon: "shield", eyebrow: "Renewals and filings" },
   { id: "expenses", label: "Expenses", icon: "receipt", eyebrow: "Deductions and costs" },
   { id: "rateCons", label: "Rate Cons/BOLs", icon: "upload", eyebrow: "Load documents" },
-  { id: "costPerMile", label: "Cost/Mile", icon: "route", eyebrow: "Operating cost calculator" },
+  { id: "costPerMile", label: "Calculator", icon: "route", eyebrow: "Operating cost calculator" },
   { id: "reports", label: "Reports", icon: "bar-chart", eyebrow: "Profit and tax summary" },
   { id: "userManagement", label: "User Management", icon: "users", eyebrow: "Subscription and access" },
   { id: "account", label: "Account", icon: "credit-card", eyebrow: "Admin payment settings", adminOnly: true },
